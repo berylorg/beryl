@@ -871,10 +871,61 @@ root. Adjacent ranges are valid. Repeated empty ranges at one position require d
 effects in canonical marker order. Moves prove one predecessor occurrence and one successor
 occurrence. Final uniqueness is authenticated through bounded sequence and index paths.
 
+## Ordinary Accepted-Input Recall
+
+Syndic exposes a dedicated ordinary recall operation over an exact active ordinary editor candidate.
+It accepts a compact typed source description derived from exact successful submission acceptance,
+including the original source draft/root and sealed materialization, input identity and immutable
+Asset association proof. Authentication proves that acceptance and its exact sealed source for idle,
+queued and steering inputs, including after promotion. Transcript selection, a caller-supplied digest,
+and an arbitrary sealed content reference do not grant recall authority. Read-only reauthentication
+may recover the same durable source after same-home reopening; prepared execution remains bound to
+its original opaque store generation and domain handle.
+The original atomic first-acceptance command records its complete request and accepted result in a
+distinct acceptance-purpose form of its existing session-disposal receipt. Source authentication
+requires that exact canonical receipt and sealed materialization/disposed-session closure; ordinary
+disposal is insufficient. This extends closed record forms without changing the family declaration.
+Source and destination must have the same durable home and exact conversation thread; foreign
+sources are typed nonmutating refusals, never relabelled or imported across conversations.
+
+The destination may contain unsent text and markers and may belong to an executing or compacting
+conversation whenever ordinary draft mutation is eligible. Recall preserves ordinary submission
+intent, does not mutate a submitted input, does not require an empty draft or idle execution gate,
+and creates no replacement-edit target. Existing archive, handoff, repair, session/candidate,
+operation-custody and exact outcome rules still govern the relevant drafting boundary.
+
+Accepted input roots and nodes are draft-scoped. Recall therefore streams the authenticated sealed
+input through bounded decoding/tree work into the destination namespace, retaining stable marker
+identity, label, order and exact AssetId under the Asset proof contract. Shared decoding and immutable
+tree mechanics have source-neutral responsibilities; replacement and ordinary recall retain separate
+typed admission and final-selection semantics. No complete input, marker collection or inverse payload
+is materialized. An incomplete builder is never an adopted editor root.
+
+One complete recall adopts its destination root, candidate generation, exact caret/selection and one
+ordinary edit-history transition atomically. The durable current-draft selector continues to follow
+ordinary autosave/flush publication. It does not select a fresh baseline: it retains eligible prior
+undo transitions and clears redo as an ordinary branching edit does.
+The operation uses existing configured history retention, staged-work bounds and cancellation rules.
+Before admission, cancellation has no editor effect. Once admitted, original receipt/reconciliation
+and committed-later-failure custody determine the terminal result independently of read observers.
+Exact replay does not append a second transition. Stale source or destination, unavailable assets,
+and refused capacity return a typed nonmutating result; uncertainty never becomes noncommit.
+
+A bounded opaque pre-browse checkpoint authenticates one exact candidate root, session, home identity
+and compact positions at capture. It retains the root's restoration eligibility independently of
+ordinary undo-stack eviction while held; it retains no text, inverse values, Home handle or active
+query. The existing immutable-record retention model does not physically delete its root or nodes.
+Checkpoint restoration requires the same live destination draft/editor session and a fresh current
+candidate, authenticates the retained root and positions, and adopts it with a new ordinary history
+transition. It never rolls back candidate generation, journal or operation identity. Retiring the
+editor ends executable checkpoint authority; disposal and recovery preserve already admitted command
+custody without admitting a restore into a replacement session.
+
 ## Edit History
 
 Every current or candidate root has matching edit-history authority. Canonical-empty creation selects
-canonical-empty history. Sealed imports select a fresh baseline with undo and redo unavailable.
+canonical-empty history. Historical replacement imports select a fresh baseline with undo and redo
+unavailable; ordinary accepted-input recall instead appends an ordinary undoable transition.
 Ordinary committed edits append one immutable transition and advance the candidate and live frontier
 atomically. Undo and redo directly adopt an authenticated retained historical root and move stack
 heads; they do not stream inverse bytes or reconstruct the root.

@@ -601,6 +601,33 @@ governed by [design.md](design.md). It does not independently declare engineerin
   clears the composer. Other or ambiguous outcomes preserve the coherent editor and exact evidence.
 - Composer history retains a fixed-capacity set of compact sealed Syndic input references and
   recalls content through range-backed copy-on-write drafts, never a payload history.
+- One window-lifetime history owner holds a bounded set of conversation scopes with bounded entries
+  per scope. Exact acceptance publishes one idempotent compact event to that owner before discarding
+  the submission capture, independently of successor-widget publication or detached settlement.
+  Its event binds window/conversation, durable home identity, accepted source and original acceptance
+  identity. Refusal, cancellation and unresolved reconciliation emit none. Repeated exact outcomes
+  coalesce; consecutive equal canonical sealed content and ordered Asset associations collapse.
+  Oldest inactive scopes/entries may be evicted; the active browse checkpoint is reserved separately.
+- Window and conversation selection publish the matching history scope coherently. A generation
+  change retires executable source capabilities; same-home recovery reauthenticates compact source
+  descriptions through fresh services without replaying acceptance or retaining old Home/runtime
+  resources. Window close releases its entries and checkpoints; nothing is persisted as GUI history.
+- Browsing captures an opaque exact same-session pre-browse checkpoint and positions, then drives
+  Syndic's ordinary recall operation off GPUI. It publishes the adopted root/history pair, positions
+  and browse cursor only after exact settlement under the original window/selection/editor fences.
+  A stale GUI wait cannot discard command or reconciliation custody. Rejected or cancelled work
+  keeps both editor and browse cursor unchanged. Pending work uses the existing mutation gate and
+  bounded feedback contribution; repeated keys do not start another flight.
+- The recalled source is a typed authenticated acceptance description, never selected transcript
+  text or a fabricated replacement intent. Different draft namespaces require bounded reconstruction
+  from the sealed input; internal decoding/tree helpers may be shared with replacement import, but
+  ordinary recall has its own source authentication and undoable final adoption. Forward restoration
+  adopts the saved same-draft checkpoint as an ordinary transition, without reimporting its payload.
+  Ordinary edits and Undo/Redo preserve the active browse bookmark until submission or coherent
+  conversation switch ends that browse session.
+- Editor-session retirement/replacement ends browsing and releases its checkpoint. Same-home
+  recovery preserves only reauthenticated accepted entries and the ordinary recovered current
+  draft, never an executable checkpoint from the retired editor.
 - Every success, cancellation, failure, supersession, session disposal, generation loss, and
   service disposal releases the exact flight, page, cursor, reservation, and custody.
 

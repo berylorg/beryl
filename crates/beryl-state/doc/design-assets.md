@@ -59,6 +59,16 @@ and repair-media participants.
 
 ## Sidecars, proofs, and witnesses
 
+- The ordinary accepted-input recall witness accepts its distinct bounded descriptive marker page
+  and qualifies exact sealed-set membership, marker ordinal/id/label/AssetId and local availability
+  against the exact accepted owner or its authenticated promoted submitted-item successor. The
+  Syndic source participant derives that owner from the original acceptance and route/promotion
+  proof on the same Home snapshot; a copied owner enum grants no source authority. The witness
+  and source use one exact ordinary-recall operation/header/progress/range correlation, with the
+  original move-only receipt and consumer custody. Promotion between steps requires a fresh exact
+  proof for the next window and cannot redirect a prior receipt. This source-neutral set/sidecar
+  verification may share internal mechanics with historical import; the public proof protocols and
+  historical-import owner restrictions remain separate. It changes no Asset records or labels.
 - The historical-input import witness accepts a bounded descriptive
   `HistoricalInputMarkerPageV1` and authenticates its exact submitted-item owner head, complete
   sealed reference set, ordered marker/label/AssetId association and required Asset availability.

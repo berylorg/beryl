@@ -125,6 +125,12 @@ Provide shared pure-data identities and values used across Beryl packages withou
   shape; it performs no storage read and proves no membership, source eligibility or availability.
   They contain no expectation, receipt consumer or capability. Domain-owned authentication follows
   the [historical import proof flow](../../../doc/systems/image-assets/design.md#reference-and-label-evidence).
+- Ordinary accepted-input recall has separate bounded descriptive marker-page and source-owner
+  values for exact accepted-input or promoted submitted-item ownership. They carry the operation,
+  source acceptance/disposal identity, exact bounded encoded/progress window, sealed set and ordered
+  associations. Pure construction validates shape only; Syndic and Asset participants authenticate
+  the original same-snapshot correlation under the ordinary-recall proof contract. These values
+  carry no executable receipt consumer or authority and do not relax historical-import types.
 - The type owns no filesystem path, media metadata, reference record, sidecar operation, or garbage-collection policy.
 
 # Engineering Rigor

@@ -397,6 +397,10 @@ confusing current drafts with submitted transcript history or image identity.
 - Composer history is bounded GUI-local session state containing exact accepted inputs. It is not
   persisted, does not originate from transcript history, and never changes submitted transcript
   content.
+- History belongs to one window and conversation. It survives selecting another conversation and
+  returning in that window, subject to configured oldest-eligible eviction. Closing the window or
+  restarting the app discards it. Same-home recovery preserves its compact references only after
+  their sources are revalidated; unavailable history never becomes an empty or substituted input.
 - Only accepted non-empty submissions enter history. Rejected submissions and whitespace-only text submissions do not.
 - Consecutive duplicate accepted drafts collapse to one entry.
 - When composer history reaches its configured bound, it evicts the oldest eligible entries without
@@ -407,6 +411,25 @@ confusing current drafts with submitted transcript history or image identity.
 - The exact draft that existed when browsing began is restored when browsing forward past the
   newest history entry.
 - Editing a recalled entry changes only the current draft and not the stored history entry.
+- Recall and forward restoration are ordinary draft replacements, each producing one undoable
+  transition under the existing edit-history retention budget. They preserve ordinary submission
+  intent and are available while execution or compaction continues whenever ordinary drafting is
+  available. They never enter historical thread-edit mode or alter a submitted turn.
+- The first successful backward browse preserves the exact pre-browse draft and its caret and
+  directed selection. Forward traversal past the newest entry restores those facts. Ordinary
+  edits and Undo/Redo while browsing change only the current displayed draft and do not replace
+  that saved pre-browse state or the selected history entry. A successful submission or coherent
+  conversation switch ends browsing; the displayed draft follows ordinary submission/flush rules.
+- Replacing or retiring the editor session, including same-home service recovery, ends the active
+  browse session and releases its checkpoint coherently. It retains the current ordinary draft
+  through normal flush/recovery and may retain revalidated accepted entries for the window. A new
+  browse starts from that fresh editor's own draft; an old checkpoint never executes in it.
+- Pending recall keeps the last coherent editor visible and temporarily fences other draft
+  mutations, submission and repeated browse commands. It prepares large inputs through bounded
+  steps, then adopts the complete replacement once. Escape may cancel before admission; definite
+  refusal or cancellation leaves draft, positions and browse cursor unchanged. After admission,
+  exact settlement and the existing durable-mutation reconciliation rules govern the outcome.
+  Pending/failure feedback uses the composer's existing bounded mutation presentation.
 - When thread-edit mode is active or no history exists in the requested direction, `Alt+Up` and
   `Alt+Down` leave the draft, caret, selection, composer presentation, and transcript viewport
   unchanged.

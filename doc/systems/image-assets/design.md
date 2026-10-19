@@ -267,6 +267,15 @@ Allow many drafts and turns to share exact bytes without making a thread directo
   loss; a later page cannot bypass it. This read-proof flow allocates no image label and creates
   no label-readiness lane, writer admission or new persisted family. Final replacement selection
   separately reasserts the exact historical head and publishes the draft head in its atomic command.
+- Ordinary accepted-input recall authenticates its source against exact accepted input or immutable
+  promoted submitted ownership, independent of current transcript selection. Its bounded source
+  windows carry the same exact marker-id/label/AssetId association guarantees as historical import,
+  under a distinct ordinary-recall source correlation. It allocates no new label and does not move
+  historical ownership. The adopted root carries exact authenticated associations; ordinary
+  autosave/flush seals and publishes its CurrentDraft Asset head through the existing publication
+  boundary. Same-session checkpoint restoration authenticates the original immutable root and its
+  marker protection; a copied descriptor or bare AssetId is not proof. Original cross-domain proof,
+  command and reconciliation custody survives disposal exactly as for other draft mutations.
 - A Syndic thread owns one independently revisioned compact image-label-authority head, separate
   from the broad thread revision. The head contains the immutable inherited frontier and current
   permanent accepted frontier. Immutable origin spans bind each local accepted-frontier advance to

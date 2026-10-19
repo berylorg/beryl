@@ -2,6 +2,8 @@
 
 Status: source inventory complete; mounted browsing is not accepted. Reviewed against source at
 `2e24a258` and the linked authorities. No production source or tests changed for this assessment.
+The later authority reconciliation below resolves the original target-decision gaps; the source
+inventory and earlier recommendation remain historical evidence of the readiness boundary.
 
 ## Controlling Boundary
 
@@ -148,3 +150,22 @@ Root completion review checked every readiness task against source and owning au
 inventory establishes the missing capture/recall consumers and identifies the contract work needed
 before implementation. It does not accept browsing, choose those missing decisions, or authorize
 using a replacement-edit command for ordinary history recall.
+
+## Authority Reconciliation
+
+Operator authorized clean architectural implementation and resolution of the missing recall
+contracts. The Composer feature now selects window/conversation history lifetime, undoable
+recall/restoration, positions and pending behavior; editor retirement ends browsing while accepted
+entries may be revalidated after same-home recovery. App, Syndic, model and Asset authority define
+bounded source preparation, acceptance capture, ordinary root adoption and original custody.
+
+The accepted source anchor is a distinct acceptance-purpose form of the existing session-disposal
+receipt, atomically written with acceptance. It preserves the 103-family Home declaration and all
+ordinary/replacement record bytes. The [source-authority lesson](../failures/composer-recall-source-authority.md)
+records why a new family and an unqualified ordinary disposal receipt were rejected during design.
+
+Independent semantic review accepted the complete reconciled authority with no remaining blocker,
+after correcting Redo branching, same-session checkpoint retirement, foreign-thread refusal and
+closed build/header/frontier discrimination. The review inspected source acceptance/disposal fields
+and exact schema relationships. This accepts architecture readiness only; implementation and
+mounted workflow qualification remain separate.

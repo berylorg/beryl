@@ -566,15 +566,18 @@ canonical byte comparison of the point-read target closure.
   operation. It repeats the source history frontier, selected retained transition and direction,
   target historical root, restored caret and directed selection, terminal result, and exact
   successor candidate/history frontiers when committed. It is the only direct-root candidate
-  adoption schema. A missing transition, root outside the same-draft retained lineage, stale
+  adoption schema for Undo/Redo; ordinary checkpoint restoration uses the separate root-replacement
+  closure below. A missing transition, root outside the same-draft retained lineage, stale
   frontier, disagreeing replay, collision, or no-change result that names a successor is invalid.
 ### Draft Build And Settlement Canonical Encodings
 
 - `draft-piece-builds` is keyed by the exact 48-byte draft/session/operation identity. Its
-  `DraftPieceBuildRecordV1` value repeats the closed edit-successor or sealed-composer-import kind. An edit-successor repeats
+  `DraftPieceBuildRecordV1` value repeats the closed edit-successor, sealed-composer-import or
+  ordinary-recall kind. An edit-successor repeats
   the exact staging identity and authenticated finish receipt, finish-derived canonical proposal-
   header bytes and digest, predecessor candidate generation and exact combined root; an import has
-  no staging identity. The record also retains any optional exact sealed
+  no staging identity. Ordinary recall is selected only by its explicit kind/header/frontier
+  agreement under the Ordinary Recall Canonical Extension. The record also retains any optional exact sealed
   content source,
   compact declared counts and digests, finished-staging reference, consumed source/proposal staging
   frontiers, ordered fragment, sequence-path, identity-index, marker-order-commitment, fixed marker-
@@ -656,6 +659,73 @@ canonical byte comparison of the point-read target closure.
   exact fragment natural identity and canonical digest, completed effect count, and post-effect
   sequence/index/commitment root digest. No prior build, progress, settlement, or effect-chain domain
   is valid under V7.
+
+#### Ordinary Recall Canonical Extension
+
+The existing `draft-editor-candidate-sessions` family gains an explicit acceptance-disposal receipt
+form, preserving its V2 record version, key grammar and every existing record tag. Its natural key
+is the existing disposal-receipt key: source draft id, session id, key tag `3`, and original disposal
+operation id. New record tag `5` encodes the complete existing disposal payload
+(`B(disposal_request_bytes)`, before session, after session, captured history frontier), followed by
+`B(canonical_first_acceptance_bytes)`, a closed accepted result and a 32-byte canonical digest.
+`FirstAcceptance` encodes its fields in declared request order: thread id/revision, image-label
+authority, original draft id/revision, source candidate activation, complete sealed materialization,
+gate revision/state, successor draft id, idle item id, optional sealed Asset proof, disposal operation
+id and acceptance timestamp. Result tag `0` carries turn and user-item identities; tag `1` carries
+accepted-input identity, ordinal and route generation. All nested fields use their existing canonical
+fixed-width and checked scalar/option grammars. The digest domain is
+`syndic/composer-acceptance-disposal-receipt/v1`, over the complete canonical key and body excluding
+the digest, under existing digest framing. Decode rejects repeated-key or source/disposal/result
+disagreement, invalid scalars, unknown tags and trailing bytes. Ordinary disposal cannot create this
+acceptance-purpose form; it is constructed only within the exact first-acceptance mutation closure.
+
+The receipt is written in the original atomic first-acceptance closure, including exact replay and
+reconciliation. It is durable acceptance evidence, not a persisted GUI history collection. No old
+input is backfilled or inferred from transcript records. Source reauthentication compares its full
+canonical receipt and source materialization/disposed-session closure, never a digest alone or
+current transcript/gate eligibility. Queue promotion preserves this receipt and its source identity.
+Existing record tags `0` through `4`, ordinary disposal bytes, the 103-family declaration and all
+existing keyspaces/record versions remain unchanged. Existing homes admit this extension without a
+family migration; only newly accepted inputs produce the new purpose-qualified receipt. An older
+ordinary disposal receipt remains valid disposal evidence but grants no ordinary recall authority.
+
+Ordinary recall preserves existing build/progress/settlement record versions and all ordinary and
+replacement bytes. The common command header adds suffix tag `2`,
+`B("syndic/draft-composer-recall/v1")`, and the exact accepted-source basis; checkpoint restore uses
+suffix tag `3`, `B("syndic/draft-composer-checkpoint-restore/v1")`, and its exact checkpoint basis.
+The common header retains exact destination draft/session/candidate/root/history, operation and
+before/after positions. The recall basis is, in order, the existing disposal-receipt key grammar
+(source draft, session, tag `3`, disposal operation) and `B` of the complete canonical tag `5`
+acceptance-disposal record, including its sealed materialization/content/Asset source. The checkpoint
+basis is, in order, the captured candidate activation under the existing activation field grammar,
+the original captured caret and directed-selection composite positions under their existing
+position grammar. The activation includes the checkpoint's exact root and matching history; no
+caller-supplied alternate root is accepted. The destination's current candidate is independently
+bound by the common header. Neither suffix implies replacement intent or weakens tag `1` rules.
+
+The closed build kinds gain ordinary recall, identified by header suffix `2` and frontier tag `8`,
+including terminal builds. Decode requires exact agreement of those discriminators before applying
+the ordinary-recall invariants; there is no extra kind byte added to existing records.
+OrdinaryRecall is not an edit-successor with absent mapping
+or a replacement import with missing target fields. Checkpoint restore has its own suffix `3` and
+settlement-purpose form and does not create a streaming build.
+
+Build-frontier tag `8` is OrdinaryRecall, retained through terminal states. It carries the accepted
+source basis followed by the same bounded phase, source cursors/counts, decoder, tree-validation
+cursor and marker fold grammar as the sealed-import frontier below. Its working roots are in the
+destination draft namespace. Staging fragments, coordinate mapping, marker-effect continuations
+and marker writer admission are absent. Existing frontier tags `0` through `7` keep their bytes.
+
+Settlement-closure tag `3` is OrdinaryRootReplacement: closed purpose tag `0` for accepted recall
+with exact source/build-EOF evidence or `1` for checkpoint restore with captured source evidence,
+then the existing committed-adoption grammar (before/after session, adopted root, before history,
+one ordinary transition, adopted history). Exact request bytes and before/after positions remain
+in the enclosing settlement. The source root and destination root may differ for recall; restore
+uses a same-draft retained root. Both advance the destination candidate and journal, append undo
+and clear redo. Build/progress/frontier and settlement digest arms cover the new explicit tags and
+canonical payloads under existing enclosing digest domains. Unknown purpose/frontier/closure tags
+reject. Existing tags `0` through `2` retain their exact settlement bytes. A restore needs no new
+tree record or persisted pin family; its checkpoint is a non-deserializable process capability.
 
 #### Sealed Import Canonical Extension
 
@@ -1329,7 +1399,8 @@ phase. It then stores `removal_site`, `planning`, `insertion_site` and `pending`
 
 Immediately after the active marker state, both endpoint encodings append an optional mapping
 block. Some is mandatory for edit-successor records; None belongs only to the separately identified
-sealed-composer-import kind. Absence never infers an import kind or admits a mapless edit. This
+sealed-composer-import or explicit ordinary-recall kind. Absence never infers either source kind or
+admits a mapless edit-successor. This
 presence byte participates in V6 canonical bytes and digests for both kinds.
 
 The Some payload is, in order:
