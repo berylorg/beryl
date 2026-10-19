@@ -30,5 +30,6 @@ only then resume the App mount. Track the prerequisite in [the active plan](../p
 Distinguish target documentation from implemented API evidence in future readiness reviews.
 
 The App ownership design remains authoritative. The exact orphan Settings sources were archived
-before discovery; they were already outside the live module graph. No replacement service, window,
-Cargo manifest change or runtime mutation has been made.
+before discovery; they were already outside the live module graph. The direct owning-input/widget
+correction is now independently qualified and published; [evidence](../audits/settings-widget-prerequisites.md).
+The App service/window mount remains a separate acceptance boundary.

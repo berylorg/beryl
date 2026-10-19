@@ -6,13 +6,13 @@ preserving accepted shell, catalog/navigation, Activity, transcript, composer hi
 restoration and replacement editing. Preserve unrelated skills/memory. Commit and push accepted
 phases; no installation is authorized.
 
-# Phase 793: Define Complete Settings Application Ownership (finished)
+# Phase 794: Qualify Settings Widget Interaction And Input Prerequisites (finished)
 
-Independent semantic/lifetime review accepted Settings process/window/service ownership, original
-Home reconciliation custody, finite applied settings and same-process theme recovery context.
-No production source changes; [accepted authority](audits/settings-mounting-readiness.md#application-ownership-review).
+Published and pinned the independently accepted input and Settings widget revisions. All 178
+owning cases, locked metadata and the normal App/binary production check passed; analyzer reload
+succeeded. The missing prerequisite is resolved; [evidence](audits/settings-widget-prerequisites.md).
 
-# Phase 794: Mount The Complete Settings Workflow (wip)
+# Phase 795: Mount The Complete Settings Workflow (wip)
 
 Implement the actual toolbar Settings command after Exit and the process-owned preheated external
 Settings OS window under [App ownership](../crates/beryl-app/doc/design-feature-adapters.md#settings-application-ownership),
@@ -51,12 +51,4 @@ theme, startup, recovery and shell regressions. Run focused development checks, 
 production checks and complete independent semantic/lifetime review before acceptance. Preserve
 evidence in a durable audit; simulated GUI tests do not prove native paint or sustained scrolling.
 
-Current milestone: authority accepted; exact orphan shell Settings sources archived outside the
-live module graph. No replacement production source or manifest changes yet.
-
-Blocked prerequisite: the pinned external Settings widget does not implement its documented
-window interaction/field availability contracts, footer gates or pre-mutation input size limit.
-Its native close hides before host observation. Host callbacks cannot satisfy atomic input refusal
-or reconciliation freeze. Implement and qualify the missing contracts in the owned widget/input
-dependencies and publish their exact revisions before resuming this App mount; resolve their
-owning design/plan boundary first. [Evidence and readiness correction](failures/settings-widget-contract-readiness.md).
+Current milestone: exact orphan shell Settings sources archived and owning widget prerequisites accepted/pinned. Implement the Settings service/window API seam, live graph ownership and consumer integration; no major blocker remains.

@@ -113,3 +113,6 @@ and constructs ordinary text inputs with only undo retention limits. It cannot e
 required reconciliation freeze or atomic Developer Instructions size refusal through host event
 callbacks. Implement and qualify those contracts in the owning widget/input dependencies before
 resuming the complete App mount. No Settings service or window implementation is claimed.
+
+The direct prerequisite correction has since passed owning qualification and independent review,
+and Beryl pins the published revisions; [accepted evidence](settings-widget-prerequisites.md).
