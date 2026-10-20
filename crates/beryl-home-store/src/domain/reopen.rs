@@ -6,6 +6,7 @@ use super::registration::{read_persisted_metadata, registered_family, validate_b
 pub(crate) fn reacquire_registry(
     generation: &mut StoreGeneration,
     blueprints: &[DomainBlueprint],
+    home_id: beryl_model::BerylHomeId,
 ) -> Result<(), DomainRegistrationError> {
     let mut registry = DomainRegistry::default();
     for blueprint in blueprints {
@@ -29,7 +30,8 @@ pub(crate) fn reacquire_registry(
                     stage: DomainRegistrationStage::ReadRegistry,
                     source: Box::new(ClassifiedFjallError::direct(source)),
                 })?;
-        let domain = super::registration::registered_domain(blueprint, families, &snapshot)?;
+        let domain =
+            super::registration::registered_domain(blueprint, families, &snapshot, home_id)?;
         registry.insert(domain);
     }
     generation.registry = registry;

@@ -26,7 +26,21 @@ pub use types::{
 #[derive(Clone, Copy)]
 struct RecoveryItemDescriptor {
     role: RecoveryItemSequenceRole,
-    source: ProjectionTextSource,
+    source: RecoveryTextSource,
+}
+
+#[derive(Clone, Copy)]
+enum RecoveryTextSource {
+    Canonical(ProjectionTextSource),
+    Context(crate::context_projection::frame::ContextFrameSource),
+}
+impl RecoveryTextSource {
+    fn logical_utf8_bytes(self) -> u64 {
+        match self {
+            Self::Canonical(source) => source.logical_utf8_bytes(),
+            Self::Context(source) => source.utf8_bytes,
+        }
+    }
 }
 
 impl SyndicStorage {
@@ -38,6 +52,15 @@ impl SyndicStorage {
         &self,
         store: &HomeStore,
         request: RecoveryProjectionRequest,
+    ) -> Result<RecoveryAssembly, RecoveryProjectionError> {
+        self.prepare_recovery_projection_cancellable(store, request, &|| false)
+    }
+
+    pub fn prepare_recovery_projection_cancellable(
+        &self,
+        store: &HomeStore,
+        request: RecoveryProjectionRequest,
+        cancelled: &dyn Fn() -> bool,
     ) -> Result<RecoveryAssembly, RecoveryProjectionError> {
         let source_revision = self.revision(store)?;
         let thread = self
@@ -122,21 +145,82 @@ impl SyndicStorage {
             return Err(RecoveryProjectionError::ZeroModelContextWindow);
         }
         let utf8_limit = RecoveryUtf8ByteCount::MAX.min(model_tokens / 2);
-        let topology =
-            self.inspect_recovery_topology(store, prefix_tail, expected_depth, tail_eligibility)?;
-        let utf8_bytes = self.recovery_utf8_total(store, &topology, utf8_limit)?;
-        let sequence_digest = self.hash_recovery_sequence(store, &topology, utf8_bytes)?;
+        let mut topology = self.inspect_recovery_topology_cancellable(
+            store,
+            prefix_tail,
+            expected_depth,
+            tail_eligibility,
+            cancelled,
+        )?;
+        let context = self.prepare_replay_context(
+            store,
+            request.thread_id(),
+            request.selected_path(),
+            CasRepresentedPrefixProof::new(
+                Some(prefix_tail),
+                request.selected_path().thread_revision(),
+                topology.digest,
+            ),
+            source_revision,
+            request.context_tool_profile,
+            utf8_limit,
+            cancelled,
+        )?;
+        if let Some(context) = context {
+            topology.context_thread = Some(request.thread_id());
+            topology.item_count = topology
+                .item_count
+                .checked_add(context.summary().count())
+                .ok_or(RecoveryProjectionError::Invariant(
+                    "expanded recovery count overflow",
+                ))?;
+            if topology.item_count > u64::from(RecoveryItemCount::MAX) {
+                return Err(RecoveryProjectionError::BudgetOverflow {
+                    kind: crate::RecoveryBudgetKind::ItemCount,
+                    maximum: RecoveryItemCount::MAX,
+                    actual: topology.item_count,
+                });
+            }
+        }
+        let utf8_bytes = self.recovery_utf8_total(store, &topology, utf8_limit, cancelled)?;
+        let sequence_digest =
+            self.hash_recovery_sequence(store, &topology, utf8_bytes, cancelled)?;
         let item_count = RecoveryItemCount::new(topology.item_count).map_err(|_| {
             RecoveryProjectionError::Invariant("accepted recovery item count became invalid")
         })?;
         let utf8_bytes = RecoveryUtf8ByteCount::new(utf8_bytes).map_err(|_| {
             RecoveryProjectionError::Invariant("accepted recovery byte count became invalid")
         })?;
+        let context_classification = crate::context_projection::ContextClassification {
+            home: store.home_id(),
+            home_generation: self.context_generation,
+            thread: request.thread_id(),
+            prefix: CasRepresentedPrefixProof::new(
+                Some(prefix_tail),
+                request.selected_path().thread_revision(),
+                topology.digest,
+            ),
+            selected: request.selected_path(),
+            gate: self
+                .input_gate(store, request.thread_id(), point_limit())?
+                .ok_or(RecoveryProjectionError::MissingHistory {
+                    record: "recovery context gate",
+                })?
+                .revision(),
+            summary: context.map_or(crate::ContextSummary::empty(), |context| context.summary()),
+        };
         if self.revision(store)? != source_revision {
             return Err(RecoveryProjectionError::ConcurrentChange);
         }
         Ok(RecoveryAssembly::Ready(RecoveryProjection {
-            version: RecoveryProjectionVersion::V1,
+            context_classification: Some(context_classification),
+            version: if context.is_some() {
+                RecoveryProjectionVersion::ContextAwareV2
+            } else {
+                RecoveryProjectionVersion::V1
+            },
+            context,
+            seed_only: false,
             thread_id: request.thread_id(),
             selected_path: request.selected_path(),
             represented_prefix: CasRepresentedPrefixProof::new(
@@ -172,11 +256,20 @@ impl SyndicStorage {
         store: &HomeStore,
         proof: RecoveryProjection,
     ) -> Result<RecoveryTailEligibility, RecoveryProjectionError> {
+        if proof.context().is_some_and(|context| {
+            context.home != self.home_id || context.home_generation != self.context_generation
+        }) {
+            return Err(RecoveryProjectionError::CursorMismatch {
+                reason: "context proof belongs to another Home generation",
+            });
+        }
         if self.revision(store)? != proof.source_revision() {
             return Err(RecoveryProjectionError::ConcurrentChange);
         }
-        if proof.version() != RecoveryProjectionVersion::V1
-            || proof.represented_prefix().tail().is_none()
+        if !matches!(
+            proof.version(),
+            RecoveryProjectionVersion::V1 | RecoveryProjectionVersion::ContextAwareV2
+        ) || proof.represented_prefix().tail().is_none()
             || proof.represented_prefix().source_thread_revision()
                 != proof.selected_path().thread_revision()
         {

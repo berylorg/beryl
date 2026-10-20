@@ -116,6 +116,7 @@ pub(super) fn execute_in_flight(
         assets,
         &projection,
         limit,
+        &|| cancellation.is_cancelled(),
     ));
     #[cfg(feature = "test-faults")]
     let mut pending = retain_projection!(PendingOrdinaryExecution::read_with_confirmation_hook(
@@ -124,6 +125,7 @@ pub(super) fn execute_in_flight(
         assets,
         &projection,
         limit,
+        &|| cancellation.is_cancelled(),
         || {
             if let Some(acquisition) = flight.acquisition() {
                 acquisition.pause_for_test(
@@ -165,7 +167,8 @@ pub(super) fn execute_in_flight(
         pending.turn_id,
         projection.loaded_session_generation(),
         started_at,
-    );
+    )
+    .with_context_classification(pending.context_classification);
     let (active_binding_revision, active_gate_revision) =
         match activate(store, storage, &activation, limit) {
             ActivationAttempt::Activated {

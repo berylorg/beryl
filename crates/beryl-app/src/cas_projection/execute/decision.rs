@@ -45,7 +45,7 @@ impl CasProjectionCoordinator {
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         self.ensure_decision_current(home, session, decision, cancellation)?;
         self.ensure_home(home)?;
-        let plan = self.prepare_decision_plan(home, storage, decision)?;
+        let plan = self.prepare_decision_plan(home, storage, decision, cancellation)?;
         if !decision.matches_plan(&plan) {
             return Err(
                 ProjectionExecutionError::NativeLineageRecoveryDecisionStale {
@@ -105,16 +105,20 @@ impl CasProjectionCoordinator {
             decision,
             cancellation,
         )?;
-        if decision.basis().represented_prefix().tail().is_none() {
+        if decision.basis().represented_prefix().tail().is_none()
+            && decision.basis().context().is_none()
+        {
             return Ok(());
         }
-        storage.prepare_recovery_projection(
+        storage.prepare_recovery_projection_cancellable(
             home,
             RecoveryProjectionRequest::for_pending_selected_turn_parent(
                 decision.target_thread_id(),
                 decision.request().selected_path(),
                 decision.request().model_context_window_tokens(),
-            ),
+            )
+            .with_tool_profile(decision.basis().tool_profile()),
+            &|| cancellation.is_cancelled(),
         )?;
         Ok(())
     }
@@ -128,7 +132,7 @@ impl CasProjectionCoordinator {
         cancellation: &ProjectionCancellationToken,
     ) -> Result<(), ProjectionExecutionError> {
         self.ensure_decision_current(home, session, decision, cancellation)?;
-        let plan = self.prepare_decision_plan(home, storage, decision)?;
+        let plan = self.prepare_decision_plan(home, storage, decision, cancellation)?;
         if !decision.matches_plan(&plan) {
             return Err(
                 ProjectionExecutionError::NativeLineageRecoveryDecisionStale {
@@ -171,7 +175,7 @@ impl CasProjectionCoordinator {
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         self.ensure_decision_current(home, session, decision, cancellation)?;
         self.ensure_home(home)?;
-        let plan = self.prepare_decision_plan(home, storage, decision)?;
+        let plan = self.prepare_decision_plan(home, storage, decision, cancellation)?;
         if !decision.matches_plan(&plan) {
             return Err(
                 ProjectionExecutionError::NativeLineageRecoveryDecisionStale {
@@ -195,7 +199,9 @@ impl CasProjectionCoordinator {
                 );
             }
             self.ensure_home(home)?;
-            let replanned_basis = self.prepare_decision_plan(home, storage, decision)?.basis();
+            let replanned_basis = self
+                .prepare_decision_plan(home, storage, decision, cancellation)?
+                .basis();
             if replanned_basis.expected_binding_revision() != post_retirement_revision {
                 return Err(
                     ProjectionExecutionError::NativeLineageRecoveryDecisionStale {
@@ -278,9 +284,10 @@ impl CasProjectionCoordinator {
         home: &HomeStore,
         storage: &SyndicStorage,
         decision: &NativeLineageRecoveryDecision,
+        cancellation: &ProjectionCancellationToken,
     ) -> Result<NativeProjectionPlan, ProjectionExecutionError> {
         storage
-            .prepare_native_projection(
+            .prepare_native_projection_cancellable(
                 home,
                 &NativeProjectionRequest::new(
                     decision.target_thread_id(),
@@ -289,6 +296,7 @@ impl CasProjectionCoordinator {
                     decision.basis().tool_profile(),
                 ),
                 point_limit(),
+                &|| cancellation.is_cancelled(),
             )
             .map_err(ProjectionExecutionError::from)
     }

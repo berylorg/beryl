@@ -647,6 +647,11 @@ mod catalog_title;
 mod codec;
 mod compaction;
 mod content;
+mod context_projection;
+pub use context_projection::{
+    ContextBindingClassification, ContextInjectionObservation, ContextLineageProof,
+    ContextNativeCut, ContextProjectionBasis, ContextSourceAnchor, ContextSummary,
+};
 mod discussion_gate;
 mod discussion_source;
 mod dispatch_provenance;

@@ -133,6 +133,9 @@ fn provider_operation_depth_does_not_seed_fork_or_resume_native_counts() {
         CasNativeTurnCount::new(1),
         CasLineageProof::native(NativeCasLineage::Resume, represented).unwrap(),
     );
+    let forged_resume = storage
+        .prepare_context_free_publication_cancellable(&store, forged_resume, &|| false)
+        .unwrap();
     let error = execute_outcome(
         &store,
         storage.publish_valid_binding(storage.revision(&store).unwrap(), forged_resume),

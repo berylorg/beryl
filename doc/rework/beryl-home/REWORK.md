@@ -241,6 +241,7 @@
 - [x] Mounted bounded readonly discussion context with exact provenance, themed realization and
   Copy-only interaction; [acceptance](../../audits/transcript-mounting-readiness.md#synthetic-discussion-context-acceptance).
 - [x] Accepted finite discussion-context proof and replay authority before ordinary execution; [readiness](../../audits/discussion-context-projection-readiness.md).
+- [x] Accepted ordinary discussion execution through exact native seed, continuation/resume and complete context replay, with bounded proof/page and failure custody; [qualification](../../audits/discussion-context-execution-qualification.md).
 - [ ] Implement branch discussion creation, immutable selection provenance,
   first submission, ordinary child conversation, and inherited image-label authority without
   copying historical label maps.

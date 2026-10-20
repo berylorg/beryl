@@ -80,6 +80,9 @@ pub(in crate::mutation::binding) fn validate_native_recovery(
     } else {
         None
     };
+    if basis.context().is_some() {
+        return Ok(());
+    }
     let expected_lineage = match anchor.operation {
         RecoveryOperation::Fresh => {
             CasLineageProof::native(NativeCasLineage::Fresh, basis.represented_prefix())?

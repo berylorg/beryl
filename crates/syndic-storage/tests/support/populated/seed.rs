@@ -190,11 +190,24 @@ pub fn seed_provider_records(store: &beryl_home_store::HomeStore, storage: Syndi
             root_turn_chain_digest(SyndicTurnId::from_bytes([29; 16])),
         ),
     );
+    let source_binding = storage
+        .current_binding(
+            store,
+            source_thread,
+            SyndicPointReadLimit::new(1_000_000).unwrap(),
+        )
+        .unwrap()
+        .unwrap();
+    let BindingState::Valid(source_usable) = source_binding.binding().state() else {
+        panic!("source fixture binding must be valid");
+    };
+    let source_context = storage
+        .prepare_context_binding_cancellable(store, source_thread, source_usable, &|| false)
+        .unwrap();
     accept_clean(
         store.execute_current(
-            storage
-                .clone()
-                .current_activate_binding(ActivateBinding::new(
+            storage.clone().current_activate_binding(
+                ActivateBinding::new(
                     source_thread,
                     BindingRevision::new(2).unwrap(),
                     InputGateRevision::new(1).unwrap(),
@@ -207,7 +220,9 @@ pub fn seed_provider_records(store: &beryl_home_store::HomeStore, storage: Syndi
                         CasLoadedThreadGeneration::new(1).unwrap(),
                     ),
                     timestamp(3),
-                )),
+                )
+                .with_context_classification(source_context),
+            ),
         ),
         "source binding activation",
         &mut receipts,

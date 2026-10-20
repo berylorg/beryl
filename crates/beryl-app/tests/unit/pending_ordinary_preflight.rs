@@ -111,6 +111,7 @@ fn canonical_content_removed_during_preflight_is_concurrent_change() {
         &assets,
         &PendingWitness(thread),
         limit,
+        &|| false,
         || {
             let mut changes = syndic_storage::test_faults::FixtureBatch::new();
             changes

@@ -6,7 +6,7 @@ use std::{
     marker::PhantomData,
 };
 
-use beryl_model::DomainRevision;
+use beryl_model::{BerylHomeId, DomainRevision};
 use fjall::Keyspace;
 use thiserror::Error;
 
@@ -433,6 +433,7 @@ pub(crate) struct RegisteredFamily {
 pub(crate) type ErasedReopenValidator = fn(
     &fjall::Snapshot,
     &[RegisteredFamily],
+    BerylHomeId,
     &SidecarVerifier<'_>,
 ) -> Result<(), callback::ErasedCallbackError>;
 pub(crate) type ErasedReconciler =
@@ -484,6 +485,7 @@ impl DomainBlueprint {
 }
 
 pub(crate) struct RegisteredDomain {
+    pub(crate) home_id: BerylHomeId,
     pub(crate) name: &'static str,
     pub(crate) schema: DomainSchemaVersion,
     pub(crate) owner: DomainOwnerId,

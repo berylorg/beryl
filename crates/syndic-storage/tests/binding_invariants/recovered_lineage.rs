@@ -69,7 +69,8 @@ fn recovered_lineage_activation_requires_its_process_and_preserves_chronology() 
         turn,
         loaded_generation(8, 12),
         timestamp(8),
-    );
+    )
+    .with_context_classification(activation_context(&store, &storage, thread));
     let outcome = execute_outcome(
         &store,
         storage.activate_binding(storage.revision(&store).unwrap(), wrong_process),
@@ -99,7 +100,8 @@ fn recovered_lineage_activation_requires_its_process_and_preserves_chronology() 
         turn,
         handoff_generation,
         timestamp(5),
-    );
+    )
+    .with_context_classification(activation_context(&store, &storage, thread));
     let outcome = execute_outcome(
         &store,
         storage.activate_binding(storage.revision(&store).unwrap(), too_early),
@@ -127,7 +129,8 @@ fn recovered_lineage_activation_requires_its_process_and_preserves_chronology() 
                 turn,
                 handoff_generation,
                 timestamp(8),
-            ),
+            )
+            .with_context_classification(activation_context(&store, &storage, thread)),
         ),
     );
     let binding = storage
@@ -218,6 +221,9 @@ fn recovered_cas_identity_cannot_be_redefined_as_native_lineage() {
             CasNativeTurnCount::ZERO,
             CasLineageProof::native(mechanism, represented).unwrap(),
         );
+        let request = storage
+            .prepare_context_free_publication_cancellable(&store, request, &|| false)
+            .unwrap();
         let outcome = execute_outcome(
             &store,
             storage.publish_valid_binding(storage.revision(&store).unwrap(), request),

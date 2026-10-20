@@ -24,9 +24,17 @@ pub struct RecoveryProjectionRequest {
     selected_path: SelectedPathProof,
     model_context_window_tokens: Option<u64>,
     scope: RecoveryProjectionScope,
+    pub(crate) context_tool_profile: Option<beryl_model::CasConversationToolProfile>,
 }
 
 impl RecoveryProjectionRequest {
+    pub const fn with_tool_profile(
+        mut self,
+        profile: beryl_model::CasConversationToolProfile,
+    ) -> Self {
+        self.context_tool_profile = Some(profile);
+        self
+    }
     /// Creates a pre-admission request for the complete current selected path.
     ///
     /// `None` deliberately represents missing metadata, while `Some(0)` deliberately retains an
@@ -43,6 +51,7 @@ impl RecoveryProjectionRequest {
             selected_path,
             model_context_window_tokens,
             scope: RecoveryProjectionScope::CurrentSelectedPath,
+            context_tool_profile: None,
         }
     }
 
@@ -62,6 +71,7 @@ impl RecoveryProjectionRequest {
             selected_path,
             model_context_window_tokens,
             scope: RecoveryProjectionScope::PendingSelectedTurnParent,
+            context_tool_profile: None,
         }
     }
 
@@ -97,14 +107,17 @@ impl RecoveryProjectionRequest {
 /// eligibility contract produced the proof.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RecoveryProjection {
-    pub(super) version: RecoveryProjectionVersion,
-    pub(super) thread_id: SyndicThreadId,
-    pub(super) selected_path: SelectedPathProof,
-    pub(super) represented_prefix: CasRepresentedPrefixProof,
-    pub(super) item_count: RecoveryItemCount,
-    pub(super) utf8_bytes: RecoveryUtf8ByteCount,
-    pub(super) sequence_digest: RecoveryItemSequenceDigest,
-    pub(super) source_revision: DomainRevision,
+    pub(crate) context: Option<crate::ContextProjectionBasis>,
+    pub(crate) context_classification: Option<crate::context_projection::ContextClassification>,
+    pub(crate) seed_only: bool,
+    pub(crate) version: RecoveryProjectionVersion,
+    pub(crate) thread_id: SyndicThreadId,
+    pub(crate) selected_path: SelectedPathProof,
+    pub(crate) represented_prefix: CasRepresentedPrefixProof,
+    pub(crate) item_count: RecoveryItemCount,
+    pub(crate) utf8_bytes: RecoveryUtf8ByteCount,
+    pub(crate) sequence_digest: RecoveryItemSequenceDigest,
+    pub(crate) source_revision: DomainRevision,
 }
 
 /// Stable storage decision between native Fresh lineage and a nonempty recovery sequence.
@@ -150,6 +163,62 @@ impl RecoveryAssembly {
 }
 
 impl RecoveryProjection {
+    pub const fn context(self) -> Option<crate::ContextProjectionBasis> {
+        self.context
+    }
+    pub fn completed_lineage(
+        self,
+        completed_at: crate::SyndicTimestamp,
+        generation: beryl_model::CasLoadedSessionGeneration,
+    ) -> Result<crate::CasLineageProof, crate::SyndicValueError> {
+        if let Some(context) = self.context {
+            context.complete_replay(
+                generation,
+                crate::ContextInjectionObservation::new(
+                    self.item_count,
+                    self.utf8_bytes,
+                    self.sequence_digest,
+                    completed_at,
+                )?,
+            )
+        } else {
+            crate::RecoveredInjectionProof::new(
+                self.version,
+                self.represented_prefix,
+                self.sequence_digest,
+                self.item_count,
+                self.utf8_bytes,
+                completed_at,
+                generation,
+            )
+            .map(crate::CasLineageProof::recovered)
+        }
+    }
+    pub fn transport_source_identity(
+        self,
+        home_generation: u64,
+        service_generation: u64,
+    ) -> Option<[u8; 32]> {
+        use sha2::{Digest, Sha256};
+        let context = self.context?;
+        let mut hash = Sha256::new();
+        hash.update(b"beryl-context-projection-source-v1\0");
+        hash.update([u8::from(!self.seed_only)]);
+        hash.update(context.home.as_bytes());
+        hash.update(home_generation.to_be_bytes());
+        hash.update(service_generation.to_be_bytes());
+        hash.update(self.thread_id.as_bytes());
+        let mut encoded = crate::codec::parts::Encoder::new();
+        crate::codec::parts::enc_selected_path(&mut encoded, self.selected_path);
+        crate::codec::parts::enc_represented_prefix(&mut encoded, self.represented_prefix);
+        hash.update(encoded.finish());
+        hash.update(self.source_revision.get().to_be_bytes());
+        hash.update(context.projection_digest);
+        hash.update(u64::from(self.item_count.get()).to_be_bytes());
+        hash.update(self.utf8_bytes.get().to_be_bytes());
+        hash.update(self.sequence_digest.as_bytes());
+        Some(hash.finalize().into())
+    }
     #[must_use]
     pub const fn version(&self) -> RecoveryProjectionVersion {
         self.version

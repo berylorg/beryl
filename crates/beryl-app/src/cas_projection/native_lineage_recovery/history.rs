@@ -51,6 +51,7 @@ impl NativeLineageRecoveryDenial {
     fn from_execution_error(error: &ProjectionExecutionError) -> Self {
         match error {
             ProjectionExecutionError::RecoveryProjection(error) => match error {
+                RecoveryProjectionError::Cancelled => Self::Cancelled,
                 RecoveryProjectionError::MissingModelContextWindow
                 | RecoveryProjectionError::ZeroModelContextWindow => Self::ModelContextUnavailable,
                 RecoveryProjectionError::StaleSelectedPath
@@ -68,7 +69,8 @@ impl NativeLineageRecoveryDenial {
                     RecoveryBudgetKind::Utf8Bytes => Self::Utf8BytesLimit,
                 },
                 RecoveryProjectionError::Read(_) => Self::HistoryReadFailed,
-                RecoveryProjectionError::CursorTerminal
+                RecoveryProjectionError::MissingContextToolProfile
+                | RecoveryProjectionError::CursorTerminal
                 | RecoveryProjectionError::InvalidCursorPageLimit { .. }
                 | RecoveryProjectionError::CursorPageLimitTooSmall { .. }
                 | RecoveryProjectionError::CursorMismatch { .. }

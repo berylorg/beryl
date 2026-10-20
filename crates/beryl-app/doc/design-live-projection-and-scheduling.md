@@ -323,6 +323,10 @@ topology and typed execution surfaces.
   injection-before-activation ordering. A missing/invalid clock observation, source drift,
   cancellation, routing failure or target-generation loss abandons that unpublished target and
   releases the page, broker directions, lease and reservation through existing custody.
+- If native seeding succeeds but completion time cannot be observed, stale retirement may retain
+  the original prepared native-fork proof and imported turn count as facts about the pre-seed
+  native cut. It creates no context-aware completion proof or ordering timestamp. This stale
+  provenance cannot authorize context inclusion, resume, publication or reinjection.
 - Every failed injection consumes its target, including proven nondispatch. A response timeout or
   lost acknowledgement does not authorize another injection into that target or an ordinary turn
   start. Failed/uncertain binding publication retains the original opaque reconciliation scope;

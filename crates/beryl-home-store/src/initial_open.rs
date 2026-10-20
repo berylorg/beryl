@@ -143,6 +143,17 @@ impl HomeOpenCandidate {
         self.initial.generation
     }
 
+    pub fn generation_identity(&self) -> Result<crate::HomeGenerationIdentity, HomeCandidateError> {
+        let admission = self
+            .initial
+            .store
+            .health
+            .admit_candidate(crate::HomeHealthState::Opening, self.initial.generation)?;
+        let identity = self.initial.store.generation_identity_at_publication();
+        admission.confirm()?;
+        Ok(identity)
+    }
+
     pub fn health(&self) -> HomeHealthSnapshot {
         self.initial.store.health()
     }

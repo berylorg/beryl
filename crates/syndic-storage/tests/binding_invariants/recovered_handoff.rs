@@ -84,7 +84,12 @@ fn activate_recovered(store: &HomeStore, storage: &SyndicStorage, fixture: &Reco
                 fixture.turn,
                 fixture.current_generation,
                 timestamp(8),
-            ),
+            )
+            .with_context_classification(activation_context(
+                store,
+                storage,
+                fixture.thread,
+            )),
         ),
     );
 }

@@ -395,10 +395,30 @@ fn valid_request(
 }
 
 fn publish_valid(store: &HomeStore, storage: &SyndicStorage, request: PublishValidBinding) {
+    let request = storage
+        .prepare_context_free_publication_cancellable(store, request, &|| false)
+        .expect("context-free fixture publication must retain authenticated absence");
     execute(
         store,
         storage.publish_valid_binding(storage.revision(store).unwrap(), request),
     );
+}
+
+fn activation_context(
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    thread: SyndicThreadId,
+) -> ContextBindingClassification {
+    let current = storage
+        .current_binding(store, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    let BindingState::Valid(usable) = current.binding().state() else {
+        panic!("activation fixture must be valid");
+    };
+    storage
+        .prepare_context_binding_cancellable(store, thread, usable, &|| false)
+        .unwrap()
 }
 
 #[test]

@@ -15,6 +15,7 @@ const RECOVERY_MAX_ITEMS: u64 = RECOVERY_MAX_UTF8_BYTES;
 pub enum RecoveryProjectionVersion {
     /// Closed user/input-text and assistant/output-text sequence defined by the target system.
     V1,
+    ContextAwareV2,
 }
 
 /// Number of ordered items in one non-empty recovery projection.
@@ -212,6 +213,7 @@ pub enum NativeCasLineage {
 pub enum CasLineageMode {
     Native,
     RecoveredInjection,
+    ContextAware,
 }
 
 /// Exact session-scoped proof produced by one completed fresh recovery injection.
@@ -236,6 +238,11 @@ impl RecoveredInjectionProof {
         completed_at: SyndicTimestamp,
         loaded_generation: CasLoadedSessionGeneration,
     ) -> Result<Self, SyndicValueError> {
+        if version != RecoveryProjectionVersion::V1 {
+            return Err(SyndicValueError::InvalidLineageProof {
+                reason: "legacy recovered proof requires version one",
+            });
+        }
         if established_prefix.tail().is_none() {
             return Err(SyndicValueError::InvalidLineageProof {
                 reason: "recovered injection requires a non-empty committed path",
@@ -305,6 +312,7 @@ pub enum CasLineageProof {
         established_prefix: CasRepresentedPrefixProof,
     },
     RecoveredInjection(RecoveredInjectionProof),
+    ContextAware(crate::ContextLineageProof),
 }
 
 impl CasLineageProof {
@@ -345,6 +353,7 @@ impl CasLineageProof {
         match self {
             Self::Native { .. } => CasLineageMode::Native,
             Self::RecoveredInjection(_) => CasLineageMode::RecoveredInjection,
+            Self::ContextAware(_) => CasLineageMode::ContextAware,
         }
     }
 
@@ -355,6 +364,7 @@ impl CasLineageProof {
                 established_prefix, ..
             } => established_prefix,
             Self::RecoveredInjection(proof) => proof.established_prefix(),
+            Self::ContextAware(proof) => proof.established_prefix(),
         }
     }
 
@@ -364,6 +374,7 @@ impl CasLineageProof {
         match self {
             Self::Native { .. } => None,
             Self::RecoveredInjection(proof) => Some(proof.loaded_generation()),
+            Self::ContextAware(proof) => Some(proof.loaded_generation()),
         }
     }
 
@@ -373,6 +384,7 @@ impl CasLineageProof {
         match self {
             Self::Native { .. } => None,
             Self::RecoveredInjection(proof) => Some(proof.completed_at()),
+            Self::ContextAware(proof) => Some(proof.ordering_floor()),
         }
     }
 }

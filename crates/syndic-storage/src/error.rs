@@ -351,6 +351,10 @@ pub enum RecoveryBudgetKind {
 /// Why storage could not prepare one exact recovery-item projection.
 #[derive(Debug, thiserror::Error)]
 pub enum RecoveryProjectionError {
+    #[error("context projection requires the exact target conversation-tool profile")]
+    MissingContextToolProfile,
+    #[error("context preparation was cancelled")]
+    Cancelled,
     #[error("exact selected-model context-window metadata is missing")]
     MissingModelContextWindow,
     #[error("selected-model context-window metadata must be nonzero")]

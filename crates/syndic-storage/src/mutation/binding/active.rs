@@ -88,6 +88,7 @@ impl ActivateBindingMutation {
             return Err(SyndicMutationError::BindingStateConflict);
         };
         validate_usable_current(reader, request.selected_path, usable)?;
+        super::validation::validate_context_activation(reader, request, usable)?;
         let usable = usable
             .advance_represented_source_revision(request.selected_path.thread_revision())
             .ok_or(SyndicMutationError::BindingPathConflict)?;

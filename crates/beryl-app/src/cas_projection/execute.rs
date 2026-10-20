@@ -16,6 +16,7 @@ use crate::conversation_tools::ConversationToolRegistry;
 mod cleanup;
 mod decision;
 mod fresh;
+mod injection;
 mod native;
 pub(super) mod native_retry;
 mod recovery;
@@ -186,7 +187,7 @@ impl CasProjectionCoordinator {
             .into());
         }
         self.ensure_home(home)?;
-        let native = storage.prepare_native_projection(
+        let native = storage.prepare_native_projection_cancellable(
             home,
             &NativeProjectionRequest::new(
                 request.thread_id(),
@@ -195,6 +196,7 @@ impl CasProjectionCoordinator {
                 tool_profile,
             ),
             point_limit(),
+            &|| cancellation.is_cancelled(),
         )?;
         self.ensure_home(home)?;
         if cancellation.is_cancelled() {
@@ -350,7 +352,12 @@ impl CasProjectionCoordinator {
             .binding()
             .lineage()
             .recovered_injection_generation()
-            .is_some()
+            .is_some_and(|required| {
+                !matches!(
+                    source.binding().lineage(),
+                    syndic_storage::CasLineageProof::ContextAware(_)
+                ) || required.process() != session.process_generation()
+            })
         {
             return self.retire_current_then_recover(
                 home,
@@ -434,7 +441,12 @@ impl CasProjectionCoordinator {
             .binding()
             .lineage()
             .recovered_injection_generation()
-            .is_some()
+            .is_some_and(|required| {
+                !matches!(
+                    source.binding().lineage(),
+                    syndic_storage::CasLineageProof::ContextAware(_)
+                ) || required.process() != session.process_generation()
+            })
         {
             return self.retire_current_then_recover(
                 home,
@@ -547,7 +559,7 @@ impl CasProjectionCoordinator {
         if cancellation.is_cancelled() {
             return Err(ProjectionExecutionError::Cancelled);
         }
-        let replanned = storage.prepare_native_projection(
+        let replanned = storage.prepare_native_projection_cancellable(
             home,
             &NativeProjectionRequest::new(
                 request.thread_id(),
@@ -556,6 +568,7 @@ impl CasProjectionCoordinator {
                 basis.tool_profile(),
             ),
             point_limit(),
+            &|| cancellation.is_cancelled(),
         )?;
         if replanned.basis().expected_binding_revision() != retired_revision {
             return Err(ProjectionExecutionError::ProjectionBasisChanged {

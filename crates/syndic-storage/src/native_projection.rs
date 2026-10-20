@@ -77,9 +77,14 @@ pub struct NativeProjectionBasis {
     represented_prefix: CasRepresentedPrefixProof,
     tool_profile: CasConversationToolProfile,
     pub(crate) recovery: Option<recovery::RecoveryAnchor>,
+    pub(crate) context: Option<crate::ContextProjectionBasis>,
+    pub(crate) context_classification: Option<crate::context_projection::ContextClassification>,
 }
 
 impl NativeProjectionBasis {
+    pub const fn context(self) -> Option<crate::ContextProjectionBasis> {
+        self.context
+    }
     #[must_use]
     pub const fn thread_id(self) -> SyndicThreadId {
         self.thread_id
@@ -192,6 +197,8 @@ impl NativeProjectionPlan {
 /// Failure to establish one stable native-lineage decision.
 #[derive(Debug, Error)]
 pub enum NativeProjectionError {
+    #[error(transparent)]
+    Context(#[from] crate::RecoveryProjectionError),
     #[error("the supplied selected path is not the thread's exact current selected path")]
     StaleSelectedPath,
     #[error("the selected tail is not one pending ordinary-user turn")]
@@ -262,6 +269,16 @@ impl SyndicStorage {
         request: &NativeProjectionRequest,
         limit: SyndicPointReadLimit,
     ) -> Result<NativeProjectionPlan, NativeProjectionError> {
+        self.prepare_native_projection_cancellable(store, request, limit, &|| false)
+    }
+
+    pub fn prepare_native_projection_cancellable(
+        &self,
+        store: &HomeStore,
+        request: &NativeProjectionRequest,
+        limit: SyndicPointReadLimit,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<NativeProjectionPlan, NativeProjectionError> {
         let before = self.revision(store)?;
         let thread = self.thread(store, request.thread_id, limit)?.ok_or(
             NativeProjectionError::Invariant("native projection thread is missing"),
@@ -274,9 +291,6 @@ impl SyndicStorage {
         );
         if !selected_path.is_compatible_descendant_of(request.selected_path) {
             return Err(NativeProjectionError::StaleSelectedPath);
-        }
-        if thread.context_owner_id().is_some() {
-            return Err(NativeProjectionError::DiscussionContextProjectionRequired);
         }
 
         let current = self
@@ -343,6 +357,8 @@ impl SyndicStorage {
             represented_prefix,
             tool_profile: request.tool_profile,
             recovery: None,
+            context: None,
+            context_classification: None,
         };
 
         let plan = self.classify_native_projection(
@@ -353,6 +369,7 @@ impl SyndicStorage {
             basis,
             limit,
         )?;
+        let plan = self.qualify_context_native_plan(store, request, plan, cancelled)?;
         if self.revision(store)? != before {
             return Err(NativeProjectionError::ConcurrentChange);
         }

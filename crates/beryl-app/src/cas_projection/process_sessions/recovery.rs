@@ -195,7 +195,7 @@ impl ScheduledExecutionSessions {
         let request = recovery_request(&context, thread_id, binding)?;
         let NativeProjectionRecoveryPlan::Ready { plan, basis } = context
             .storage
-            .prepare_native_projection_recovery(
+            .prepare_native_projection_recovery_cancellable(
                 &context.home,
                 &NativeProjectionRequest::new(
                     thread_id,
@@ -204,8 +204,15 @@ impl ScheduledExecutionSessions {
                     crate::conversation_tools::ConversationToolRegistry::canonical().profile(),
                 ),
                 crate::cas_projection::input_replay::point_limit(),
+                &|| cancellation.is_cancelled(),
             )
-            .map_err(|_| unavailable)?
+            .map_err(|_| {
+                if cancellation.is_cancelled() {
+                    SelectedProjectionRecoveryError::Cancelled
+                } else {
+                    unavailable
+                }
+            })?
         else {
             return Err(unavailable);
         };

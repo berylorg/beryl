@@ -105,9 +105,9 @@ pub enum ProjectionExecutionError {
         thread_id: beryl_model::SyndicThreadId,
     },
     #[error(transparent)]
-    NativePlanning(#[from] NativeProjectionError),
+    NativePlanning(NativeProjectionError),
     #[error(transparent)]
-    RecoveryProjection(#[from] RecoveryProjectionError),
+    RecoveryProjection(RecoveryProjectionError),
     #[error(transparent)]
     SyndicRead(#[from] SyndicReadError),
     #[error(transparent)]
@@ -174,6 +174,24 @@ impl ProjectionExecutionError {
 impl From<ManagedBackendError> for ProjectionExecutionError {
     fn from(error: ManagedBackendError) -> Self {
         Self::Backend(Box::new(error))
+    }
+}
+
+impl From<NativeProjectionError> for ProjectionExecutionError {
+    fn from(error: NativeProjectionError) -> Self {
+        match error {
+            NativeProjectionError::Context(RecoveryProjectionError::Cancelled) => Self::Cancelled,
+            error => Self::NativePlanning(error),
+        }
+    }
+}
+
+impl From<RecoveryProjectionError> for ProjectionExecutionError {
+    fn from(error: RecoveryProjectionError) -> Self {
+        match error {
+            RecoveryProjectionError::Cancelled => Self::Cancelled,
+            error => Self::RecoveryProjection(error),
+        }
     }
 }
 

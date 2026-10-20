@@ -12,6 +12,7 @@ impl RegisteredDomain {
     ) -> Result<(), ErasedCallbackError> {
         validate_provisional_schema(
             snapshot,
+            self.home_id,
             self.name,
             &self.families,
             self.reopen_validator,
@@ -22,12 +23,14 @@ impl RegisteredDomain {
 
 pub(crate) fn validate_blueprint_schema(
     snapshot: &fjall::Snapshot,
+    home_id: beryl_model::BerylHomeId,
     definition: &DomainBlueprint,
     families: &[RegisteredFamily],
     sidecars: &SidecarVerifier<'_>,
 ) -> Result<(), ErasedCallbackError> {
     validate_provisional_schema(
         snapshot,
+        home_id,
         definition.name,
         families,
         definition.reopen_validator,
@@ -37,6 +40,7 @@ pub(crate) fn validate_blueprint_schema(
 
 fn validate_provisional_schema(
     snapshot: &fjall::Snapshot,
+    home_id: beryl_model::BerylHomeId,
     name: &'static str,
     families: &[RegisteredFamily],
     reopen_validator: super::ErasedReopenValidator,
@@ -45,7 +49,7 @@ fn validate_provisional_schema(
     for family in families {
         crate::read::validate_physical_family(snapshot, name, family).map_err(access)?;
     }
-    reopen_validator(snapshot, families, sidecars)
+    reopen_validator(snapshot, families, home_id, sidecars)
 }
 
 pub(super) fn public_validation_error(

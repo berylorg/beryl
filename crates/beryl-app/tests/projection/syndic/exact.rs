@@ -151,6 +151,12 @@ pub fn establish_turn(
         .unwrap()
         .unwrap();
     let snapshot = SyndicExecutionSnapshotId::from_bytes(*turn.as_bytes());
+    let BindingState::Valid(usable) = binding.binding().state() else {
+        panic!("fixture activation requires the exact usable binding")
+    };
+    let context_classification = storage
+        .prepare_context_binding_cancellable(store, thread, usable, &|| false)
+        .unwrap();
     execute(
         store,
         storage.activate_binding(
@@ -169,7 +175,8 @@ pub fn establish_turn(
                 turn,
                 active_loaded_generation,
                 started_at,
-            ),
+            )
+            .with_context_classification(context_classification),
         ),
     );
     let binding = storage

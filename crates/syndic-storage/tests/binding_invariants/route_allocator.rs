@@ -277,11 +277,16 @@ fn unselected_generations_and_later_activation_share_one_route_allocator() {
         .unwrap()
         .publish()
         .unwrap();
-    let (thread, None, turn, selected) = fault_pending_path(&store, &storage, 130, false) else {
+    let (thread, None, turn, _) = fault_pending_path(&store, &storage, 130, false) else {
         unreachable!()
     };
     let source_draft = draft_id(143);
     let accepted = seed_unselected_accepted_input(&store, &storage, thread, source_draft);
+    let selected = storage
+        .thread(&store, thread, point_limit())
+        .unwrap()
+        .unwrap()
+        .selected_path();
     let first_generation = AcceptedRouteGeneration::FIRST;
     let gate = storage
         .input_gate(&store, thread, point_limit())
@@ -294,10 +299,22 @@ fn unselected_generations_and_later_activation_share_one_route_allocator() {
         .accepted_input(&store, accepted, point_limit())
         .unwrap()
         .unwrap();
-    assert_eq!(accepted_record.route_generation().unwrap(), first_generation);
-    assert_eq!(accepted_record.composer_admission().unwrap().source_draft_id(), source_draft);
     assert_eq!(
-        accepted_record.composer_admission().unwrap().replacement_draft_id(),
+        accepted_record.route_generation().unwrap(),
+        first_generation
+    );
+    assert_eq!(
+        accepted_record
+            .composer_admission()
+            .unwrap()
+            .source_draft_id(),
+        source_draft
+    );
+    assert_eq!(
+        accepted_record
+            .composer_admission()
+            .unwrap()
+            .replacement_draft_id(),
         storage
             .current_draft(&store, thread, point_limit())
             .unwrap()

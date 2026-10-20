@@ -1,4 +1,6 @@
+mod context;
 mod recovery;
+pub(super) use context::{validate_context_activation, validate_context_publication};
 pub(super) use recovery::validate_native_recovery;
 
 use beryl_home_store::DomainReader;
@@ -195,7 +197,9 @@ fn validate_new_reservation(usable: &UsableCasBinding) -> Result<(), SyndicMutat
         {
             Err(SyndicMutationError::BindingStateConflict)
         }
-        CasLineageProof::RecoveredInjection(_) | CasLineageProof::Native { .. } => Ok(()),
+        CasLineageProof::RecoveredInjection(_)
+        | CasLineageProof::Native { .. }
+        | CasLineageProof::ContextAware(_) => Ok(()),
     }
 }
 
@@ -309,13 +313,25 @@ fn valid_first_stale_position(stale: &StaleCasBinding) -> bool {
             let Some(prefix) = stale.observed_prefix() else {
                 return false;
             };
-            matches!(
-                stale.observed_lineage(),
+            match stale.observed_lineage() {
                 Some(CasLineageProof::Native {
                     mechanism: NativeCasLineage::Fork,
                     established_prefix,
-                }) if prefix.tail().is_some() && established_prefix == prefix
-            )
+                }) => prefix.tail().is_some() && established_prefix == prefix,
+                Some(CasLineageProof::ContextAware(proof)) => {
+                    prefix.tail().is_some()
+                        && proof.established_prefix() == prefix
+                        && matches!(
+                            proof.establishment,
+                            crate::context_projection::ContextEstablishment::NativeSeed { .. }
+                                | crate::context_projection::ContextEstablishment::Inherited {
+                                    mechanism: NativeCasLineage::Fork,
+                                    ..
+                                }
+                        )
+                }
+                _ => false,
+            }
         }
     }
 }

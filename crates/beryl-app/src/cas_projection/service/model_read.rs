@@ -147,7 +147,7 @@ impl CasProjectionCoordinator {
             .begin_projection(request.thread_id())?
             .with_acquisition(acquisition);
         let NativeProjectionRecoveryPlan::Ready { plan, basis } = storage
-            .prepare_native_projection_recovery(
+            .prepare_native_projection_recovery_cancellable(
                 home,
                 &NativeProjectionRequest::new(
                     request.thread_id(),
@@ -156,6 +156,7 @@ impl CasProjectionCoordinator {
                     crate::conversation_tools::ConversationToolRegistry::canonical().profile(),
                 ),
                 crate::cas_projection::input_replay::point_limit(),
+                &|| cancellation.is_cancelled(),
             )?
         else {
             return Err(ProjectionExecutionError::ProjectionBasisChanged {

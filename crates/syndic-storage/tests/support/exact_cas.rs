@@ -642,17 +642,26 @@ pub fn activate_turn_with_profile(
                 )
             }
         };
+    let basis = storage
+        .prepare_native_projection(
+            store,
+            &syndic_storage::NativeProjectionRequest::new(
+                thread,
+                selected,
+                execution.clone(),
+                profile,
+            ),
+            point_limit(),
+        )
+        .unwrap()
+        .basis();
     require_committed(
         store.execute_current(storage.clone().current_publish_valid_binding(
-            PublishValidBinding::new(
-                thread,
-                current.binding().revision(),
-                selected,
+            PublishValidBinding::from_native(
+                basis,
                 execution,
                 cas_thread.clone(),
-                represented,
                 native_turn_count,
-                profile,
                 lineage,
             ),
         )),
@@ -667,11 +676,16 @@ pub fn activate_turn_with_profile(
         .unwrap()
         .unwrap();
     let snapshot = SyndicExecutionSnapshotId::from_bytes(*turn.as_bytes());
+    let BindingState::Valid(usable) = binding.binding().state() else {
+        panic!("exact-CAS fixture binding must be valid");
+    };
+    let classification = storage
+        .prepare_context_binding_cancellable(store, thread, usable, &|| false)
+        .unwrap();
     require_committed(
         store.execute_current(
-            storage
-                .clone()
-                .current_activate_binding(ActivateBinding::new(
+            storage.clone().current_activate_binding(
+                ActivateBinding::new(
                     thread,
                     binding.binding().revision(),
                     gate.revision(),
@@ -685,7 +699,9 @@ pub fn activate_turn_with_profile(
                     turn,
                     loaded_generation(),
                     started_at,
-                )),
+                )
+                .with_context_classification(classification),
+            ),
         ),
         "binding activation",
     );

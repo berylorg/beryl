@@ -373,11 +373,16 @@ pub(crate) fn enc_lineage(e: &mut Encoder, value: crate::CasLineageProof) {
             enc_timestamp(e, proof.completed_at());
             enc_loaded_generation(e, proof.loaded_generation());
         }
+        crate::CasLineageProof::ContextAware(proof) => {
+            e.u8(2);
+            enc_context_lineage(e, proof);
+        }
     }
 }
 
 pub(crate) fn dec_lineage(d: &mut Decoder<'_>) -> Result<crate::CasLineageProof, CodecError> {
     match d.u8()? {
+        2 => dec_context_lineage(d).map(crate::CasLineageProof::ContextAware),
         0 => {
             let mechanism = match d.u8()? {
                 0 => crate::NativeCasLineage::Fresh,

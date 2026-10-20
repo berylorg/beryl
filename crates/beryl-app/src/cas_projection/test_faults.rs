@@ -4,6 +4,7 @@ use std::sync::{
     mpsc::{Receiver, SyncSender, sync_channel},
 };
 
+mod completion_clock;
 mod promotion;
 mod provider;
 mod publication;
@@ -13,6 +14,12 @@ mod scheduler;
 mod stop_handoff;
 mod target;
 mod terminal_history;
+
+pub(crate) use completion_clock::take_projection_completion_clock_fault;
+pub use completion_clock::{
+    ProjectionCompletionClockFault, ProjectionCompletionClockFaultGuard,
+    install_projection_completion_clock_fault,
+};
 
 pub fn bind_applied_settings_for_test(
     service: &super::ProjectionConnectionService,

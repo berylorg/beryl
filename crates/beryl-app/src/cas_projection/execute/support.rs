@@ -4,7 +4,10 @@ use std::{
 };
 
 use beryl_backend::ThreadLoadOptions;
-use beryl_model::{BindingRevision, CasLoadedSessionGeneration, CasThreadId};
+use beryl_model::{
+    BerylHomeId, BindingRevision, CasLoadedSessionGeneration, CasProcessGeneration, CasThreadId,
+    SyndicThreadId,
+};
 use syndic_storage::{CasLineageProof, SyndicPointReadLimit, SyndicTimestamp};
 
 use crate::cas_projection::{
@@ -18,7 +21,21 @@ pub(in crate::cas_projection) fn point_limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(POINT_READ_LIMIT).expect("projection point-read bound is nonzero")
 }
 
-pub(super) fn completion_timestamp() -> Result<SyndicTimestamp, ProjectionExecutionError> {
+pub(super) fn completion_timestamp(
+    _home: BerylHomeId,
+    _thread: SyndicThreadId,
+    _cas_thread: &CasThreadId,
+    _process: CasProcessGeneration,
+) -> Result<SyndicTimestamp, ProjectionExecutionError> {
+    #[cfg(feature = "test-faults")]
+    if let Some(error) = crate::cas_projection::test_faults::take_projection_completion_clock_fault(
+        _home,
+        _thread,
+        _cas_thread,
+        _process,
+    ) {
+        return Err(error);
+    }
     let elapsed = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(ProjectionExecutionError::SystemClockBeforeUnixEpoch)?;

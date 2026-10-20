@@ -150,6 +150,12 @@ impl ProjectionConnection {
         self.forwarding_hub.current_attachment()
     }
 
+    pub(in crate::cas_projection) fn projection_source_attachment(
+        &self,
+    ) -> Result<ConnectionAttachmentIdentity, ProjectionCoordinatorError> {
+        Ok(self.current_attachment()?.identity)
+    }
+
     pub(super) fn work_attachment(
         &self,
     ) -> Result<Option<Arc<ConnectionAttachment>>, ProjectionCoordinatorError> {

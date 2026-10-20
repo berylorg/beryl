@@ -5,8 +5,8 @@ use beryl_model::{
 };
 use beryl_state::{AssetOwner, AssetOwnerHeadRecord, AssetState};
 use syndic_storage::{
-    BindingState, ContentReference, SelectedPathProof, SyndicPointReadLimit, SyndicStorage,
-    SyndicTimestamp, TurnStateRevision,
+    BindingState, ContentReference, ContextBindingClassification, SelectedPathProof,
+    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnStateRevision,
 };
 
 use super::OrdinaryTurnExecutionError;
@@ -65,6 +65,7 @@ pub(in crate::cas_projection) struct PendingOrdinaryExecution {
     pub(super) asset_reference_set: Option<SealedAssetReferenceSetProof>,
     pub(super) asset_owner_head: Option<AssetOwnerHeadRecord>,
     pub(super) minimum_observed_at: SyndicTimestamp,
+    pub(super) context_classification: ContextBindingClassification,
 }
 
 impl PendingOrdinaryExecution {
@@ -74,8 +75,9 @@ impl PendingOrdinaryExecution {
         assets: &AssetState,
         witness: &impl PendingOrdinaryExecutionWitness,
         limit: SyndicPointReadLimit,
+        cancelled: &dyn Fn() -> bool,
     ) -> Result<Self, OrdinaryTurnExecutionError> {
-        Self::read_inner(store, storage, assets, witness, limit, || {})
+        Self::read_inner(store, storage, assets, witness, limit, cancelled, || {})
     }
 
     #[cfg(any(test, feature = "test-faults"))]
@@ -85,9 +87,18 @@ impl PendingOrdinaryExecution {
         assets: &AssetState,
         witness: &impl PendingOrdinaryExecutionWitness,
         limit: SyndicPointReadLimit,
+        cancelled: &dyn Fn() -> bool,
         before_confirmation: impl FnOnce(),
     ) -> Result<Self, OrdinaryTurnExecutionError> {
-        Self::read_inner(store, storage, assets, witness, limit, before_confirmation)
+        Self::read_inner(
+            store,
+            storage,
+            assets,
+            witness,
+            limit,
+            cancelled,
+            before_confirmation,
+        )
     }
 
     fn read_inner(
@@ -96,6 +107,7 @@ impl PendingOrdinaryExecution {
         assets: &AssetState,
         witness: &impl PendingOrdinaryExecutionWitness,
         limit: SyndicPointReadLimit,
+        cancelled: &dyn Fn() -> bool,
         before_confirmation: impl FnOnce(),
     ) -> Result<Self, OrdinaryTurnExecutionError> {
         let thread_id = witness.expected_syndic_thread_id();
@@ -148,6 +160,15 @@ impl PendingOrdinaryExecution {
         let BindingState::Valid(usable) = binding.binding().state() else {
             return Err(OrdinaryTurnExecutionError::ProjectionMismatch { thread_id });
         };
+        let context_classification = storage
+            .prepare_context_binding_cancellable(store, thread_id, usable, cancelled)
+            .map_err(|error| match error {
+                syndic_storage::NativeProjectionError::ConcurrentChange
+                | syndic_storage::NativeProjectionError::Context(
+                    syndic_storage::RecoveryProjectionError::ConcurrentChange,
+                ) => OrdinaryTurnExecutionError::ConcurrentChange { thread_id },
+                error => crate::cas_projection::ProjectionExecutionError::from(error).into(),
+            })?;
         if witness.expected_binding_revision() != binding.binding().revision()
             || pending.binding_revision() != binding.binding().revision()
             || witness.expected_execution_binding() != usable.execution()
@@ -156,7 +177,6 @@ impl PendingOrdinaryExecution {
             || !pending
                 .selected_path()
                 .is_compatible_descendant_of(binding.binding().selected_path())
-            || pending.context_owner_id().is_some()
         {
             return Err(OrdinaryTurnExecutionError::ProjectionMismatch { thread_id });
         }
@@ -193,7 +213,13 @@ impl PendingOrdinaryExecution {
             input,
             asset_reference_set,
             asset_owner_head,
-            minimum_observed_at: pending.minimum_timestamp(),
+            context_classification,
+            minimum_observed_at: usable
+                .lineage()
+                .recovered_completed_at()
+                .map_or(pending.minimum_timestamp(), |floor| {
+                    pending.minimum_timestamp().max(floor)
+                }),
         })
     }
 }

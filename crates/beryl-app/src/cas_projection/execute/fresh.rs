@@ -38,6 +38,7 @@ impl CasProjectionCoordinator {
             storage,
             session,
             request,
+            cancellation,
             basis,
             fresh,
             CasNativeTurnCount::ZERO,
@@ -53,6 +54,7 @@ impl CasProjectionCoordinator {
         storage: &SyndicStorage,
         session: &AdmittedProjectionSession,
         request: &CasProjectionRequest,
+        cancellation: &ProjectionCancellationToken,
         basis: NativeProjectionBasis,
         fresh: FreshLoadedThreadSession,
         native_turn_count: CasNativeTurnCount,
@@ -109,7 +111,62 @@ impl CasProjectionCoordinator {
                 Some(lease),
             ));
         }
-        self.ensure_home(home)?;
+        let lineage = if let Some(context) = basis.context() {
+            let mechanism = match lineage {
+                CasLineageProof::Native { mechanism, .. } => mechanism,
+                _ => unreachable!("fresh native publication starts from a native mechanism"),
+            };
+            match context.complete_native(mechanism, lease.generation(), None) {
+                Ok(lineage) => lineage,
+                Err(error) => {
+                    return Err(self.abandon_projection_target(
+                        home,
+                        storage,
+                        session,
+                        request,
+                        basis,
+                        cas_thread_id,
+                        StaleObservation::unknown(Some(lease.generation())),
+                        "native target context proof did not match its prepared source",
+                        ProjectionExecutionError::from(error),
+                        Some(lease),
+                    ));
+                }
+            }
+        } else {
+            lineage
+        };
+        let current_authority = self
+            .ensure_home(home)
+            .map_err(ProjectionExecutionError::from)
+            .and_then(|()| {
+                if cancellation.is_cancelled() {
+                    Err(ProjectionExecutionError::Cancelled)
+                } else {
+                    Ok(())
+                }
+            });
+        if let Err(primary) = current_authority {
+            return Err(self.abandon_projection_target(
+                home,
+                storage,
+                session,
+                request,
+                basis,
+                cas_thread_id,
+                StaleObservation::exact(
+                    request.execution_binding().clone(),
+                    basis.represented_prefix(),
+                    basis.tool_profile(),
+                    lineage,
+                    native_turn_count,
+                    Some(lease.generation()),
+                ),
+                "native target Home changed before binding publication",
+                primary,
+                Some(lease),
+            ));
+        }
         let publication = PublishValidBinding::from_native(
             basis,
             request.execution_binding().clone(),

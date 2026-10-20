@@ -13,9 +13,19 @@ pub struct PublishValidBinding {
     pub(super) tool_profile: CasConversationToolProfile,
     pub(super) lineage: CasLineageProof,
     pub(super) native_basis: Option<crate::NativeProjectionBasis>,
+    pub(super) context_witness: Option<crate::ContextProjectionBasis>,
+    pub(super) context_provenance_valid: bool,
+    pub(super) context_classification: Option<crate::context_projection::ContextClassification>,
 }
 
 impl PublishValidBinding {
+    pub(crate) fn with_empty_context_classification(
+        mut self,
+        classification: crate::context_projection::ContextClassification,
+    ) -> Self {
+        self.context_classification = Some(classification);
+        self
+    }
     #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub const fn new(
@@ -40,6 +50,9 @@ impl PublishValidBinding {
             tool_profile,
             lineage,
             native_basis: None,
+            context_witness: None,
+            context_provenance_valid: false,
+            context_classification: None,
         }
     }
 
@@ -63,7 +76,41 @@ impl PublishValidBinding {
             lineage,
         );
         request.native_basis = Some(basis);
+        request.context_witness = basis.context();
+        request.context_classification = basis.context_classification;
         request
+    }
+
+    pub fn from_recovery(
+        projection: crate::RecoveryProjection,
+        basis: crate::NativeProjectionBasis,
+        execution: ExecutionBinding,
+        cas_thread_id: CasThreadId,
+        native_turn_count: CasNativeTurnCount,
+        lineage: CasLineageProof,
+    ) -> Self {
+        let mut request = Self::new(
+            projection.thread_id(),
+            basis.expected_binding_revision(),
+            projection.selected_path(),
+            execution,
+            cas_thread_id,
+            projection.represented_prefix(),
+            native_turn_count,
+            basis.tool_profile(),
+            lineage,
+        );
+        if !projection.seed_only {
+            request.context_witness = projection.context();
+            request.context_classification = projection.context_classification;
+        }
+        request
+    }
+
+    pub(super) fn admit_context(&mut self, storage: &SyndicStorage) {
+        self.context_provenance_valid = self.context_classification.is_some_and(|witness| {
+            witness.home == storage.home_id && witness.home_generation == storage.context_generation
+        });
     }
 
     #[must_use]

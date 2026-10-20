@@ -3,7 +3,7 @@ use std::str;
 use beryl_home_store::HomeStore;
 
 use crate::{
-    ProjectionTextSource, RecoveryProjectionError, SyndicStorage,
+    RecoveryProjectionError, SyndicStorage,
     read::{ReadByteTotals, read_projection_text_source_range_into},
 };
 
@@ -13,11 +13,24 @@ pub const RECOVERY_CURSOR_PAGE_MAX_UTF8_BYTES: usize = crate::TRANSCRIPT_PAGE_MA
 pub(super) fn read_recovery_utf8_page(
     storage: &SyndicStorage,
     store: &HomeStore,
-    source: ProjectionTextSource,
+    source: super::RecoveryTextSource,
     offset: u64,
     max_utf8_bytes: usize,
     output: &mut [u8],
 ) -> Result<(usize, ReadByteTotals), RecoveryProjectionError> {
+    let source = match source {
+        super::RecoveryTextSource::Canonical(source) => source,
+        super::RecoveryTextSource::Context(source) => {
+            return crate::context_projection::frame::read_page(
+                storage,
+                store,
+                source,
+                offset,
+                max_utf8_bytes,
+                output,
+            );
+        }
+    };
     if max_utf8_bytes == 0 {
         return Err(RecoveryProjectionError::InvalidCursorPageLimit {
             actual: max_utf8_bytes,

@@ -422,6 +422,10 @@ point-read anchors, never a context vector, ancestry frontier or recursive proof
 are ordered through immutable owning-thread lineage. A changed mutable source head or domain
 revision produces conflict; missing immutable agreement produces typed unavailability or corruption
 under the existing read contract. Preparation is cancellable and grants no provider capability.
+Process-local preparations and context classifications retain the opaque Home store-instance and
+generation identity. A numeric generation alone is insufficient because it can repeat after the
+same Home is closed and reopened. Reuse requires the exact opening identity as well as the other
+source fences; this process-local witness does not change persisted lineage bytes.
 
 The serialized binding writer reauthenticates the witness's exact Home/domain provenance,
 thread/execution, selected-path/input-gate scope, current binding and named source head/reservation.
@@ -441,8 +445,9 @@ or recovery proof is sufficient. The writer uses this compact existing closure t
 prepared context witness without scanning ancestry; explicit whole-history validation independently
 checks the complete selected-path context derivation.
 
-A terminal turn with genuine unattempted dispatch provenance can lack that snapshot. A nonempty
-prefix ending at this ambiguous cut requires package-issued context classification from bounded
+A terminal turn with genuine unattempted dispatch provenance, or a source-less terminal provider
+operation, can lack that snapshot. A nonempty prefix ending at this ambiguous cut requires
+package-issued context classification from bounded
 preparation, even when the classification proves an empty context summary. Its exact Home/domain
 identity and generation, selected prefix and source anchors are revalidated at publication and activation.
 Activation prepares its current classification outside the writer and carries it into the exact
@@ -450,6 +455,17 @@ activation command. Coherent preparation checks the domain revision across its r
 revalidates the named thread/path, binding, gate and source anchors rather than requiring the
 unrelated global domain revision to remain unchanged through Activity enrollment or handoff
 reservation. The ordinary current-command revision guard remains in force.
+
+Legacy context-free publication callers, including idle provider-operation prefixes outside pending
+native planning, can prepare an existing `PublishValidBinding` through
+`prepare_context_free_publication_cancellable`. This bounded, cancellable read preparation accepts
+only ordinary lineage tags 0/1 and proves an empty selected-prefix context summary outside the
+writer. It binds the exact Home opening, thread, selected path, represented prefix, expected binding
+revision and gate, confirming one domain revision across preparation. Nonempty context refuses;
+context-aware publication must retain its original native/replay witness. The returned request
+adds only the opaque empty classification and still passes all ordinary serialized publication
+checks. It creates no provider capability or persisted field and cannot reinterpret missing or
+substituted activated provenance as empty history.
 A raw legacy proof without this classification is refused; absent dispatch provenance cannot
 establish context absence. Empty
 classification retains ordinary native/recovery bytes, while a nonempty classification requires

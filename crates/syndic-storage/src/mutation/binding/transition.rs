@@ -38,6 +38,7 @@ impl PublishBindingMutation {
     ) -> Result<PublishBindingRecords, SyndicMutationError> {
         match self {
             Self::Valid(request) => {
+                super::validation::validate_context_publication(reader, request)?;
                 if let Some(basis) = request.native_basis {
                     super::validation::validate_native_recovery(reader, basis, request)?;
                 }

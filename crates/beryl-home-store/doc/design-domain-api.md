@@ -70,6 +70,12 @@ bounded typed reads and results, and read-only proof composition. It is governed
 - Point, cursor, registration, validation, preparation, reconciliation, and proof reads use one
   coherent Fjall snapshot. Public reads require explicit key, item, stored-byte, decoded-byte, or
   finite range bounds unless their result is a documented fixed-size record set.
+- `DomainReader::home_id` returns the immutable owning Home identity associated with its admitted
+  snapshot, including provisional schema validation, command callbacks and read-only proof roles.
+  It derives from the validated Home header and remains consistent across fresh same-home
+  generations; it is never supplied by a domain record or callback. This fixed-size metadata read
+  performs no storage I/O and grants no additional read, mutation, raw-snapshot or lifetime
+  authority. It adds no persisted field or record version.
 - Point and cursor execution validates stored key and versioned value envelopes and uses checked
   arithmetic for configured per-record, item, cumulative stored-byte, and decoded-byte limits.
   Stored-value limits are checked from metadata before separated-value acquisition; decoded limits

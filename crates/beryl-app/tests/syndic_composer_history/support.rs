@@ -17,10 +17,10 @@ use gpui_text_input::{
     BindingId, ByteOffset, InlineObjectGap, InlineObjectId, InlineObjectNeighbor,
     InlineObjectOrder, LogicalExtent, MutationBeginRequest, MutationCommitRequest, MutationCursor,
     MutationFinishInput, MutationIdentity, MutationKey, MutationKind, MutationLane, MutationPage,
-    MutationPageItem, MutationPageKey, MutationPageRequest, MutationPositions, MutationProposal,
-    MutationStreamFinish, MutationTotals, ObjectChange, ObjectTarget, OperationId,
-    RangeHistoryIntent, RangeHistoryOutcome, RangeSourceSelection, SourcePosition, SourceRange,
-    SourceRevision, SuccessorObject,
+    MutationPageAcceptance, MutationPageItem, MutationPageKey, MutationPageRequest,
+    MutationPositions, MutationProposal, MutationStreamFinish, MutationTotals, ObjectChange,
+    ObjectTarget, OperationId, RangeHistoryIntent, RangeHistoryOutcome, RangeSourceSelection,
+    SourcePosition, SourceRange, SourceRevision, SuccessorObject,
 };
 use syndic_storage::{
     DraftEditorCandidateSessionIdV1, DraftHistoricalRootSelectionIntentV1,
@@ -146,34 +146,47 @@ pub fn commit_text_at_positions(
         MutationBeginRequest::new(proposal, MutationCursor::new(0), MutationCursor::new(0)),
     )
     .unwrap();
-    let proposal_finish = if text.is_empty() {
-        empty_finish()
-    } else {
+    let mut proposal_finish = empty_finish();
+    let mut offset = 0;
+    while offset < text.len() {
+        let mut end = text.len().min(offset + 65_536);
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
         let page = MutationPage::new(
             MutationPageKey::new(
                 key,
                 MutationLane::Proposal,
-                MutationCursor::new(0),
-                0,
-                MutationIdentity::ROOT,
+                proposal_finish.next_cursor,
+                proposal_finish.next_ordinal,
+                proposal_finish.cumulative_identity,
             ),
-            MutationCursor::new(1),
+            MutationCursor::new(proposal_finish.next_cursor.get() + 1),
             vec![MutationPageItem::Utf8 {
-                inserted_offset: 0,
-                text: text.into(),
+                inserted_offset: offset as u64,
+                text: text[offset..end].into(),
             }],
         )
         .unwrap();
-        let finish = MutationStreamFinish {
-            next_cursor: page.next_cursor(),
-            next_ordinal: 1,
-            cumulative_identity: page.cumulative_identity(),
-            totals: page.totals(),
+        let MutationPageAcceptance::Accepted {
+            next_cursor,
+            next_ordinal,
+            cumulative_identity,
+            totals,
+        } = host
+            .stage_mutation_page(store, MutationPageRequest::new(page), Box::new([]))
+            .unwrap()
+        else {
+            panic!("new text page replayed")
         };
-        host.stage_mutation_page(store, MutationPageRequest::new(page), Box::new([]))
-            .unwrap();
-        finish
-    };
+        proposal_finish = MutationStreamFinish {
+            next_cursor,
+            next_ordinal,
+            cumulative_identity,
+            totals,
+        };
+        offset = end;
+    }
     host.finish_mutation_input(
         store,
         MutationFinishInput::new(

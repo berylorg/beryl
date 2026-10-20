@@ -103,7 +103,11 @@ pub use crate::draft_piece::build_mapping::fixture::{
     mapping_root_codec_roundtrip,
 };
 pub(crate) use draft_marker_continuation_bounds::put_marker_bounds_fixture_record as put_mapping_fixture_record;
+mod context_lineage;
 mod discussion_gate;
+pub use context_lineage::{
+    decode_lineage_fixture, encode_lineage_fixture, foreign_home_seed_lineage_fixture,
+};
 mod dispatch_provenance;
 mod generated_input;
 pub use generated_input::*;

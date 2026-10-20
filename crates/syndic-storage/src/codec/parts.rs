@@ -2,7 +2,9 @@ use beryl_model::*;
 
 use super::{CodecError, invalid};
 
+mod context_projection;
 mod projection;
+pub(crate) use context_projection::*;
 mod provider;
 mod provider_observation;
 mod provider_observation_header;

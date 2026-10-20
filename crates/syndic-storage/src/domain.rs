@@ -299,7 +299,35 @@ pub struct SyndicStorage {
     pub(crate) handle: DomainHandle<SyndicDomain>,
     pub(crate) home_id: beryl_model::BerylHomeId,
     pub(crate) home_generation: beryl_home_store::HomeGeneration,
+    pub(crate) context_generation: beryl_home_store::HomeGenerationIdentity,
     pub(crate) reconstructed_cleanup_admissions: Box<[DraftMarkerAdmissionOwnerV1]>,
+}
+
+fn context_registration_identity_error(
+    source: beryl_home_store::HomeCandidateError,
+) -> DomainRegistrationError {
+    match source {
+        beryl_home_store::HomeCandidateError::HealthGate(source) => {
+            DomainRegistrationError::HealthGate(source)
+        }
+        source => DomainRegistrationError::Validation {
+            domain: "syndic",
+            source: Box::new(source),
+        },
+    }
+}
+
+fn context_handle_identity_error(
+    source: beryl_home_store::HomeCandidateError,
+) -> DomainHandleError {
+    match source {
+        beryl_home_store::HomeCandidateError::HealthGate(source) => {
+            DomainHandleError::HealthGate(source)
+        }
+        source => DomainHandleError::StorageHealth {
+            source: Box::new(source),
+        },
+    }
 }
 
 impl SyndicStorage {
@@ -309,6 +337,9 @@ impl SyndicStorage {
 
     pub fn register(candidate: &mut HomeOpenCandidate) -> Result<Self, DomainRegistrationError> {
         let home_generation = candidate.generation();
+        let context_generation = candidate
+            .generation_identity()
+            .map_err(context_registration_identity_error)?;
         candidate.register_domain::<SyndicDomain>().map(|handle| {
             let reconstructed_cleanup_admissions = candidate
                 .with_domain_attachment(&handle.attachment_capability(), |attachment| {
@@ -320,6 +351,7 @@ impl SyndicStorage {
                 handle,
                 home_id: candidate.home_id(),
                 home_generation,
+                context_generation,
                 reconstructed_cleanup_admissions,
             }
         })
@@ -329,6 +361,9 @@ impl SyndicStorage {
         candidate: &mut HomeOpenCandidate,
     ) -> Result<Self, DomainRegistrationError> {
         let home_generation = candidate.generation();
+        let context_generation = candidate
+            .generation_identity()
+            .map_err(context_registration_identity_error)?;
         candidate
             .register_domain_with_schema_validation::<SyndicDomain>()
             .map(|handle| {
@@ -342,6 +377,7 @@ impl SyndicStorage {
                     handle,
                     home_id: candidate.home_id(),
                     home_generation,
+                    context_generation,
                     reconstructed_cleanup_admissions,
                 }
             })
@@ -349,6 +385,12 @@ impl SyndicStorage {
 
     /// Reacquires this exact typed domain after successful same-home recovery without a record scan.
     pub fn reacquire(store: &HomeStore) -> Result<Self, DomainHandleError> {
+        let context_generation =
+            store
+                .generation_identity()
+                .map_err(|source| DomainHandleError::StorageHealth {
+                    source: Box::new(source),
+                })?;
         let home_generation = store
             .health()
             .generation()
@@ -364,6 +406,7 @@ impl SyndicStorage {
                 handle,
                 home_id: store.home_id(),
                 home_generation,
+                context_generation,
                 reconstructed_cleanup_admissions,
             }
         })
@@ -377,6 +420,9 @@ impl SyndicStorage {
         candidate: &HomeRecoveryCandidate,
     ) -> Result<Self, DomainHandleError> {
         let home_generation = candidate.generation();
+        let context_generation = candidate
+            .generation_identity()
+            .map_err(context_handle_identity_error)?;
         candidate.domain_handle::<SyndicDomain>().map(|handle| {
             let reconstructed_cleanup_admissions = candidate
                 .with_domain_attachment(&handle.attachment_capability(), |attachment| {
@@ -388,6 +434,7 @@ impl SyndicStorage {
                 handle,
                 home_id: candidate.home_id(),
                 home_generation,
+                context_generation,
                 reconstructed_cleanup_admissions,
             }
         })

@@ -139,6 +139,8 @@ fn permission_work_survives_preparation_driver_cleanup_and_target_loss() {
                                 | ProcessWorkError::Durable(
                                     syndic_storage::SyndicReadError::ConcurrentChange { .. }
                                         | syndic_storage::SyndicReadError::StaleNonIdleGateSourceScan
+                                        | syndic_storage::SyndicReadError::StaleAcceptedNextSourceScan
+                                        | syndic_storage::SyndicReadError::StaleAcceptedReadySourceScan
                                 )
                         );
                         assert!(

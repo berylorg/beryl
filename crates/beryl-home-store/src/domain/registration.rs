@@ -44,6 +44,7 @@ impl HomeStore {
 
         let result = register_definition::<D>(
             generation,
+            self.home_id(),
             &definition,
             validate_schema.then_some(&sidecars),
         );
@@ -187,6 +188,7 @@ impl StoreGeneration {
 
 fn register_definition<D: StorageDomain>(
     generation: &StoreGeneration,
+    home_id: beryl_model::BerylHomeId,
     definition: &DomainBlueprint,
     sidecars: Option<&crate::SidecarVerifier<'_>>,
 ) -> Result<RegisteredDomain, DomainRegistrationError> {
@@ -230,7 +232,7 @@ fn register_definition<D: StorageDomain>(
                 registration_storage::<D>(DomainRegistrationStage::ReadRegistry, source)
             })?;
             super::validation::validate_blueprint_schema(
-                &snapshot, definition, &families, sidecars,
+                &snapshot, home_id, definition, &families, sidecars,
             )
             .map_err(|source| match source {
                 callback::ErasedCallbackError::Access(source) => {
@@ -253,7 +255,7 @@ fn register_definition<D: StorageDomain>(
     let snapshot = generation.database.snapshot().map_err(|source| {
         registration_storage::<D>(DomainRegistrationStage::ReadRegistry, source)
     })?;
-    registered_domain(definition, families, &snapshot)
+    registered_domain(definition, families, &snapshot, home_id)
 }
 
 pub(super) fn read_persisted_metadata(
@@ -458,6 +460,7 @@ pub(crate) fn registered_domain(
     definition: &DomainBlueprint,
     families: Vec<RegisteredFamily>,
     snapshot: &fjall::Snapshot,
+    home_id: beryl_model::BerylHomeId,
 ) -> Result<RegisteredDomain, DomainRegistrationError> {
     let family_slots = families
         .iter()
@@ -480,6 +483,7 @@ pub(crate) fn registered_domain(
         });
     }
     Ok(RegisteredDomain {
+        home_id,
         name: definition.name,
         schema: definition.schema,
         owner: definition.owner,

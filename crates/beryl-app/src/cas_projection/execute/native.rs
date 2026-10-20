@@ -155,7 +155,25 @@ impl CasProjectionCoordinator {
             ));
         }
 
-        self.ensure_home(home)?;
+        if let Err(primary) = self
+            .ensure_home(home)
+            .map_err(ProjectionExecutionError::from)
+            .and_then(|()| {
+                if cancellation.is_cancelled() {
+                    Err(ProjectionExecutionError::Cancelled)
+                } else {
+                    Ok(())
+                }
+            })
+        {
+            return Err(self.forget_after_publication_failure(
+                session,
+                request,
+                &cas_thread_id,
+                lease,
+                primary,
+            ));
+        }
         let publication = PublishValidBinding::from_native(
             basis,
             request.execution_binding().clone(),
@@ -193,6 +211,17 @@ impl CasProjectionCoordinator {
         native_lineage_recovery: Option<&NativeLineageRecoveryControl>,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         let lineage = CasLineageProof::native(NativeCasLineage::Fork, basis.represented_prefix())?;
+        let seed = if basis.context().is_some_and(|context| context.needs_seed()) {
+            let projection = storage.prepare_native_context_seed_cancellable(
+                home,
+                basis,
+                request.model_context_window_tokens(),
+                &|| cancellation.is_cancelled(),
+            )?;
+            Some(self.prepare_projection_injection(session, projection)?)
+        } else {
+            None
+        };
         let source_lease = if let Some(required) =
             source.binding().lineage().recovered_injection_generation()
         {
@@ -236,6 +265,12 @@ impl CasProjectionCoordinator {
                         existing_owner,
                         offered_owner: source.thread_id(),
                     }.into());
+                }
+                ExistingLease::Absent
+                    if matches!(source.binding().lineage(), CasLineageProof::ContextAware(_))
+                        && required.process() == session.process_generation() =>
+                {
+                    None
                 }
                 ExistingLease::Absent => {
                     return self.retire_recovered_fork_source_then_replan(
@@ -295,17 +330,35 @@ impl CasProjectionCoordinator {
             }
         };
         drop(route_reservation);
-        let child = self.publish_fresh_native_target(
-            home,
-            storage,
-            session,
-            request,
-            basis,
-            fresh,
-            native_turn_count,
-            lineage,
-            "forked CAS thread could not be published",
-        )?;
+        let child = if let Some(seed) = seed {
+            self.inject_projection_target(
+                home,
+                storage,
+                session,
+                request,
+                cancellation,
+                basis,
+                fresh,
+                seed,
+                super::injection::ProjectionInjectionEstablishment::NativeSeed {
+                    native_turn_count,
+                    native_lineage: lineage,
+                },
+            )
+        } else {
+            self.publish_fresh_native_target(
+                home,
+                storage,
+                session,
+                request,
+                cancellation,
+                basis,
+                fresh,
+                native_turn_count,
+                lineage,
+                "forked CAS thread could not be published",
+            )
+        }?;
         if let Some(source_lease) = source_lease {
             source_lease
                 .release()
@@ -417,7 +470,7 @@ impl CasProjectionCoordinator {
         if cancellation.is_cancelled() {
             return Err(ProjectionExecutionError::Cancelled);
         }
-        let replanned = storage.prepare_native_projection(
+        let replanned = storage.prepare_native_projection_cancellable(
             home,
             &NativeProjectionRequest::new(
                 request.thread_id(),
@@ -426,6 +479,7 @@ impl CasProjectionCoordinator {
                 basis.tool_profile(),
             ),
             point_limit(),
+            &|| cancellation.is_cancelled(),
         )?;
         if replanned.basis().expected_binding_revision() != expected_target_revision {
             return Err(ProjectionExecutionError::ProjectionBasisChanged {
@@ -468,6 +522,9 @@ fn resumed_lineage(
     source: &NativeProjectionSource,
     basis: NativeProjectionBasis,
 ) -> Result<CasLineageProof, syndic_storage::SyndicValueError> {
+    if matches!(source.binding().lineage(), CasLineageProof::ContextAware(_)) {
+        return Ok(source.binding().lineage());
+    }
     if basis.represented_prefix().tail().is_none() {
         return Ok(source.binding().lineage());
     }

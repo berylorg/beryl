@@ -28,6 +28,7 @@ impl RecoveryTailEligibility {
 }
 
 pub(super) struct RecoveryTopology {
+    pub(super) context_thread: Option<beryl_model::SyndicThreadId>,
     pub(super) tail: TurnRecord,
     pub(super) depth: u64,
     pub(super) item_count: u64,
@@ -43,10 +44,30 @@ impl SyndicStorage {
         mut expected_depth: u64,
         tail_eligibility: RecoveryTailEligibility,
     ) -> Result<RecoveryTopology, RecoveryProjectionError> {
+        self.inspect_recovery_topology_cancellable(
+            store,
+            prefix_tail,
+            expected_depth,
+            tail_eligibility,
+            &|| false,
+        )
+    }
+
+    pub(super) fn inspect_recovery_topology_cancellable(
+        &self,
+        store: &HomeStore,
+        prefix_tail: SyndicTurnId,
+        mut expected_depth: u64,
+        tail_eligibility: RecoveryTailEligibility,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<RecoveryTopology, RecoveryProjectionError> {
         let mut next = prefix_tail;
         let mut item_count = 0_u64;
         let mut tail = None;
         loop {
+            if cancelled() {
+                return Err(RecoveryProjectionError::Cancelled);
+            }
             let turn = self.load_recovery_turn(store, next)?;
             let is_tail = tail.is_none();
             let turn_item_count = self.validate_recovery_turn(
@@ -102,6 +123,7 @@ impl SyndicStorage {
         }
         let tail = tail.expect("a nonempty recovery prefix has one tail");
         Ok(RecoveryTopology {
+            context_thread: None,
             depth: tail.depth().get(),
             digest: tail.chain_digest(),
             tail,
@@ -115,9 +137,10 @@ impl SyndicStorage {
         store: &HomeStore,
         topology: &RecoveryTopology,
         utf8_limit: u64,
+        cancelled: &dyn Fn() -> bool,
     ) -> Result<u64, RecoveryProjectionError> {
         let mut utf8_bytes = 0_u64;
-        self.walk_recovery_items(store, topology, |_, descriptor| {
+        self.walk_recovery_items(store, topology, cancelled, |_, descriptor| {
             let logical_bytes = descriptor.source.logical_utf8_bytes();
             if logical_bytes == 0 {
                 return Err(RecoveryProjectionError::EmptyHistoryItem);
@@ -147,16 +170,20 @@ impl SyndicStorage {
         store: &HomeStore,
         topology: &RecoveryTopology,
         utf8_bytes: u64,
+        cancelled: &dyn Fn() -> bool,
     ) -> Result<beryl_model::RecoveryItemSequenceDigest, RecoveryProjectionError> {
         let mut accumulator = RecoveryItemSequenceAccumulator::new(topology.item_count, utf8_bytes);
         let mut text_page = [0_u8; super::RECOVERY_CURSOR_PAGE_MAX_UTF8_BYTES];
-        self.walk_recovery_items(store, topology, |ordinal, descriptor| {
+        self.walk_recovery_items(store, topology, cancelled, |ordinal, descriptor| {
             let declared = descriptor.source.logical_utf8_bytes();
             accumulator
                 .begin_item(ordinal, descriptor.role, declared)
                 .map_err(sequence_invariant)?;
             let mut offset = 0_u64;
             while offset < declared {
+                if cancelled() {
+                    return Err(RecoveryProjectionError::Cancelled);
+                }
                 let (page_len, _) = read_recovery_utf8_page(
                     self,
                     store,
@@ -181,10 +208,17 @@ impl SyndicStorage {
         &self,
         store: &HomeStore,
         topology: &RecoveryTopology,
+        cancelled: &dyn Fn() -> bool,
         mut visit: impl FnMut(u64, RecoveryItemDescriptor) -> Result<(), RecoveryProjectionError>,
     ) -> Result<(), RecoveryProjectionError> {
         let mut sequence_ordinal = 0_u64;
         for depth in 1..=topology.depth {
+            if cancelled() {
+                return Err(RecoveryProjectionError::Cancelled);
+            }
+            if depth % 64 == 0 {
+                std::thread::yield_now();
+            }
             let turn = self.recovery_turn_at_depth(store, topology, depth)?;
             let item_count = self.validate_recovery_turn(
                 store,
@@ -196,9 +230,24 @@ impl SyndicStorage {
                     RecoveryTailEligibility::Strict
                 },
             )?;
+            if topology.context_thread.is_some()
+                && let Some(frame) = self.context_before_turn(store, &turn)?
+            {
+                sequence_ordinal += 1;
+                visit(
+                    sequence_ordinal,
+                    RecoveryItemDescriptor {
+                        role: RecoveryItemSequenceRole::AssistantOutputText,
+                        source: super::RecoveryTextSource::Context(frame),
+                    },
+                )?;
+            }
             let mut after = None;
             let mut observed = 0_u64;
             while observed < item_count {
+                if cancelled() {
+                    return Err(RecoveryProjectionError::Cancelled);
+                }
                 #[cfg(feature = "test-faults")]
                 crate::test_faults::metrics::record_recovery_turn_item_read_attempt();
                 let page = self.turn_items(store, turn.id(), after, index_page_limits())?;
@@ -244,6 +293,18 @@ impl SyndicStorage {
                     ));
                 }
             }
+        }
+        if let Some(target) = topology.context_thread
+            && let Some(frame) = self.context_after_tail(store, target, &topology.tail)?
+        {
+            sequence_ordinal += 1;
+            visit(
+                sequence_ordinal,
+                RecoveryItemDescriptor {
+                    role: RecoveryItemSequenceRole::AssistantOutputText,
+                    source: super::RecoveryTextSource::Context(frame),
+                },
+            )?;
         }
         if sequence_ordinal != topology.item_count {
             return Err(RecoveryProjectionError::Invariant(
@@ -488,7 +549,10 @@ impl SyndicStorage {
                 });
             }
         };
-        Ok(RecoveryItemDescriptor { role, source })
+        Ok(RecoveryItemDescriptor {
+            role,
+            source: super::RecoveryTextSource::Canonical(source),
+        })
     }
 }
 

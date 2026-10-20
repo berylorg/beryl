@@ -69,6 +69,27 @@ impl NativeProjectionRecoveryBasis {
         if usable.native_turn_count() != anchor.native_turn_count {
             return false;
         }
+        if let Some(context) = self.native_basis.context() {
+            if let Some(original) = self.source()
+                && usable.cas_thread_id() == original.binding().cas_thread_id()
+                && usable.lineage() == original.binding().lineage()
+            {
+                return true;
+            }
+            let CasLineageProof::ContextAware(proof) = usable.lineage() else {
+                return false;
+            };
+            let mechanism = match anchor.operation {
+                RecoveryOperation::Fork => NativeCasLineage::Fork,
+                RecoveryOperation::Current => NativeCasLineage::Continuation,
+                RecoveryOperation::Resume => NativeCasLineage::Resume,
+                RecoveryOperation::Fresh => return false,
+            };
+            return context
+                .complete_native(mechanism, proof.loaded_generation(), proof.injection())
+                .ok()
+                == Some(usable.lineage());
+        }
         let expected = match anchor.operation {
             RecoveryOperation::Fresh => CasLineageProof::native(
                 NativeCasLineage::Fresh,
@@ -124,8 +145,19 @@ impl SyndicStorage {
         request: &NativeProjectionRequest,
         limit: SyndicPointReadLimit,
     ) -> Result<NativeProjectionRecoveryPlan, NativeProjectionError> {
+        self.prepare_native_projection_recovery_cancellable(store, request, limit, &|| false)
+    }
+
+    pub fn prepare_native_projection_recovery_cancellable(
+        &self,
+        store: &HomeStore,
+        request: &NativeProjectionRequest,
+        limit: SyndicPointReadLimit,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<NativeProjectionRecoveryPlan, NativeProjectionError> {
         let before = self.revision(store)?;
-        let result = self.prepare_native_projection_recovery_inner(store, request, limit)?;
+        let result =
+            self.prepare_native_projection_recovery_inner(store, request, limit, cancelled)?;
         if self.revision(store)? != before {
             return Err(NativeProjectionError::ConcurrentChange);
         }
@@ -137,6 +169,7 @@ impl SyndicStorage {
         store: &HomeStore,
         request: &NativeProjectionRequest,
         limit: SyndicPointReadLimit,
+        cancelled: &dyn Fn() -> bool,
     ) -> Result<NativeProjectionRecoveryPlan, NativeProjectionError> {
         use NativeProjectionRecoveryUnavailable as Unavailable;
         let thread = self.thread(store, request.thread_id, limit)?.ok_or(
@@ -150,7 +183,10 @@ impl SyndicStorage {
         if selected != request.selected_path {
             return Err(NativeProjectionError::StaleSelectedPath);
         }
-        if thread.context_owner_id().is_some() {
+        if matches!(
+            thread.context_owner_id(),
+            Some(beryl_model::DiscussionContextOwnerId::Draft(_))
+        ) {
             return Ok(NativeProjectionRecoveryPlan::Unavailable(
                 Unavailable::UnsupportedContext,
             ));
@@ -303,6 +339,8 @@ impl SyndicStorage {
             ),
             tool_profile: request.tool_profile,
             recovery: None,
+            context: None,
+            context_classification: None,
         };
         let plan = self.classify_native_projection(
             store,
@@ -312,6 +350,8 @@ impl SyndicStorage {
             native_basis,
             limit,
         )?;
+        let plan = self.qualify_context_native_plan(store, request, plan, cancelled)?;
+        let mut native_basis = plan.basis();
         let (operation, source, native_turn_count) = match &plan {
             NativeProjectionPlan::Current { source, .. } => (
                 RecoveryOperation::Current,

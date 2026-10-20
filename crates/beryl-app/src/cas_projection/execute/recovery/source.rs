@@ -8,7 +8,7 @@ use syndic_storage::{
     RecoveryCursorPage, RecoveryProjection, RecoveryProjectionError, RecoveryProjectionVersion,
 };
 
-pub(super) fn map_recovery_page(
+pub(in crate::cas_projection::execute) fn map_recovery_page(
     page: RecoveryCursorPage,
     source_identity: ThreadInjectionSourceIdentity,
     source_revision: ThreadInjectionSourceRevision,
@@ -46,13 +46,15 @@ pub(super) fn map_recovery_page(
     )
 }
 
-pub(super) fn map_recovery_cursor_error(
+pub(in crate::cas_projection::execute) fn map_recovery_cursor_error(
     error: RecoveryProjectionError,
 ) -> ThreadInjectionSourceError {
     match error {
         RecoveryProjectionError::ConcurrentChange => ThreadInjectionSourceError::RevisionDrift,
         RecoveryProjectionError::Read(_) => ThreadInjectionSourceError::ReadFailed,
-        RecoveryProjectionError::MissingModelContextWindow
+        RecoveryProjectionError::Cancelled => ThreadInjectionSourceError::Cancelled,
+        RecoveryProjectionError::MissingContextToolProfile
+        | RecoveryProjectionError::MissingModelContextWindow
         | RecoveryProjectionError::ZeroModelContextWindow
         | RecoveryProjectionError::StaleSelectedPath
         | RecoveryProjectionError::CurrentTailNotPendingOrdinaryUser
@@ -70,14 +72,24 @@ pub(super) fn map_recovery_cursor_error(
     }
 }
 
-pub(super) fn recovery_source_identity(
+pub(in crate::cas_projection::execute) fn recovery_source_identity(
     home_id: BerylHomeId,
     projection: RecoveryProjection,
+    home_generation: u64,
+    service_generation: u64,
 ) -> ThreadInjectionSourceIdentity {
+    if let Some(identity) =
+        projection.transport_source_identity(home_generation, service_generation)
+    {
+        return ThreadInjectionSourceIdentity::new(identity);
+    }
     let mut digest = Sha256::new();
     digest.update(b"beryl-recovery-source-v1\0");
     digest.update([match projection.version() {
         RecoveryProjectionVersion::V1 => 1,
+        RecoveryProjectionVersion::ContextAwareV2 => {
+            unreachable!("context-aware projection supplies its transport identity")
+        }
     }]);
     digest.update(home_id.as_bytes());
     digest.update(projection.thread_id().as_bytes());

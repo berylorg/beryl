@@ -10,6 +10,7 @@ use crate::{
 use super::scan::{point, require, scan};
 
 mod active;
+mod context;
 mod history;
 mod proofs;
 mod reservations;
@@ -26,6 +27,7 @@ pub(super) fn validate(
 ) -> Result<(), SyndicValidationError> {
     validate_heads(reader)?;
     validate_history(reader)?;
+    context::validate_context_history(reader)?;
     validate_cas_thread_memberships(reader)?;
     validate_cas_thread_reservations(reader)?;
     validate_snapshots(reader)?;
@@ -314,7 +316,9 @@ fn validate_first_membership(binding: &crate::BindingRecord) -> Result<(), Syndi
         {
             invariant("recovered CAS reservation establishment has a nonzero native turn count")
         }
-        CasLineageProof::RecoveredInjection(_) | CasLineageProof::Native { .. } => Ok(()),
+        CasLineageProof::RecoveredInjection(_)
+        | CasLineageProof::Native { .. }
+        | CasLineageProof::ContextAware(_) => Ok(()),
     }
 }
 

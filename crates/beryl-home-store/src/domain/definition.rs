@@ -92,8 +92,12 @@ fn reconcile_typed<D: StorageDomain>(
 fn validate_reopen_typed<D: StorageDomain>(
     snapshot: &fjall::Snapshot,
     families: &[RegisteredFamily],
+    home_id: beryl_model::BerylHomeId,
     sidecars: &crate::SidecarVerifier<'_>,
 ) -> Result<(), callback::ErasedCallbackError> {
-    D::validate_reopen(&DomainReader::from_families(snapshot, families), sidecars)
-        .map_err(callback::ErasedCallbackError::from_typed)
+    D::validate_reopen(
+        &DomainReader::from_families(snapshot, families, home_id),
+        sidecars,
+    )
+    .map_err(callback::ErasedCallbackError::from_typed)
 }

@@ -82,6 +82,11 @@ structural lifecycle and health, same-home recovery, and whole-home scrub. It is
   no store, handle, lease or lifecycle resource, exposes no constructible identity fields, and
   grants no read or mutation authority. Capturing it requires ordinary healthy admission; consumers
   still perform their normal handle, revision and operation checks.
+- `HomeOpenCandidate::generation_identity` and `HomeRecoveryCandidate::generation_identity` expose
+  that same opaque identity for their admitted opening or reopening generation. Capture checks the
+  owning candidate admission and retains no lifecycle resource; it neither publishes the candidate
+  nor enables ordinary access. Package preparations retain this identity rather than a numeric
+  generation when they must reject reuse after close/reopen as well as same-home recovery.
 - Initial and recovery `publish_with_identity` return the published store and the identity captured
   inside that successful publication transition. They preserve the ordinary publication failure
   type and candidate custody; no additional read or failure point follows publication success.

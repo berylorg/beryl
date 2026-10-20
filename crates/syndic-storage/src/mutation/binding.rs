@@ -229,6 +229,8 @@ impl PublishUnboundBinding {
 /// Exact immutable inputs for activating the pending selected turn on a valid binding.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ActivateBinding {
+    context_classification: Option<crate::ContextBindingClassification>,
+    context_provenance_valid: bool,
     thread_id: SyndicThreadId,
     expected_binding_revision: BindingRevision,
     expected_gate_revision: InputGateRevision,
@@ -314,6 +316,13 @@ impl CancelBindingActivation {
 }
 
 impl ActivateBinding {
+    pub fn with_context_classification(
+        mut self,
+        classification: crate::ContextBindingClassification,
+    ) -> Self {
+        self.context_classification = Some(classification);
+        self
+    }
     #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub const fn new(
@@ -328,6 +337,8 @@ impl ActivateBinding {
         started_at: SyndicTimestamp,
     ) -> Self {
         Self {
+            context_classification: None,
+            context_provenance_valid: false,
             thread_id,
             expected_binding_revision,
             expected_gate_revision,
@@ -476,8 +487,9 @@ impl SyndicStorage {
     #[must_use]
     pub fn current_publish_valid_binding(
         &self,
-        request: PublishValidBinding,
+        mut request: PublishValidBinding,
     ) -> CurrentDomainCommand {
+        request.admit_context(self);
         self.handle
             .current_command(PublishBindingMutation::valid(request))
     }
@@ -486,8 +498,9 @@ impl SyndicStorage {
     pub fn publish_valid_binding(
         &self,
         expected_domain_revision: DomainRevision,
-        request: PublishValidBinding,
+        mut request: PublishValidBinding,
     ) -> MutationContribution {
+        request.admit_context(self);
         self.handle.contribution(
             expected_domain_revision,
             PublishBindingMutation::valid(request),
@@ -553,8 +566,15 @@ impl SyndicStorage {
     pub fn activate_binding(
         &self,
         expected_domain_revision: DomainRevision,
-        request: ActivateBinding,
+        mut request: ActivateBinding,
     ) -> MutationContribution {
+        request.context_provenance_valid =
+            request
+                .context_classification
+                .is_some_and(|classification| {
+                    classification.context.home == self.home_id
+                        && classification.context.home_generation == self.context_generation
+                });
         self.handle.contribution(
             expected_domain_revision,
             ActivateBindingMutation { request },
@@ -562,7 +582,14 @@ impl SyndicStorage {
     }
 
     #[must_use]
-    pub fn current_activate_binding(&self, request: ActivateBinding) -> CurrentDomainCommand {
+    pub fn current_activate_binding(&self, mut request: ActivateBinding) -> CurrentDomainCommand {
+        request.context_provenance_valid =
+            request
+                .context_classification
+                .is_some_and(|classification| {
+                    classification.context.home == self.home_id
+                        && classification.context.home_generation == self.context_generation
+                });
         self.handle
             .current_command(ActivateBindingMutation { request })
     }

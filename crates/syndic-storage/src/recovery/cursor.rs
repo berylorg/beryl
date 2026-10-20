@@ -228,12 +228,31 @@ impl SyndicStorage {
                     reason: "a ready recovery proof has no represented prefix tail",
                 })?;
         let tail = self.load_recovery_turn(store, prefix_tail)?;
-        let topology = self.inspect_recovery_topology(
+        if proof.seed_only {
+            return Ok(RecoveryTopology {
+                context_thread: Some(proof.thread_id()),
+                depth: tail.depth().get(),
+                digest: tail.chain_digest(),
+                tail,
+                item_count: 1,
+                tail_eligibility,
+            });
+        }
+        let mut topology = self.inspect_recovery_topology(
             store,
             prefix_tail,
             tail.depth().get(),
             tail_eligibility,
         )?;
+        if let Some(context) = proof.context() {
+            topology.context_thread = Some(proof.thread_id());
+            topology.item_count = topology
+                .item_count
+                .checked_add(context.summary().count())
+                .ok_or(RecoveryProjectionError::Invariant(
+                    "context cursor count overflow",
+                ))?;
+        }
         if topology.digest != proof.represented_prefix().digest()
             || topology.item_count != u64::from(proof.item_count().get())
         {
@@ -271,9 +290,36 @@ impl SyndicStorage {
         store: &HomeStore,
         cursor: &mut RecoveryCursor,
     ) -> Result<(), RecoveryProjectionError> {
+        if cursor.proof.seed_only {
+            let record = self.context_record_for_execution(store, cursor.proof.thread_id())?;
+            let frame = crate::context_projection::frame::describe(
+                store,
+                cursor.proof.thread_id(),
+                &record,
+            )?;
+            cursor.next_turn_depth = cursor.topology.depth;
+            cursor.turn = Some(CursorTurn {
+                id: cursor.topology.tail.id(),
+                item_count: 1,
+                next_ordinal: 1,
+            });
+            return self.begin_context_cursor_item(cursor, frame);
+        }
         loop {
             if cursor.turn.is_none() {
                 if cursor.next_turn_depth > cursor.topology.depth {
+                    if let Some(target) = cursor.topology.context_thread
+                        && let Some(frame) =
+                            self.context_after_tail(store, target, &cursor.topology.tail)?
+                    {
+                        cursor.next_turn_depth = cursor.topology.depth;
+                        cursor.turn = Some(CursorTurn {
+                            id: cursor.topology.tail.id(),
+                            item_count: 0,
+                            next_ordinal: 0,
+                        });
+                        return self.begin_context_cursor_item(cursor, frame);
+                    }
                     return Err(RecoveryProjectionError::CursorMismatch {
                         reason: "recovery topology ended before its declared item total",
                     });
@@ -295,6 +341,16 @@ impl SyndicStorage {
                     item_count,
                     next_ordinal: 1,
                 });
+                if cursor.topology.context_thread.is_some()
+                    && let Some(frame) = self.context_before_turn(store, &turn)?
+                {
+                    cursor
+                        .turn
+                        .as_mut()
+                        .expect("newly loaded cursor turn")
+                        .next_ordinal = 0;
+                    return self.begin_context_cursor_item(cursor, frame);
+                }
             }
             let turn = cursor.turn.expect("cursor just loaded one turn");
             if turn.next_ordinal > turn.item_count {
@@ -471,6 +527,35 @@ impl SyndicStorage {
             item_terminal,
             sequence_terminal,
         })
+    }
+
+    fn begin_context_cursor_item(
+        &self,
+        cursor: &mut RecoveryCursor,
+        frame: crate::context_projection::frame::ContextFrameSource,
+    ) -> Result<(), RecoveryProjectionError> {
+        let descriptor = RecoveryItemDescriptor {
+            role: RecoveryItemSequenceRole::AssistantOutputText,
+            source: super::RecoveryTextSource::Context(frame),
+        };
+        cursor
+            .accumulator
+            .as_mut()
+            .ok_or(RecoveryProjectionError::Invariant(
+                "context cursor accumulator missing",
+            ))?
+            .begin_item(
+                cursor.completed_items + 1,
+                descriptor.role,
+                frame.utf8_bytes,
+            )
+            .map_err(cursor_sequence_mismatch)?;
+        cursor.item = Some(CursorItem {
+            descriptor,
+            declared_utf8_bytes: frame.utf8_bytes,
+            offset: 0,
+        });
+        Ok(())
     }
 }
 

@@ -38,6 +38,7 @@ mod model_status;
 mod persistent_failure;
 mod provider_broker;
 mod recovery_source_broker;
+pub(in crate::cas_projection) use recovery_source_broker::PreparedRecoverySource;
 pub(super) mod registry;
 mod router;
 #[cfg(test)]

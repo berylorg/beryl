@@ -1,6 +1,6 @@
 use std::{cell::Cell, error::Error};
 
-use beryl_model::{DomainRevision, HomeRevision};
+use beryl_model::{BerylHomeId, DomainRevision, HomeRevision};
 use fjall::Snapshot;
 use thiserror::Error;
 
@@ -249,6 +249,7 @@ pub enum ReadError {
 /// Short-lived typed view used by domain validators and mutation contributors.
 pub struct DomainReader<'a, D: StorageDomain> {
     snapshot: &'a Snapshot,
+    home_id: BerylHomeId,
     families: ReadFamilies<'a>,
     _typed: std::marker::PhantomData<fn(D) -> D>,
 }
@@ -257,6 +258,7 @@ impl<'a, D: StorageDomain> DomainReader<'a, D> {
     pub(crate) fn new(snapshot: &'a Snapshot, domain: &'a RegisteredDomain) -> Self {
         Self {
             snapshot,
+            home_id: domain.home_id,
             families: ReadFamilies::Registered(domain),
             _typed: std::marker::PhantomData,
         }
@@ -265,12 +267,18 @@ impl<'a, D: StorageDomain> DomainReader<'a, D> {
     pub(crate) const fn from_families(
         snapshot: &'a Snapshot,
         families: &'a [RegisteredFamily],
+        home_id: BerylHomeId,
     ) -> Self {
         Self {
             snapshot,
+            home_id,
             families: ReadFamilies::Provisional(families),
             _typed: std::marker::PhantomData,
         }
+    }
+
+    pub const fn home_id(&self) -> BerylHomeId {
+        self.home_id
     }
 
     /// Reads one typed point under an explicit stored-byte bound.

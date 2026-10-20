@@ -190,6 +190,18 @@ impl HomeRecoveryCandidate {
         self.receipt.generation()
     }
 
+    pub fn generation_identity(
+        &self,
+    ) -> Result<crate::HomeGenerationIdentity, crate::HomeCandidateError> {
+        let store = self.store.as_ref().expect("candidate store is present");
+        let admission = store
+            .health
+            .admit_candidate(HomeHealthState::Reopening, self.receipt.generation)?;
+        let identity = store.generation_identity_at_publication();
+        admission.confirm()?;
+        Ok(identity)
+    }
+
     /// Returns the tier retained from the same successfully locked home.
     #[must_use]
     pub fn durability_tier(&self) -> crate::HomeDurabilityTier {
@@ -420,6 +432,7 @@ impl HomeStore {
         if opened.header.home_id != self.home_id() || opened.header.schema != self.schema() {
             return Err(HomeRecoveryError::HomeMismatch);
         }
+        let reopened_home_id = opened.header.home_id;
         let mut generation = StoreGeneration {
             frozen_reads: std::sync::Arc::new(crate::read::frozen::FrozenReadRegistry::new(
                 self.storage_profile.frozen_read_slots(),
@@ -431,7 +444,7 @@ impl HomeStore {
         };
         validate_generation_control(&generation, self, &registrations)
             .map_err(|source| HomeRecoveryError::Validation { source })?;
-        reacquire_registry(&mut generation, &registrations)?;
+        reacquire_registry(&mut generation, &registrations, reopened_home_id)?;
         generation
             .database
             .persist(PersistMode::SyncAll)

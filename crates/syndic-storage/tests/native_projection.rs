@@ -524,7 +524,7 @@ fn stale_selected_path_fails_closed_before_native_binding_selection() {
 }
 
 #[test]
-fn context_bearing_thread_requires_its_exact_context_projection() {
+fn submitted_context_produces_an_exact_native_seed_plan() {
     let home = TestHome::new("native-discussion-context");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
@@ -534,21 +534,40 @@ fn context_bearing_thread_requires_its_exact_context_projection() {
         .publish()
         .unwrap();
     seed_populated(&store, storage.clone());
-    let thread_id = id(36);
+    support::discussion_creation::create_child(&store, &storage, id(30), 210, 211);
+    let thread_id = id(210);
+    support::exact_cas::submit_current_draft(
+        &store,
+        storage.clone(),
+        thread_id,
+        support::draft_id(201),
+        beryl_model::SyndicItemId::from_bytes([202; 16]),
+        "discussion input",
+        support::timestamp(10),
+    );
     let before_revision = storage.revision(&store).unwrap();
-    assert!(matches!(
-        storage.prepare_native_projection(
+    let execution = storage
+        .thread_execution(&store, thread_id, point_limit())
+        .unwrap()
+        .unwrap();
+    let plan = storage
+        .prepare_native_projection(
             &store,
             &NativeProjectionRequest::new(
                 thread_id,
                 selected_path(&store, &storage, thread_id),
-                support::exact_cas::execution_binding(),
+                execution.execution().clone(),
                 support::test_tool_profile(),
             ),
             point_limit(),
-        ),
-        Err(NativeProjectionError::DiscussionContextProjectionRequired)
-    ));
+        )
+        .unwrap();
+    assert!(
+        matches!(plan, NativeProjectionPlan::Fork { .. }),
+        "{plan:?}"
+    );
+    assert!(plan.basis().context().unwrap().needs_seed());
+    assert_eq!(plan.basis().context().unwrap().summary().count(), 1);
     assert_eq!(storage.revision(&store).unwrap(), before_revision);
     store.close().unwrap();
 }
