@@ -95,3 +95,22 @@ native projection, leaving historical source execution unsuitable for the tempor
 current binding is explicitly unbound after seeding; publish a matching valid fixture binding
 before session configuration. Require the actual projection-request marker before asserting
 runtime recovery leaves the handoff paused, rather than accepting a transient available session.
+
+## Graph-Level Retained Proof Qualification
+
+The first aggregate graph fixture seeded a real activated generated parent and retained closed
+nondispatch evidence, then expected shutdown's outer `PendingCustody` classification. Runtime
+instead correctly returned `UnprovenExecution`: durable activation did not create the live process
+execution owner required by the earlier CAS shutdown check. Source review had missed that fixture
+precondition. That failed run is diagnostic, not positive pending-custody evidence.
+
+Preserve shutdown precedence. Use a real preactivation preparation-failure proof, with unrelated
+seeded work settled, to reach the exact outer proof count. Separately carry the activated rejection
+proof through failed-graph retirement and fresh candidate settlement, checking original cancellation
+and parent/input/job identity before and after publication. Neither synthetic counters nor accepting
+the earlier refusal can qualify the missing outer-custody boundary.
+
+The broad populated fixture also contained open provider items, so appending a completed terminal
+event correctly failed its terminal-item audit. A focused parent/child fixture must construct only
+its required history through ordinary commands, including started/completed source items and exact
+terminal convergence; unrelated open work is not repaired by asserting a terminal event.

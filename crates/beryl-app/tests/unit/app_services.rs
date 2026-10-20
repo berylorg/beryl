@@ -26,6 +26,8 @@ mod catalog_source_lifecycle;
 mod committed_first_conversation;
 #[path = "window_selection_admission/failed_home_retirement.rs"]
 mod failed_home_selection_retirement;
+#[path = "app_services/handoff_custody.rs"]
+mod handoff_custody;
 #[path = "app_services/recovery_graph.rs"]
 mod recovery_graph;
 #[path = "app_services/recovery_preparation.rs"]

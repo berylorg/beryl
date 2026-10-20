@@ -222,7 +222,7 @@
   transition custody. Independent readiness review accepted correlation and candidate-read
   prerequisites; concrete atomic participants remain separate before coordinator implementation.
 
-- [ ] Accept non-GUI handoff coordination after the recovery service gate and before complete graph publication, without accepting branch GUI mounting.
+- [x] Accepted non-GUI handoff coordination and complete-graph retained-proof shutdown/recovery custody, with child execution and status/Retry mounting remaining separate; [qualification](../../audits/non-gui-discussion-handoff-qualification.md).
 - [x] Accepted exact ordinary branch-call context without changing lifecycle handlers or enabling
   resolution. Live correlation/schema, lifecycle and process-tool tests, app checks and independent
   authority/custody review passed.
