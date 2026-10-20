@@ -26,7 +26,7 @@ impl ThreadlessWindowShellPrepared {
         appearance: Arc<AppearanceGeneration>,
     ) -> Result<Self, String> {
         source.revalidate()?;
-        let home = appearance.prepared().home();
+        let home = appearance.home();
         if source.home_id() != home.home_id() || source.home_generation() != home.home_generation()
         {
             return Err(

@@ -1,7 +1,8 @@
-use std::{fmt, sync::Arc, time::Duration};
+use std::{fmt, time::Duration};
 
 use beryl_home_store::HomeStore;
-use beryl_state::{SettingKey, SettingsState};
+use beryl_state::SettingKey;
+use crate::settings_service::{AppliedSettingOrigin, AppliedSettingsReader};
 
 use super::ContextCompactionError;
 
@@ -13,7 +14,7 @@ pub struct ContextCompactionTimeoutPolicy(TimeoutPolicy);
 #[derive(Clone)]
 enum TimeoutPolicy {
     Fixed(Duration),
-    AppliedSettings(Arc<SettingsState>),
+    AppliedSettings(AppliedSettingsReader),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -52,8 +53,8 @@ impl ContextCompactionTimeoutPolicy {
         Self(TimeoutPolicy::Fixed(timeout))
     }
 
-    pub fn applied_settings(settings: SettingsState) -> Self {
-        Self(TimeoutPolicy::AppliedSettings(Arc::new(settings)))
+    pub fn applied_settings(settings: AppliedSettingsReader) -> Self {
+        Self(TimeoutPolicy::AppliedSettings(settings))
     }
 
     pub fn validate(&self) -> Result<(), ContextCompactionError> {
@@ -73,27 +74,19 @@ impl ContextCompactionTimeoutPolicy {
                 Ok(ResolvedContextCompactionTimeout::fixed(*timeout))
             }
             TimeoutPolicy::AppliedSettings(settings) => {
-                let record = settings.setting(home, SettingKey::ContextCompactionTimeout)?;
-                let Some(record) = record else {
-                    return Ok(ResolvedContextCompactionTimeout {
-                        duration: DEFAULT_TIMEOUT,
-                        source: ContextCompactionTimeoutSource::AbsentDefault,
-                    });
+                let snapshot = settings.snapshot().map_err(|_| ContextCompactionError::Unavailable)?;
+                if !snapshot.matches_home(home) {
+                    return Err(ContextCompactionError::Unavailable);
+                }
+                let duration = snapshot.compaction_timeout().map_err(|_| ContextCompactionError::Unavailable)?;
+                let source = match snapshot.origin(SettingKey::ContextCompactionTimeout) {
+                    AppliedSettingOrigin::Saved => ContextCompactionTimeoutSource::Applied,
+                    AppliedSettingOrigin::AbsentDefault => ContextCompactionTimeoutSource::AbsentDefault,
+                    AppliedSettingOrigin::RejectedSaved => ContextCompactionTimeoutSource::RejectedSavedValue,
                 };
-                let millis = record.value().as_context_compaction_timeout_millis();
-                Ok(match millis {
-                    Some(millis)
-                        if (1_000..=86_400_000).contains(&millis) && millis % 1_000 == 0 =>
-                    {
-                        ResolvedContextCompactionTimeout {
-                            duration: Duration::from_millis(millis),
-                            source: ContextCompactionTimeoutSource::Applied,
-                        }
-                    }
-                    _ => ResolvedContextCompactionTimeout {
-                        duration: DEFAULT_TIMEOUT,
-                        source: ContextCompactionTimeoutSource::RejectedSavedValue,
-                    },
+                Ok(ResolvedContextCompactionTimeout {
+                    duration,
+                    source,
                 })
             }
         }
@@ -120,7 +113,7 @@ impl PartialEq for ContextCompactionTimeoutPolicy {
         match (&self.0, &other.0) {
             (TimeoutPolicy::Fixed(left), TimeoutPolicy::Fixed(right)) => left == right,
             (TimeoutPolicy::AppliedSettings(left), TimeoutPolicy::AppliedSettings(right)) => {
-                Arc::ptr_eq(left, right)
+                left.same_source(right)
             }
             _ => false,
         }

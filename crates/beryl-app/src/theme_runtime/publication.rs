@@ -11,6 +11,11 @@ use super::{
     PublicationFailureClass, StalePublicationReason, StopPreviewResult,
 };
 
+pub(super) struct StopPreviewIntent {
+    home: ThemeHomeIdentity,
+    sequence: PreviewSequence,
+}
+
 impl AppearanceCoordinator {
     pub(super) fn begin_durable(
         &mut self,
@@ -66,6 +71,7 @@ impl AppearanceCoordinator {
             .next_preview_sequence()
             .map_err(|_| PreviewPublicationError::SequenceExhausted)?;
         self.last_preview_sequence = Some(sequence);
+        self.pending_stop_preview = None;
         self.pending_preview = Some(PreviewDiagnostic {
             source: source.kind(),
             sequence,
@@ -261,6 +267,13 @@ impl AppearanceCoordinator {
     }
 
     pub fn stop_preview(&mut self) -> Result<StopPreviewResult, PreviewPublicationError> {
+        let intent = self.reserve_stop_preview()?;
+        self.finish_stop_preview(intent)
+    }
+
+    pub(super) fn reserve_stop_preview(
+        &mut self,
+    ) -> Result<StopPreviewIntent, PreviewPublicationError> {
         if self.is_publication_thread() {
             return Err(PreviewPublicationError::WindowSet(
                 AppearancePublicationFailure::Reentrant,
@@ -271,6 +284,24 @@ impl AppearanceCoordinator {
             .map_err(|_| PreviewPublicationError::SequenceExhausted)?;
         self.last_preview_sequence = Some(sequence);
         self.pending_preview = None;
+        self.pending_stop_preview = Some(sequence);
+        Ok(StopPreviewIntent {
+            home: self.home,
+            sequence,
+        })
+    }
+
+    pub(super) fn finish_stop_preview(
+        &mut self,
+        intent: StopPreviewIntent,
+    ) -> Result<StopPreviewResult, PreviewPublicationError> {
+        if intent.home != self.home || self.pending_stop_preview != Some(intent.sequence) {
+            self.record_stale(PublicationFailureClass::Stale);
+            return Err(PreviewPublicationError::Stale(
+                StalePublicationReason::PreviewSequence,
+            ));
+        }
+        self.pending_stop_preview = None;
         if !self.current.is_preview() {
             self.last_failure = None;
             return Ok(StopPreviewResult::AlreadyStopped);

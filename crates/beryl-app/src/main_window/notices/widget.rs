@@ -366,6 +366,9 @@ impl MainWindowNoticeWidget {
         close_was_focused: bool,
         focused_command: Option<&NoticeCommandId>,
     ) {
+        if !detail_was_focused && !close_was_focused && focused_command.is_none() {
+            return;
+        }
         let Some(record) = self.record.as_ref() else {
             self.safe_focus.focus(window);
             return;

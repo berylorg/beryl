@@ -35,7 +35,7 @@ impl ContextCompactionRequest {
 
     pub fn applied_settings(
         thread_id: SyndicThreadId,
-        settings: beryl_state::SettingsState,
+        settings: crate::settings_service::AppliedSettingsReader,
     ) -> Self {
         Self {
             thread_id,

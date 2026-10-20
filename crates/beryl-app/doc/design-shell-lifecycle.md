@@ -143,6 +143,13 @@ optional unpublished target and completed cleanup progress. Capture failure pres
 owners. This branch uses ordinary selection's own receipt-bound saved checkpoint and original
 State/Catalog witnesses; creation-specific save proofs or captured ids cannot substitute.
 
+GUI-only capture and prepublication realization advance through bounded foreground continuations
+owned by the exact resident flight. Window affinity supplies text/layout resources; native paint,
+activation and occlusion do not drive this work. At most one GUI continuation is queued per flight,
+and successive work quanta yield to other application work. Cancellation and replacement retain
+their identity checks and original cleanup custody. This scheduling neither changes native window
+state nor bypasses the separate minimized-window deferral allowed by native minimum publication.
+
 Original predecessor publication settles before original claim classification. Never-admitted or
 proven original noncommit follows exact protected-resident recovery after candidate State
 authentication and settlement of any original unpublished target opening/disposal. Ordinary target

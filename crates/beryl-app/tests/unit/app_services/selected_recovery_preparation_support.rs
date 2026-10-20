@@ -228,6 +228,7 @@ pub(super) async fn verify_and_dispose(
             };
             assert!(matches!(failure.error(), AppServiceOpenError::Cancelled));
             drop((held_provider, residents));
+            selected_publication::shutdown_settings(&owner, cx).await;
             let running = Rc::try_unwrap(owner)
                 .ok()
                 .unwrap()
@@ -804,6 +805,7 @@ async fn dispose_retired(
     home: Option<beryl_home_store::HomeStore>,
     cx: &mut AsyncApp,
 ) {
+    selected_publication::shutdown_settings(&owner, cx).await;
     let mut running = Rc::try_unwrap(owner)
         .ok()
         .unwrap()

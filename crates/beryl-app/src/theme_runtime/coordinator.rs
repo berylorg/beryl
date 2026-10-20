@@ -230,6 +230,7 @@ pub struct AppearanceCoordinator {
     pub(super) last_generation: AppearanceGenerationNumber,
     pub(super) publication_target: Option<Arc<dyn AppearancePublicationTarget>>,
     pub(super) last_preview_sequence: Option<PreviewSequence>,
+    pub(super) pending_stop_preview: Option<PreviewSequence>,
     pub(super) pending_preview: Option<PreviewDiagnostic>,
     pub(super) last_durable_attempt: u64,
     pub(super) latest_durable_attempt: Option<u64>,
@@ -240,6 +241,23 @@ pub struct AppearanceCoordinator {
 }
 
 impl AppearanceCoordinator {
+    pub(crate) fn new_unavailable_context(
+        config: AppearanceCoordinatorConfig,
+        home: ThemeHomeIdentity,
+        prior: &AppearanceGeneration,
+    ) -> Self {
+        let mut coordinator = Self::new(config, prior.prepared().clone());
+        coordinator.home = home;
+        let context = Arc::new(AppearanceGeneration::unavailable_context(
+            AppearanceGenerationNumber::initial(),
+            home,
+            prior.prepared().clone(),
+        ));
+        coordinator.current = Arc::clone(&context);
+        coordinator.durable = context;
+        coordinator
+    }
+
     #[must_use]
     pub fn new(config: AppearanceCoordinatorConfig, initial: PreparedThemeAppearance) -> Self {
         let home = initial.home();
@@ -257,6 +275,7 @@ impl AppearanceCoordinator {
             last_generation: number,
             publication_target: None,
             last_preview_sequence: None,
+            pending_stop_preview: None,
             pending_preview: None,
             last_durable_attempt: 0,
             latest_durable_attempt: None,

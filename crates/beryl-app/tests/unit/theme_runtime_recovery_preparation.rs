@@ -26,6 +26,7 @@ fn recovery_watcher_waits_for_publication_and_release_then_joins() {
         state.themes(),
         &state.settings(),
         config(),
+        crate::theme_runtime::ThemeRecoverySelection::ProvenSnapshot,
     )
     .unwrap();
     assert_eq!(observer.diagnostics().active_subscriptions(), 1);
@@ -51,6 +52,7 @@ fn recovery_rejects_stale_foreign_services_and_returns_failed_spawn_capacity() {
             service.clone(),
             &state.settings(),
             config(),
+            crate::theme_runtime::ThemeRecoverySelection::ProvenSnapshot,
         )
         .err()
         .unwrap();
@@ -63,7 +65,8 @@ fn recovery_rejects_stale_foreign_services_and_returns_failed_spawn_capacity() {
             &mut candidate,
             state.themes(),
             &state.settings(),
-            config()
+            config(),
+            crate::theme_runtime::ThemeRecoverySelection::ProvenSnapshot,
         )
         .is_err()
     );
@@ -75,6 +78,7 @@ fn recovery_rejects_stale_foreign_services_and_returns_failed_spawn_capacity() {
                 state.themes(),
                 &state.settings(),
                 config(),
+                crate::theme_runtime::ThemeRecoverySelection::ProvenSnapshot,
             )
             .unwrap(),
         );
@@ -94,6 +98,7 @@ fn recovery_release_before_publication_or_after_failure_joins_before_abort() {
             state.themes(),
             &state.settings(),
             config(),
+            crate::theme_runtime::ThemeRecoverySelection::ProvenSnapshot,
         )
         .unwrap();
         if fail {

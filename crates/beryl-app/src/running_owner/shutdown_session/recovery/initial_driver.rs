@@ -22,7 +22,7 @@ impl RunningProcessOwner {
                 let _driver = owner.reserve_interrupted_exit_driver(request)?;
                 owner.interrupted_exit_graph_retirement_result(request)?;
                 let snapshot = appearance.read(app).target().snapshot();
-                let home = snapshot.current.prepared().home();
+                let home = snapshot.current.home();
                 let retired = owner
                     .process
                     .services
@@ -102,9 +102,7 @@ impl RunningProcessOwner {
                     .services
                     .as_ref()
                     .ok_or("first conversation service owner is unavailable")?
-                    .retired_service_generation_for_home_return(
-                        prepared.prepared().home().home_id(),
-                    )
+                    .retired_service_generation_for_home_return(prepared.home().home_id())
                     .map_err(|e| e.to_string())?
             };
             return Self::recover_first_conversation(
@@ -149,9 +147,7 @@ impl RunningProcessOwner {
                     .services
                     .as_ref()
                     .ok_or("The complete service owner is on a worker")?
-                    .retired_service_generation_for_home_return(
-                        prepared.prepared().home().home_id(),
-                    )
+                    .retired_service_generation_for_home_return(prepared.home().home_id())
                     .map_err(|error| error.to_string())?;
                 Ok((threadless, Some(retired)))
             })

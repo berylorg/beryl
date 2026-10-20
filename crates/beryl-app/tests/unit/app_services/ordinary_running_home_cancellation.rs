@@ -87,6 +87,7 @@ fn run(cancellation: Cancellation) {
                     natives.push(native(*window, cx).await);
                 }
                 let original_selections = cx.update(|app| residents.iter().map(|resident| resident.read(app).selection_identity()).collect::<Vec<_>>()).unwrap();
+                wait_for_services(&owner, cx).await;
                 let original_session = snapshot(&owner);
                 let (original_generation, session_revision) = {
                     let retained = owner.borrow();
@@ -153,6 +154,7 @@ fn run(cancellation: Cancellation) {
                     "ordinary cancelled candidate cleanup",
                 )
                 .await;
+                wait_for_services(&owner, cx).await;
                 if cancellation == Cancellation::PartialAttachment {
                     cx.update(|app| {
                         let first = residents[0].read(app).selection_identity();
@@ -213,7 +215,15 @@ fn run(cancellation: Cancellation) {
                                     .test_running_home_recovery_identity()
                                     .unwrap()
                             ));
-                            assert_eq!(app.windows().len(), original_windows.len());
+                            let live_windows = app.windows();
+                            assert_eq!(
+                                live_windows.iter().filter(|window| {
+                                    window.downcast::<gpui_settings_window::SettingsWindowView>().is_some()
+                                }).count(),
+                                1,
+                                "the process retains exactly its one Settings auxiliary window"
+                            );
+                            assert_eq!(live_windows.len(), original_windows.len() + 1);
                             for ((window, resident), handle) in
                                 original_windows.iter().zip(&residents).zip(&natives)
                             {
@@ -233,6 +243,7 @@ fn run(cancellation: Cancellation) {
                     owner.borrow().automatic_recovery_outcome().as_deref(),
                     Some(InterruptedExitRecoveryOutcome::Cancelled | InterruptedExitRecoveryOutcome::Unavailable(_))
                 ));
+                wait_for_services(&owner, cx).await;
                 assert_eq!(owner.borrow().test_services().graph().is_some(), cancellation == Cancellation::AfterPublication);
                         RunningProcessOwner::test_stop_running_observers(&owner, cx).await.unwrap();
                         drop(residents);

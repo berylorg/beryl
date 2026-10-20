@@ -232,6 +232,10 @@ mod running_owner;
 pub mod runtime_activity_enrollment;
 pub mod runtime_admission;
 mod runtime_setup_catalog;
+pub mod settings_autosave;
+mod settings_command;
+pub mod settings_service;
+pub mod settings_window;
 #[cfg(target_os = "windows")]
 mod startup_owner;
 pub mod startup_surface;

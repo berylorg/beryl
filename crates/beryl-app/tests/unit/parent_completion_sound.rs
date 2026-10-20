@@ -1,9 +1,7 @@
 use super::*;
 use crate::notification_audio::{Backend, Control, NotificationAudioLane, SoundEvent};
 use beryl_backend::{ManagedBackendClientConnector, ThreadStartOptions, TurnStartOptions};
-use beryl_home_store::{CommandOutcome, HomeCommand};
-use beryl_model::{AdmittedHostPath, CasProcessGeneration, PathFlavor};
-use beryl_state::{ApplySettings, ExpectedSettingRevision, SettingUpdate, SettingValue};
+use beryl_model::CasProcessGeneration;
 use std::{path::Path, sync::mpsc, time::Duration};
 use syndic_storage::SyndicTimestamp;
 
@@ -16,6 +14,28 @@ struct Recorder(mpsc::SyncSender<SoundEvent>);
 impl Backend for Recorder {
     fn attempt(&mut self, event: SoundEvent, _: &Arc<Control>) -> Result<(), String> {
         self.0.try_send(event).map_err(|e| e.to_string())
+    }
+}
+
+struct HeldRecorder {
+    started: mpsc::SyncSender<SoundEvent>,
+    release: mpsc::Receiver<()>,
+}
+
+impl Backend for HeldRecorder {
+    fn attempt(&mut self, event: SoundEvent, control: &Arc<Control>) -> Result<(), String> {
+        self.started
+            .try_send(event)
+            .map_err(|error| error.to_string())?;
+        for _ in 0..500 {
+            control.check()?;
+            match self.release.recv_timeout(Duration::from_millis(10)) {
+                Ok(()) => return Ok(()),
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(error) => return Err(error.to_string()),
+            }
+        }
+        Err("controlled sound backend release timed out".into())
     }
 }
 
@@ -35,35 +55,8 @@ fn facts(monitor: &PlatformAttentionMonitor) -> Arc<DesktopFacts> {
 }
 
 fn setting(fixture: &syndic::Fixture, path: Option<&str>) {
-    let home = fixture.home();
-    let settings = fixture.state.settings();
-    let prior = settings.setting(&home, SettingKey::EndTurnSound).unwrap();
-    let expected = prior.map_or(ExpectedSettingRevision::Absent, |r| {
-        ExpectedSettingRevision::Exact(r.revision())
-    });
-    let value = SettingValue::end_turn_sound(
-        path.map(|p| AdmittedHostPath::from_admitted(PathFlavor::Windows, p).unwrap()),
-    );
-    let mut command = HomeCommand::new(home.home_revision().unwrap());
-    command
-        .add(
-            settings.apply(
-                settings.revision(&home).unwrap(),
-                ApplySettings::new(vec![SettingUpdate::new(
-                    SettingKey::EndTurnSound,
-                    expected,
-                    value,
-                )])
-                .unwrap(),
-            ),
-        )
-        .unwrap();
-    assert!(matches!(
-        home.execute(command),
-        CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        }
+    fixture.apply_setting(crate::settings_service::SettingsDraftValue::EndTurnSound(
+        path.unwrap_or_default().into(),
     ));
 }
 
@@ -96,7 +89,6 @@ fn live_terminal(status: &'static str, enabled: bool, focus: u8, active_trigger:
     );
     fixture.submit_text(server::SUBMITTED_TEXT);
     setting(&fixture, Some("C:\\sounds\\earlier.wav"));
-    setting(&fixture, enabled.then_some("C:\\sounds\\current.wav"));
     let mut monitor = PlatformAttentionMonitor::spawn();
     let facts = facts(&monitor);
     facts.focus.store(focus, Ordering::Release);
@@ -114,9 +106,10 @@ fn live_terminal(status: &'static str, enabled: bool, focus: u8, active_trigger:
     fixture.store.bind_parent_sound(ParentSoundSink {
         facts: Arc::downgrade(&facts),
         audio: audio.ingress(),
-        settings: fixture.state.settings(),
+        settings: fixture.applied_settings(),
         service_generation: fixture.store.service_generation(),
     });
+    setting(&fixture, enabled.then_some("C:\\sounds\\current.wav"));
     let duplicate = status == "duplicate";
     let server = if duplicate {
         server::NormalTerminalServer::spawn_duplicate_parent_terminal()
@@ -240,6 +233,7 @@ fn duplicate_live_terminal_cannot_offer_again() {
 
 #[test]
 fn parent_classification_and_service_fences_control_metadata_admission() {
+    use crate::notification_audio::Admission;
     use syndic_storage::TurnKind;
     let fixture = syndic::Fixture::new(138);
     eprintln!(
@@ -250,11 +244,31 @@ fn parent_classification_and_service_fences_control_metadata_admission() {
     let mut monitor = PlatformAttentionMonitor::spawn();
     let facts = facts(&monitor);
     let (tx, rx) = mpsc::sync_channel(2);
-    let mut audio = NotificationAudioLane::with_backend(Recorder(tx));
+    let (release, resume) = mpsc::channel();
+    let mut audio = NotificationAudioLane::with_backend(HeldRecorder {
+        started: tx,
+        release: resume,
+    });
+    let control_path = Path::new(r"C:\sounds\lane-control.wav");
+    let offer_control = || {
+        for _ in 0..100 {
+            let admission = audio.ingress().offer(SoundKind::PlanComplete, control_path);
+            if admission != Admission::Busy {
+                assert_eq!(admission, Admission::Accepted);
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        panic!("control event could not enter the bounded audio lane");
+    };
+    offer_control();
+    let control = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(control.kind, SoundKind::PlanComplete);
+    assert_eq!(control.path, control_path);
     let sink = ParentSoundSink {
         facts: Arc::downgrade(&facts),
         audio: audio.ingress(),
-        settings: fixture.state.settings(),
+        settings: fixture.applied_settings(),
         service_generation: fixture.store.service_generation(),
     };
     let authorizer = fixture.store.live_command_authorizer();
@@ -262,10 +276,10 @@ fn parent_classification_and_service_fences_control_metadata_admission() {
     let generation = fixture.store.home_generation();
     for kind in [TurnKind::OrdinaryUser, TurnKind::BerylDiscussionHandoff] {
         sink.notify(&reference, generation, &authorizer, kind, || true);
-        assert_eq!(
-            rx.recv_timeout(Duration::from_secs(5)).unwrap().kind,
-            SoundKind::EndTurn
-        );
+        release.send(()).unwrap();
+        let event = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(event.kind, SoundKind::EndTurn);
+        assert_eq!(event.path, Path::new("C:\\sounds\\classified.wav"));
     }
     for kind in [
         TurnKind::BerylLifecycleContinuation,
@@ -314,7 +328,13 @@ fn parent_classification_and_service_fences_control_metadata_admission() {
         TurnKind::OrdinaryUser,
         || true,
     );
-    assert!(rx.recv_timeout(Duration::from_millis(30)).is_err());
+    offer_control();
+    release.send(()).unwrap();
+    let control = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(control.kind, SoundKind::PlanComplete);
+    assert_eq!(control.path, control_path);
+    assert!(rx.try_recv().is_err());
+    release.send(()).unwrap();
     let (other_directory, service) = other.into_service();
     assert!(matches!(
         service.close().unwrap(),

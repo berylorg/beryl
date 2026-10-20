@@ -264,8 +264,8 @@ impl PreparedWindowAppearance for PreparedRecoveryAppearance {
                     }
                     _ => return Err(reject),
                 };
-                let next = self.appearance.generation.prepared().home();
-                let previous = controller.appearance.generation.prepared().home();
+                let next = self.appearance.generation.home();
+                let previous = controller.appearance.generation.home();
                 let target = self.target.snapshot();
                 if next.home_id() != home
                     || next.home_generation() != generation

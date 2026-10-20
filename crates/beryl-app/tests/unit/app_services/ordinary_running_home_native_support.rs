@@ -69,6 +69,26 @@ pub(super) async fn wait_for_notice(
                         assert_eq!(prior, &current);
                     }
                     condition = Some(current);
+                    if recovered && !root.test_exit_command_enabled() {
+                        let appearance_flight =
+                            crate::running_owner::RunningProcessOwner::mounted_owner(app)
+                                .and_then(|owner| owner.upgrade())
+                                .is_some_and(|owner| {
+                                    let owner = owner.borrow();
+                                    !owner.test_services_ready()
+                                        && owner.running_threads_reader().is_some()
+                                });
+                        if appearance_flight {
+                            assert_eq!(
+                                root.test_exit_presentation(),
+                                (
+                                    "Exit",
+                                    "Application Exit is waiting for Settings reconciliation."
+                                )
+                            );
+                            return false;
+                        }
+                    }
                     assert_eq!(root.test_exit_command_enabled(), recovered);
                 }
                 true
@@ -79,7 +99,7 @@ pub(super) async fn wait_for_notice(
         }
         assert!(
             Instant::now() < deadline,
-            "all preserved windows did not project the ordinary recovery notice"
+            "all preserved windows did not project the ordinary recovery notice and its expected Exit availability"
         );
         cx.background_executor()
             .timer(Duration::from_millis(10))

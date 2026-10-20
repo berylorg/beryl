@@ -432,7 +432,7 @@ impl RunningProcessOwner {
                     .test_running_home_recovery_identity()
                     .ok_or("ordinary home recovery custody is unavailable")?;
                 let appearance = retained.process.appearance.read(app).target().snapshot();
-                let home = appearance.current.prepared().home().home_id();
+                let home = appearance.current.home().home_id();
                 let retired = retained
                     .process
                     .services

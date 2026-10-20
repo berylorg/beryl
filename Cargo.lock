@@ -2520,7 +2520,7 @@ dependencies = [
 [[package]]
 name = "gpui-settings-window"
 version = "0.1.0"
-source = "git+https://github.com/berylorg/gpui-settings-window.git?rev=093c67a2b6813a0810a9b4e7493b474072623a35#093c67a2b6813a0810a9b4e7493b474072623a35"
+source = "git+https://github.com/berylorg/gpui-settings-window.git?rev=75b92518efc7013a5df83e8f83a5ce6dd55489af#75b92518efc7013a5df83e8f83a5ce6dd55489af"
 dependencies = [
  "gpui",
  "gpui-scrollbar",

@@ -107,6 +107,14 @@ impl RunningProcessOwner {
                 return Err("final teardown requires the original work-ready Exit".into());
             }
             owner.require_shutdown_session_ready()?;
+            if owner.settings_appearance_busy {
+                return Err("Settings appearance publication is still settling".to_owned());
+            }
+            if let Some(settings) = &owner.settings_window {
+                if settings.read(app).exit_is_gated() {
+                    return Err("Settings reconciliation is still settling".to_owned());
+                }
+            }
             let attempt = owner.shutdown.as_ref().unwrap();
             attempt
                 .lease
@@ -197,6 +205,24 @@ impl RunningProcessOwner {
         owner: &Rc<RefCell<Self>>,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
+        let settings = owner.borrow().settings_window.clone();
+        if let Some(settings) = settings {
+            let closed = cx
+                .update(|app| settings.update(app, |settings, cx| settings.shutdown(cx)))
+                .map_err(|error| error.to_string())?
+                .map_err(|error| error.to_string())?;
+            if !closed {
+                return Err("Settings reconciliation still owns its native window".to_owned());
+            }
+            let receipt = owner.borrow_mut().settings_destruction.take();
+            if let Some(receipt) = receipt {
+                receipt
+                    .await
+                    .map_err(|error| format!("Settings native destruction failed: {error}"))?;
+            }
+            owner.borrow_mut().settings_observer.take();
+            owner.borrow_mut().settings_window.take();
+        }
         #[cfg(test)]
         Self::test_set_final_teardown_phase(owner, "before_audio_join");
         let mut audio = owner.borrow_mut().process.notification_audio.take_worker();

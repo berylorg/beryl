@@ -158,7 +158,7 @@ impl MainWindowShellPrepared {
         };
         let selection = composer.selection_identity();
         let binding = selection.binding();
-        let appearance_home = appearance.prepared().home();
+        let appearance_home = appearance.home();
         let validation = acquisition_service
             .validate_shell_selection(&acquisition, selection)
             .and_then(|()| {

@@ -34,21 +34,13 @@ fn confirmed_settings_durable_base_survives_adapter_rejection_and_retries_exactl
     let adapter = TestAdapter::new(41);
     crate::support::attach_test_adapter(&mut runtime, adapter.clone());
     let initial = runtime.current().unwrap();
-    let committed = fixture
-        .state
-        .themes()
-        .settings_identity(DomainRevision::new(2).unwrap(), None);
-    let confirmed = ConfirmedSettingsTheme::new(
-        ThemeDraftIdentity::new(NonZeroU64::new(42).unwrap()),
-        ThemeDraftRevision::INITIAL,
-        committed,
-        None,
-        beryl_state::PreparedThemeAppearance::fallback(committed),
-    );
+    let confirmed = commit_current_selection(&fixture, &runtime, 42);
+    let committed = confirmed.committed();
 
     adapter.state.reject(true);
     assert_eq!(
-        runtime.consume_settings_outcome(SettingsThemeOutcome::Committed(confirmed)),
+        runtime
+            .consume_settings_outcome(&fixture.store, SettingsThemeOutcome::Committed(confirmed)),
         Err(ThemeRuntimeFailureClass::Publication)
     );
     assert_eq!(runtime.current().unwrap().number(), initial.number());
@@ -62,7 +54,7 @@ fn confirmed_settings_durable_base_survives_adapter_rejection_and_retries_exactl
 
     adapter.state.reject(false);
     assert_eq!(
-        runtime.retry_current_durable().unwrap(),
+        runtime.retry_current_durable(&fixture.store).unwrap(),
         RepositoryAppearanceResult::Published
     );
     let applied = runtime.current().unwrap();
@@ -245,8 +237,14 @@ fn rejected_full_refresh_discards_candidate_and_requires_fresh_reread() {
     assert!(retained.refresh_reread_needed());
     assert_eq!(runtime.current().unwrap().number(), prior_current.number());
     assert_eq!(
-        runtime.retry_current_durable().unwrap(),
-        RepositoryAppearanceResult::Unchanged
+        runtime.retry_current_durable(&fixture.store).unwrap(),
+        RepositoryAppearanceResult::Retained(ThemeRuntimeFailureClass::Publication)
+    );
+    let retried = runtime.diagnostics();
+    assert!(!retried.appearance().unwrap().pending_durable_application());
+    assert_eq!(
+        retried.appearance().unwrap().durable_generation(),
+        prior.appearance().unwrap().durable_generation(),
     );
 
     adapter.state.reject(false);
@@ -304,8 +302,8 @@ fn rejected_live_refresh_discards_candidate_and_requires_fresh_reread() {
     assert!(retained.refresh_reread_needed());
     assert_eq!(runtime.current().unwrap().number(), prior_current.number());
     assert_eq!(
-        runtime.retry_current_durable().unwrap(),
-        RepositoryAppearanceResult::Unchanged
+        runtime.retry_current_durable(&fixture.store).unwrap(),
+        RepositoryAppearanceResult::Retained(ThemeRuntimeFailureClass::Publication)
     );
 
     adapter.state.reject(false);

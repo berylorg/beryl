@@ -198,7 +198,7 @@ impl ContextCompactionCoordinator {
     pub(in crate::cas_projection) fn compact_selected(
         self: &Arc<Self>,
         authority: Arc<crate::cas_projection::service::ManualCompactionAuthority>,
-        settings: beryl_state::SettingsState,
+        settings: crate::settings_service::AppliedSettingsReader,
         feedback: &super::feedback::ContextCompactionFeedback,
     ) -> Result<(), ContextCompactionError> {
         let command = self

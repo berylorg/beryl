@@ -272,30 +272,11 @@ fn run_native_context(
             composer: _,
             runtime,
         } = runtime::prepare(&mut fixture, theme, true);
-        let home = fixture.home();
-        let settings = fixture.state.settings();
-        let mut command = HomeCommand::new(home.home_revision().unwrap());
-        command
-            .add(
-                settings.apply(
-                    settings.revision(&home).unwrap(),
-                    beryl_state::ApplySettings::new(vec![beryl_state::SettingUpdate::new(
-                        beryl_state::SettingKey::ContextCompactionTimeout,
-                        beryl_state::ExpectedSettingRevision::Absent,
-                        beryl_state::SettingValue::context_compaction_timeout_millis(1_000),
-                    )])
-                    .unwrap(),
-                ),
-            )
+        fixture.apply_setting(
+            beryl_app::settings_service::SettingsDraftValue::ContextCompactionTimeout("1".into()),
+        );
+        test_faults::bind_applied_settings_for_test(&fixture.store, fixture.applied_settings())
             .unwrap();
-        assert!(matches!(
-            home.execute(command),
-            CommandOutcome::Committed {
-                later_failure: None,
-                ..
-            }
-        ));
-        drop(home);
         (fixture, prepared, acquisition, runtime)
     })
     .join()

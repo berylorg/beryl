@@ -65,7 +65,7 @@ impl PreparedManualCompaction {
 pub(in crate::cas_projection) struct ManualCompactionAuthority {
     pub(in crate::cas_projection) candidate: syndic_storage::CompactionAdmissionCandidate,
     pub(in crate::cas_projection) session: beryl_state::SessionState,
-    settings: beryl_state::SettingsState,
+    settings: crate::settings_service::AppliedSettingsReader,
     pub(in crate::cas_projection) claim: beryl_state::ThreadClaimCatalogSource,
     pub(in crate::cas_projection) publication: Weak<()>,
     pub(in crate::cas_projection) connection: Weak<ProjectionConnection>,
@@ -187,7 +187,7 @@ impl ExactStopWorker {
             let authority = ManualCompactionAuthority {
                 candidate,
                 session: session.clone(),
-                settings: beryl_state::BerylState::reacquire(home).ok()?.settings(),
+                settings: self.command_authorizer.applied_settings()?,
                 claim,
                 publication,
                 connection,

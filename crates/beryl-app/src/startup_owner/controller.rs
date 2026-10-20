@@ -288,13 +288,20 @@ impl Controller {
                     let surface = self.custody.surface.take();
                     let cancellation = cx
                         .update(|app| {
+                            if let Some(settings) = worker.services.as_ref()
+                                .and_then(|services| services.graph())
+                                .and_then(|graph| graph.settings()) {
+                                if let Err(error) = crate::settings_autosave::publish_applied(&settings.applied_reader(), app) {
+                                    tracing::error!(%error, "Startup Settings autosave projection is unavailable");
+                                }
+                            }
                             crate::main_window::publish_home_open_notice_classification(
                                 best_effort_home,
                                 app,
                             );
                             let appearance = GpuiAppearanceWindowSet::new(
                                 appearance,
-                                NonZeroUsize::new(beryl_state::MAX_RESTORABLE_WINDOWS).unwrap(),
+                                NonZeroUsize::new(beryl_state::MAX_RESTORABLE_WINDOWS + 2).unwrap(),
                                 app,
                             );
                             native.start(

@@ -2,8 +2,8 @@
 
 ## Status
 
-Source correction independently reviewed on 2026-10-20. Runtime qualification and production
-checking remain pending; this does not accept the complete Settings workflow.
+Accepted on 2026-10-20 for the reproduced unpublished-retirement stack boundary, including owning
+runtime qualification and production checking. Complete Settings acceptance is separate.
 
 ## Failure And Correction
 
@@ -38,15 +38,15 @@ with no test-thread-stack environment override.
 Both original native reproductions now finish retirement and report the earlier generic New Window
 publication refusal instead of overflowing in candidate authentication. Their later fixture panic
 is recorded as a non-unwinding panic abort (0xc0000409), distinct from the former stack overflow
-(0xc00000fd). These are not passing end-to-end native cases. The exact earlier publication guard
-remains under diagnosis in Settings; no generic gate removal is justified by this evidence. No
+(0xc00000fd). These were not passing end-to-end native cases at this prerequisite's acceptance.
+The later exact appearance-custody publication correction and passing original native routes are
+recorded in [Settings acceptance](settings-workflow-mounting.md); no generic gate removal follows. No
 universal native stack-headroom claim is made.
 
 The creation owner publishes its terminal error only after the original work settles; the reported
 error therefore confirms completed retirement. Independent final review accepts this narrow boundary
 with those evidence limits.
 
-Fresh first-chance trace, exact runner inputs and focused disassembly remain in
-`.aipm/tasks/settings-mounting/` through their final acceptance and diagnosis consumer. The
-in-progress broader Settings regression packet uses its own recorded artifact and does not replace
-this correction's focused acceptance.
+Fresh first-chance trace, exact runner inputs and focused disassembly were retained through their
+final Settings acceptance and diagnosis consumer. That broader qualification does not replace this
+correction's focused acceptance.

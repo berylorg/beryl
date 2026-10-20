@@ -250,6 +250,9 @@ fn resident_run(scenario: ResidentScenario) {
                         let layout = cx.update(|app| composer.read(app).gpui_input().read(app).resident_layout_snapshot()).unwrap();
                         let configurator_layout = layout.clone();
                         let admit = |app: &mut gpui::App| {
+                                if scenario == ResidentScenario::SuspendedFrame {
+                                    owner.borrow_mut().test_enable_resident_frame_capture();
+                                }
                                 let key = RunningProcessOwner::prepare_interrupted_exit_resident(
                                     &owner,
                                     &request,
@@ -527,7 +530,33 @@ fn resident_run(scenario: ResidentScenario) {
                                     .unwrap()
                                     .err()
                                     .unwrap();
-                                assert!(refusal.contains("frame has not returned"));
+                                assert!(
+                                    refusal.contains("frame has not returned"),
+                                    "unexpected resident admission refusal: {refusal}"
+                                );
+                                assert!(cx.update(|app| {
+                                    RunningProcessOwner::test_dispatch_scheduled_resident_frame(
+                                        &owner, app,
+                                    )
+                                }).unwrap());
+                                cx.background_executor()
+                                    .timer(Duration::from_millis(5))
+                                    .await;
+                                cx.update(|app| {
+                                    assert!(
+                                        !RunningProcessOwner::test_dispatch_scheduled_resident_frame(
+                                            &owner, app,
+                                        )
+                                    );
+                                    assert_eq!(completions.get(), 1);
+                                    assert_eq!(
+                                        owner.borrow().interrupted_exit_resident_result(&key)
+                                            .unwrap_err(),
+                                        "No resident preparation"
+                                    );
+                                    owner.borrow().interrupted_exit_services_result(&request)
+                                        .unwrap();
+                                }).unwrap();
                             }
                             drop(resources);
                         };

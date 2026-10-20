@@ -165,6 +165,7 @@ impl MainWindowShellRoot {
             appearance_registration: Rc::new(std::cell::Cell::new(false)),
             command_focus: cx.focus_handle(),
             exit_focus: cx.focus_handle(),
+            settings_focus: cx.focus_handle(),
             shell_focus,
             notices,
             home_warning_startup: None,
@@ -172,6 +173,8 @@ impl MainWindowShellRoot {
             branch_discussion: branch_discussion::BranchDiscussionContribution::default(),
         };
         root.subscribe_notices(window, cx);
+        cx.observe_global::<crate::settings_command::SettingsCommandRoute>(|_, cx| cx.notify())
+            .detach();
         cx.observe_window_bounds(window, |root, window, cx| {
             root.minimum_viewport = window.viewport_size();
             root.observe_minimum_restore(window);
@@ -401,6 +404,7 @@ impl Render for MainWindowShellRoot {
             .new_window
             .then(|| crate::main_window::creation::command::render(self, &self.command_focus, cx));
         let exit = exit_command::render(self, window, cx);
+        let settings = settings_command::render(self, cx);
         let running = running_threads::render_command(self, window, cx);
         let setup = runtime_setup::render_command(self, window, cx);
         let setup_picker = runtime_setup::render_picker(self, window);
@@ -455,7 +459,8 @@ impl Render for MainWindowShellRoot {
                     .child(switcher)
                     .child(running)
                     .children(command)
-                    .child(exit),
+                    .child(exit)
+                    .child(settings),
             )
             .children(if controller.metrics.lineage {
                 lineage

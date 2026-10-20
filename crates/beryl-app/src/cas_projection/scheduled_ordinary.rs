@@ -31,7 +31,7 @@ impl ScheduledOrdinaryRequestPolicy {
     }
 
     pub fn backend_defaults(
-        settings: beryl_state::SettingsState,
+        settings: crate::settings_service::AppliedSettingsReader,
         model_context_window_tokens: Option<u64>,
         projection_timeout: Duration,
         request_timeout: Duration,
@@ -57,6 +57,11 @@ impl ScheduledOrdinaryRequestPolicy {
             projection_timeout,
             turn,
         }
+    }
+
+    pub fn with_applied_settings(mut self, settings: crate::settings_service::AppliedSettingsReader) -> Self {
+        self.turn = self.turn.with_applied_settings(settings);
+        self
     }
 
     /// Returns the persistent CAS thread-start policy.

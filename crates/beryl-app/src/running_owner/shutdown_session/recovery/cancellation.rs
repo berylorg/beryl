@@ -77,7 +77,7 @@ impl RunningProcessOwner {
             let candidate = match recovery.settlement.borrow().as_ref() {
                 Some(CandidateSettlement::Services(Ok(graph))) => {
                     let appearance = graph.appearance();
-                    let home = appearance.prepared().home();
+                    let home = appearance.home();
                     Some((home.home_id(), home.home_generation()))
                 }
                 _ => recovery

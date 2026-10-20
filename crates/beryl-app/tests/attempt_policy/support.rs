@@ -6,11 +6,7 @@ use beryl_app::cas_projection::{
     OrdinaryTurnExecutionRequest, OrdinaryTurnNotStarted,
 };
 use beryl_backend::{ManagedBackendClientConnector, ThreadStartOptions};
-use beryl_home_store::{CommandOutcome, HomeCommand};
 use beryl_model::{CasProcessGeneration, SyndicThreadId};
-use beryl_state::{
-    ApplySettings, ExpectedSettingRevision, SettingKey, SettingUpdate, SettingValue,
-};
 use syndic_storage::SyndicTimestamp;
 
 use super::{
@@ -20,33 +16,9 @@ use super::{
 };
 
 pub fn apply_instructions(fixture: &Fixture, value: &str) {
-    let home = fixture.home();
-    let settings = fixture.state.settings();
-    let prior = settings
-        .setting(&home, SettingKey::DeveloperInstructions)
-        .unwrap();
-    let expected = prior.map_or(ExpectedSettingRevision::Absent, |record| {
-        ExpectedSettingRevision::Exact(record.revision())
-    });
-    let update = SettingUpdate::new(
-        SettingKey::DeveloperInstructions,
-        expected,
-        SettingValue::developer_instructions(value).unwrap(),
+    fixture.apply_setting(
+        beryl_app::settings_service::SettingsDraftValue::DeveloperInstructions(value.into()),
     );
-    let mut command = HomeCommand::new(home.home_revision().unwrap());
-    command
-        .add(settings.apply(
-            settings.revision(&home).unwrap(),
-            ApplySettings::new(vec![update]).unwrap(),
-        ))
-        .unwrap();
-    assert!(matches!(
-        home.execute(command),
-        CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        }
-    ));
 }
 
 pub fn admit(fixture: &Fixture, server: &AttemptServer, process: u64) -> AdmittedProjectionSession {

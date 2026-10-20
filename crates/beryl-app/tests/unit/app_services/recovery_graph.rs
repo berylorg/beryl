@@ -8,7 +8,7 @@ fn recovery_service_graph_requires_retired_custody_and_preserves_private_retry()
         "cancel",
         "precancelled",
         "theme_failure",
-        "cas_failure",
+        "read_failure",
         "stale",
         "foreign",
         "missing",
@@ -50,7 +50,7 @@ fn recovery_service_graph_requires_retired_custody_and_preserves_private_retry()
         }
         let config = configuration();
         let requirement = config.projection.turn_start_admission_requirement();
-        if mode == "cas_failure" {
+        if mode == "read_failure" {
             faults.fail_next(FaultPoint::BeforeReadConfirmation);
         }
         let missing = if mode == "missing" {
@@ -188,7 +188,13 @@ fn recovery_service_graph_requires_retired_custody_and_preserves_private_retry()
             RecoveryServicePreparationError::Refused(_) => {
                 assert!(matches!(
                     mode,
-                    "precancelled" | "stale" | "foreign" | "missing" | "unretired" | "unsettled"
+                    "precancelled"
+                        | "stale"
+                        | "foreign"
+                        | "missing"
+                        | "unretired"
+                        | "unsettled"
+                        | "read_failure"
                 ));
                 if mode == "missing" {
                     candidate = missing;
@@ -215,7 +221,7 @@ fn recovery_service_graph_requires_retired_custody_and_preserves_private_retry()
                 candidate.take().unwrap().abort()
             }
             RecoveryServicePreparationError::Cas(failure) => {
-                assert_eq!(mode, "cas_failure");
+                assert_eq!(mode, "read_failure");
                 assert!(candidate.is_none());
                 assert!(failure.into_retry_parts().is_err());
                 owner.take_retired_service_home(expected).unwrap()

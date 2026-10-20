@@ -1,5 +1,8 @@
 use crate::running_owner::{RunningProcessOwner, StartupCleanup};
 
+#[path = "settings_appearance_flight.rs"]
+mod settings_appearance_flight;
+
 mod exit_delivery {
     use super::*;
     include!(concat!(

@@ -17,15 +17,29 @@ impl ThemeRuntime {
         store: &HomeStore,
         publication: &ThemeRepositoryCommit,
     ) -> RepositoryAppearanceResult {
+        if publication.manifest().is_some() {
+            if let Ok(repository) = self
+                .service
+                .as_ref()
+                .expect("running service")
+                .observe_repository(
+                    store,
+                    self.config.max_manifest_bytes,
+                    self.config.manifest_read,
+                    self.repository.as_ref(),
+                )
+            {
+                self.repository = Some(repository);
+            }
+            return RepositoryAppearanceResult::Unchanged;
+        }
         let active_affected = self.active.as_ref().is_some_and(|active| {
             publication
                 .affected_documents()
                 .iter()
                 .any(|document| document.theme_id() == active)
         });
-        if publication.manifest().is_some() {
-            self.refresh_repository(store)
-        } else if active_affected {
+        if active_affected {
             self.reload_active_document(store)
         } else {
             RepositoryAppearanceResult::Unchanged
@@ -47,12 +61,15 @@ impl ThemeRuntime {
             self.repository = Some(candidate);
             return RepositoryAppearanceResult::Unchanged;
         };
+        let Some(settings) = self.settings else {
+            return self.retain(ThemeRuntimeFailureClass::Reconciliation);
+        };
         let loaded = load_prepared(
             service,
             store,
             &candidate,
             active,
-            self.settings,
+            settings,
             self.last_observed_document.as_ref(),
             self.config,
             &mut self.pages_read,
@@ -65,17 +82,33 @@ impl ThemeRuntime {
             .repository
             .as_ref()
             .map(ThemeRepositoryObservation::manifest);
-        if installed_identity(
-            self.appearance
+        let pending = self.pending_settings_publication.is_some()
+            || self
+                .appearance
                 .as_ref()
                 .expect("running appearance")
-                .durable_base()
-                .prepared(),
-        ) == installed_identity(&prepared)
+                .diagnostics()
+                .pending_durable_application();
+        if !pending
+            && installed_identity(
+                self.appearance
+                    .as_ref()
+                    .expect("running appearance")
+                    .durable_base()
+                    .prepared(),
+            )
+            .zip(installed_identity(&prepared))
+            .is_some_and(|(before, after)| {
+                before.manifest().home() == after.manifest().home()
+                    && before.theme_id() == after.theme_id()
+                    && before.byte_length() == after.byte_length()
+                    && before.digest() == after.digest()
+            })
         {
             self.repository = Some(candidate);
             self.last_observed_document = Some(observed);
             self.refresh_reread_needed = false;
+            self.last_failure = None;
             return RepositoryAppearanceResult::Unchanged;
         }
         let identity = match old_manifest {
@@ -106,6 +139,15 @@ impl ThemeRuntime {
         &mut self,
         store: &HomeStore,
     ) -> RepositoryAppearanceResult {
+        if self.pending_settings_publication.is_some() {
+            return match self.retry_current_durable(store) {
+                Ok(result) => result,
+                Err(failure) => self.retain(failure),
+            };
+        }
+        let Some(settings) = self.settings else {
+            return RepositoryAppearanceResult::Retained(ThemeRuntimeFailureClass::Reconciliation);
+        };
         let Some(repository) = self.repository.as_ref() else {
             return self.refresh_repository(store);
         };
@@ -157,7 +199,7 @@ impl ThemeRuntime {
             Ok(value) => value,
             Err(_) => {
                 let prepared = match PreparedThemeAppearance::installed(
-                    self.settings,
+                    settings,
                     active,
                     observed.identity().clone(),
                     ThemeResolver::new(observed.document().definition())
@@ -171,8 +213,19 @@ impl ThemeRuntime {
             }
         };
         match outcome {
+            ThemeLiveEditOutcome::Unchanged { .. }
+                if self
+                    .appearance
+                    .as_ref()
+                    .expect("running appearance")
+                    .diagnostics()
+                    .pending_durable_application() =>
+            {
+                self.publish_external_document(observed.identity().clone(), prior)
+            }
             ThemeLiveEditOutcome::Unchanged { .. } => {
                 self.refresh_reread_needed = false;
+                self.last_failure = None;
                 RepositoryAppearanceResult::Unchanged
             }
             ThemeLiveEditOutcome::Prepared { replacement } => {
@@ -205,11 +258,14 @@ impl ThemeRuntime {
         }
     }
 
-    fn publish_external(
+    pub(super) fn publish_external(
         &mut self,
         identity: DurablePublicationIdentity,
         prepared: PreparedThemeAppearance,
     ) -> Result<RepositoryAppearanceResult, ThemeRuntimeFailureClass> {
+        if self.pending_settings_publication.is_some() {
+            return self.publish(identity, prepared);
+        }
         let appearance = self
             .appearance
             .as_mut()
@@ -229,6 +285,19 @@ impl ThemeRuntime {
         identity: DurablePublicationIdentity,
         prepared: PreparedThemeAppearance,
     ) -> Result<RepositoryAppearanceResult, ThemeRuntimeFailureClass> {
+        let identity = if let Some((draft, revision)) = self.pending_settings_publication {
+            let committed = self.settings.ok_or(ThemeRuntimeFailureClass::Settings)?;
+            if prepared.settings() != committed {
+                return Err(ThemeRuntimeFailureClass::Settings);
+            }
+            DurablePublicationIdentity::Settings {
+                draft,
+                revision,
+                committed,
+            }
+        } else {
+            identity
+        };
         let appearance = self
             .appearance
             .as_mut()
@@ -239,11 +308,16 @@ impl ThemeRuntime {
         let outcome = appearance
             .publish_durable(request, prepared)
             .map_err(map_publication_error)?;
+        self.pending_settings_publication = None;
+        self.refresh_reread_needed = false;
         self.last_failure = None;
         Ok(map_durable_outcome(outcome))
     }
 
-    fn retain(&mut self, failure: ThemeRuntimeFailureClass) -> RepositoryAppearanceResult {
+    pub(super) fn retain(
+        &mut self,
+        failure: ThemeRuntimeFailureClass,
+    ) -> RepositoryAppearanceResult {
         self.last_failure = Some(failure);
         RepositoryAppearanceResult::Retained(failure)
     }

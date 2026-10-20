@@ -8,6 +8,7 @@ use crate::{
 };
 
 pub(crate) struct PreparedRecoveryAppServices {
+    pub(super) settings: Option<crate::settings_service::PreparedSettingsService>,
     pub(super) cas: Option<PreparedRecoveryCasServices>,
     pub(super) catalog_source: Option<CatalogSourceCoordinator>,
     pub(super) catalog_query: Option<CatalogQueryService>,
@@ -190,12 +191,15 @@ impl PreparedRecoveryAppServices {
 
     pub(crate) fn prepare(
         cas: PreparedRecoveryCasServices,
+        settings: crate::settings_service::PreparedSettingsService,
+        selection: crate::theme_runtime::ThemeRecoverySelection,
         state: &BerylState,
         syndic: SyndicStorage,
         configuration: AppServiceConfiguration,
         cancellation: &CommandCancellation,
     ) -> Result<Self, RecoveryAppServicePreparationFailure> {
         let mut prepared = Self {
+            settings: Some(settings),
             cas: Some(cas),
             catalog_source: None,
             catalog_query: None,
@@ -246,6 +250,7 @@ impl PreparedRecoveryAppServices {
                 state.themes(),
                 &state.settings(),
                 configuration.theme,
+                selection,
             )?);
             check_cancellation(cancellation)?;
             Ok(())

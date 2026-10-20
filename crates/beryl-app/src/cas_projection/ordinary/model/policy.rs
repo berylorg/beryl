@@ -1,14 +1,14 @@
-use std::{fmt, sync::Arc, time::Duration};
+use std::{fmt, time::Duration};
 
 use beryl_backend::TurnStartOptions;
 use beryl_home_store::HomeStore;
-use beryl_state::{SettingKey, SettingsState};
+use crate::settings_service::AppliedSettingsReader;
 
 use super::OrdinaryTurnExecutionRequest;
 use crate::cas_projection::{LoadedCasProjection, OrdinaryTurnExecutionError};
 
 #[derive(Clone)]
-pub(super) struct BackendDefaultSettings(Arc<SettingsState>);
+pub(super) struct BackendDefaultSettings(AppliedSettingsReader);
 
 impl fmt::Debug for BackendDefaultSettings {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -18,7 +18,7 @@ impl fmt::Debug for BackendDefaultSettings {
 
 impl PartialEq for BackendDefaultSettings {
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
+        self.0.same_source(&other.0)
     }
 }
 
@@ -61,14 +61,17 @@ impl OrdinaryTurnExecutionRequest {
         }
     }
 
-    pub fn backend_defaults(settings: SettingsState, request_timeout: Duration) -> Self {
-        let mut request = Self::new(TurnStartOptions::default(), request_timeout);
-        request.context_compaction_timeout =
+    pub fn backend_defaults(settings: AppliedSettingsReader, request_timeout: Duration) -> Self {
+        Self::new(TurnStartOptions::default(), request_timeout).with_applied_settings(settings)
+    }
+
+    pub fn with_applied_settings(mut self, settings: AppliedSettingsReader) -> Self {
+        self.context_compaction_timeout =
             crate::cas_projection::ContextCompactionTimeoutPolicy::applied_settings(
                 settings.clone(),
             );
-        request.backend_default_settings = Some(BackendDefaultSettings(Arc::new(settings)));
-        request
+        self.backend_default_settings = Some(BackendDefaultSettings(settings));
+        self
     }
 
     pub(in crate::cas_projection::ordinary) fn resolve_start_options(
@@ -88,9 +91,11 @@ impl OrdinaryTurnExecutionRequest {
             }
             return Ok(self.start_options.clone());
         };
-        let record = settings
-            .0
-            .setting(store, SettingKey::DeveloperInstructions)?;
+        let applied = settings.0.snapshot()
+            .map_err(|_| OrdinaryTurnExecutionError::BackendDefaultPolicyUnavailable)?;
+        if !applied.matches_home(store) {
+            return Err(OrdinaryTurnExecutionError::BackendDefaultPolicyUnavailable);
+        }
         let metadata = projection.observed_thread_metadata()?;
         let (model, reasoning) = if let Some(pending) = &self.pending_model_choice {
             let model = pending.choice.model.as_str().to_owned();
@@ -108,11 +113,9 @@ impl OrdinaryTurnExecutionRequest {
                 .ok_or(OrdinaryTurnExecutionError::BackendDefaultPolicyUnavailable)?;
             (model, metadata.reasoning_effort)
         };
-        let instructions = record
-            .as_ref()
-            .and_then(|record| record.value().as_developer_instructions())
-            .filter(|instructions| !instructions.trim().is_empty())
-            .map(str::to_owned);
+        let instructions = applied.developer_instructions()
+            .map_err(|_| OrdinaryTurnExecutionError::BackendDefaultPolicyUnavailable)?;
+        let instructions = (!instructions.trim().is_empty()).then(|| instructions.to_owned());
         Ok(self
             .start_options
             .clone()

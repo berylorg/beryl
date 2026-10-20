@@ -3,7 +3,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use beryl_home_store::CommandCancellation;
 use beryl_model::AssetReferenceSetId;
 use beryl_state::AssetReferenceSetStagingAuthority;
-use gpui::{Context, Window};
+use gpui::{App, Context, Window};
 use syndic_storage::{DraftMarkerSealOperationIdV1, DraftPieceOperationIdV1, SyndicTimestamp};
 
 use super::super::{
@@ -117,6 +117,14 @@ impl MainWindowConversationComposerMount {
         let selection = self
             .selected_identity()
             .ok_or_else(|| "conversation composer autosave has no selected slot".to_owned())?;
+        if let Some(publication) = crate::settings_autosave::current(cx)
+            && (publication.publication() != settings_generation
+                || publication.interval() != Some(interval)
+                || publication.source().home_id != selection.binding().home_id()
+                || publication.source().home_generation != selection.binding().home_generation())
+        {
+            return Ok(ComposerHostAutosaveSettingsCompletion::Stale);
+        }
         let completion = self.bound_service()?.publish_autosave_interval(
             selection,
             settings_generation,
@@ -159,16 +167,52 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        if let Some((settings_generation, interval)) = self.autosave.settings
-            && let Some(selection) = self.selected_identity()
-        {
-            let _ = self.bound_service()?.publish_autosave_interval(
-                selection,
-                settings_generation,
-                interval,
-            )?;
+        if self.autosave.projection_observer.is_none() {
+            self.autosave.projection_observer = Some(
+                cx.observe_global_in::<crate::settings_autosave::SettingsAutosaveProjection>(
+                    window,
+                    |this, window, cx| {
+                        if this.autosave.workers_drained()
+                            && matches!(
+                                this.autosave.state,
+                                AutosaveState::Idle | AutosaveState::Waiting { .. }
+                            )
+                            && let Err(error) = this.refresh_autosave(window, cx)
+                        {
+                            this.autosave.last_error = Some(error);
+                        }
+                    },
+                ),
+            );
         }
         self.refresh_autosave(window, cx)
+    }
+
+    fn synchronize_applied_autosave(&mut self, cx: &App) -> Result<bool, String> {
+        let Some(selection) = self.selected_identity() else {
+            return Ok(false);
+        };
+        if let Some(publication) = crate::settings_autosave::current(cx) {
+            let source = publication.source();
+            if source.home_id != selection.binding().home_id()
+                || source.home_generation != selection.binding().home_generation()
+            {
+                self.autosave.settings = None;
+                return Ok(false);
+            }
+            self.autosave.settings = publication
+                .interval()
+                .map(|interval| (publication.publication(), interval));
+            if self.autosave.settings.is_none() {
+                return Ok(false);
+            }
+        }
+        if let Some((generation, interval)) = self.autosave.settings {
+            let _ = self
+                .bound_service()?
+                .publish_autosave_interval(selection, generation, interval)?;
+        }
+        Ok(true)
     }
 
     pub(super) fn suspend_autosave(&mut self) -> Result<(), String> {
@@ -206,6 +250,7 @@ impl MainWindowConversationComposerMount {
         let Some(selection) = self.selected_identity() else {
             return Ok(());
         };
+        let timer_admitted = self.synchronize_applied_autosave(cx)?;
         if let Some(ticket) = self
             .bound_service()?
             .selected_autosave_publication(selection)?
@@ -213,9 +258,18 @@ impl MainWindowConversationComposerMount {
             self.autosave.state = AutosaveState::Publishing { selection, ticket };
             return self.schedule_autosave_advance(window, cx);
         }
+        if !timer_admitted {
+            return Ok(());
+        }
         let Some(timer) = self.bound_service()?.selected_autosave_timer(selection)? else {
             return Ok(());
         };
+        if crate::settings_autosave::current(cx).is_some()
+            && self.autosave.settings.map(|settings| settings.0)
+                != Some(timer.settings_generation())
+        {
+            return Err("composer autosave Settings publication is stale".to_owned());
+        }
         self.schedule_autosave_timer(selection, timer, window, cx)
     }
 
@@ -226,6 +280,15 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
+        if !self.synchronize_applied_autosave(cx)? {
+            return Ok(());
+        }
+        if crate::settings_autosave::current(cx).is_some()
+            && self.autosave.settings.map(|settings| settings.0)
+                != Some(timer.settings_generation())
+        {
+            return self.refresh_autosave(window, cx);
+        }
         let generation = self.autosave.advance_generation()?;
         self.autosave.state = AutosaveState::Waiting { selection, timer };
         let delay = timer
@@ -261,6 +324,13 @@ impl MainWindowConversationComposerMount {
             } if expected == timer => selection,
             _ => return Ok(()),
         };
+        if !self.synchronize_applied_autosave(cx)?
+            || (crate::settings_autosave::current(cx).is_some()
+                && self.autosave.settings.map(|settings| settings.0)
+                    != Some(timer.settings_generation()))
+        {
+            return self.refresh_autosave(window, cx);
+        }
         let requirement = self
             .bound_service()?
             .autosave_capture_requirement(selection)?;

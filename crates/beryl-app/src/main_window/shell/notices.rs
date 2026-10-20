@@ -57,7 +57,7 @@ impl MainWindowNoticeIngress {
         if self.window_id != controller.window_id() {
             return Err(NoticeRejection::WrongWindow);
         }
-        if self.home != controller.appearance().prepared().home() || self.home != mount.home {
+        if self.home != controller.appearance().home() || self.home != mount.home {
             return Err(NoticeRejection::Disposed);
         }
         Ok(())
@@ -202,7 +202,7 @@ impl MainWindowShellNotices {
             runtime: runtime::RuntimeNoticeContribution::default(),
             recovery: recovery::HomeRecoveryNoticeContribution::default(),
             window_id: controller.window_id(),
-            home: appearance.prepared().home(),
+            home: appearance.home(),
             publication,
             widget: cx.new(|cx| MainWindowNoticeWidget::new(appearance, safe_focus, |_| {}, cx)),
             lifetime: Rc::new(()),
@@ -221,7 +221,7 @@ impl MainWindowShellNotices {
 
     fn scope_current(&self) -> bool {
         let current = self.publication.snapshot();
-        current.active && current.current.prepared().home() == self.home
+        current.active && current.current.home() == self.home
     }
 
     fn recovery_display_current(&self) -> bool {
@@ -230,7 +230,7 @@ impl MainWindowShellNotices {
                 .recovery
                 .state
                 .is_some_and(|state| state != MainWindowHomeRecoveryNoticeState::Recovered)
-            && self.publication.snapshot().current.prepared().home() == self.home
+            && self.publication.snapshot().current.home() == self.home
     }
 }
 

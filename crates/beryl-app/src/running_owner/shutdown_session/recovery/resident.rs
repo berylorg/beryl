@@ -292,7 +292,7 @@ impl RunningProcessOwner {
         app: &mut App,
     ) {
         let wake = Rc::new(());
-        let (window, cancelled) = {
+        let _cancelled = {
             let mut retained = owner.borrow_mut();
             let Some(flight) = retained
                 .interrupted_exit
@@ -308,29 +308,20 @@ impl RunningProcessOwner {
                 return;
             }
             flight.scheduled = Some(wake.clone());
-            let target = (flight.window, flight.cancelled);
-            if !target.1 {
+            let cancelled = flight.cancelled;
+            if !cancelled {
                 retained
                     .interrupted_exit
                     .as_mut()
                     .unwrap()
                     .pending_resident_frame = Some(Rc::downgrade(&wake));
             }
-            target
+            cancelled
         };
         let owner = owner.clone();
         let key = key.clone();
-        if cancelled {
-            let delay = app
-                .background_executor()
-                .timer(std::time::Duration::from_millis(16));
-            app.spawn(async move |cx| {
-                delay.await;
-                let _ =
-                    cx.update(|app| Self::advance_resident_preparation(&owner, &key, &wake, app));
-            })
-            .detach();
-        } else {
+        #[cfg(test)]
+        if !_cancelled && owner.borrow().capture_resident_frames {
             let frame_owner = Rc::downgrade(&owner);
             let frame_key = key.clone();
             let frame_wake = wake.clone();
@@ -341,24 +332,19 @@ impl RunningProcessOwner {
                     }
                 });
             };
-            #[cfg(test)]
-            if owner.borrow().capture_resident_frames {
-                let mut retained = owner.borrow_mut();
-                assert!(retained.captured_resident_frame.is_none());
-                retained.captured_resident_frame = Some(Box::new(callback));
-                return;
-            }
-            if window
-                .update(app, |_, window, _| {
-                    window.on_next_frame(move |_, app| {
-                        callback(app);
-                    });
-                })
-                .is_err()
-            {
-                app.defer(move |app| Self::advance_resident_preparation(&owner, &key, &wake, app));
-            }
+            let mut retained = owner.borrow_mut();
+            assert!(retained.captured_resident_frame.is_none());
+            retained.captured_resident_frame = Some(Box::new(callback));
+            return;
         }
+        let delay = app
+            .background_executor()
+            .timer(std::time::Duration::from_millis(16));
+        app.spawn(async move |cx| {
+            delay.await;
+            let _ = cx.update(|app| Self::advance_resident_preparation(&owner, &key, &wake, app));
+        })
+        .detach();
     }
 
     fn advance_resident_preparation(

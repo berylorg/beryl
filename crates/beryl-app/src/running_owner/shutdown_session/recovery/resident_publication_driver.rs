@@ -110,7 +110,7 @@ impl RunningProcessOwner {
                     .recovery_owner()?
                     .borrow()
                     .interrupted_exit_appearance(request)?;
-                let home = prepared.prepared().home();
+                let home = prepared.home();
                 let generation = home.home_generation();
                 let fresh_adapters = owner
                     .recovery_owner()?

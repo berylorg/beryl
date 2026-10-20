@@ -322,6 +322,21 @@ pub struct ThemeDefinition {
 }
 
 impl ThemeDefinition {
+    pub(crate) fn replacing_properties(
+        &self,
+        changes: BTreeMap<(ThemeRoleId, ThemePropertyId), ThemePropertySource>,
+    ) -> Self {
+        let mut next = self.clone();
+        for ((role, property), source) in changes {
+            next.roles
+                .entry(role.clone())
+                .or_insert_with(|| ThemeRoleDefinition::new(role, None, BTreeMap::new()))
+                .properties
+                .insert(property, source);
+        }
+        next
+    }
+
     pub(crate) fn checked(
         roles: BTreeMap<ThemeRoleId, ThemeRoleDefinition>,
     ) -> Result<Self, ThemeValueError> {

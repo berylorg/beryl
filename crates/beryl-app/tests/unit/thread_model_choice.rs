@@ -55,8 +55,9 @@ fn accepted_choice_gives_way_to_metadata_reloaded_from_the_same_backend_thread()
     fixture.submit_text(SUBMITTED_TEXT);
     apply_instructions(&fixture, "accepted instructions");
     let pending = sessions.pending_model_choice(thread, &binding).unwrap();
-    let request = OrdinaryTurnExecutionRequest::backend_defaults(fixture.state.settings(), TIMEOUT)
-        .with_pending_model_choice(pending);
+    let request =
+        OrdinaryTurnExecutionRequest::backend_defaults(fixture.applied_settings(), TIMEOUT)
+            .with_pending_model_choice(pending);
     let server = AttemptServer::spawn_reloading(
         "accepted-choice-metadata".into(),
         expected("accepted instructions"),
@@ -117,7 +118,7 @@ fn accepted_choice_gives_way_to_metadata_reloaded_from_the_same_backend_thread()
             binding.clone(),
             admitted,
             ScheduledOrdinaryRequestPolicy::backend_defaults(
-                fixture.state.settings(),
+                fixture.applied_settings(),
                 Some(1_000_000),
                 TIMEOUT,
                 TIMEOUT,
@@ -161,7 +162,7 @@ fn scheduled_choice_reaches_real_turn_with_latest_instructions_and_retires_on_ac
         )
         .unwrap();
     let policy = ScheduledOrdinaryRequestPolicy::backend_defaults(
-        fixture.state.settings(),
+        fixture.applied_settings(),
         Some(1_000_000),
         TIMEOUT,
         TIMEOUT,
@@ -251,8 +252,9 @@ fn exact_rejection_preserves_choice_for_explicit_retry_with_new_instructions() {
     let pending = sessions
         .pending_model_choice(fixture.thread, &syndic::execution_binding())
         .unwrap();
-    let request = OrdinaryTurnExecutionRequest::backend_defaults(fixture.state.settings(), TIMEOUT)
-        .with_pending_model_choice(pending);
+    let request =
+        OrdinaryTurnExecutionRequest::backend_defaults(fixture.applied_settings(), TIMEOUT)
+            .with_pending_model_choice(pending);
     let server = AttemptServer::spawn_attempts(
         "thread/start",
         "model-choice-retry".into(),

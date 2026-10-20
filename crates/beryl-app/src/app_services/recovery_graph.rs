@@ -112,7 +112,7 @@ impl ProcessServiceOwner {
             ));
         }
         let retained = candidate
-            .as_ref()
+            .as_mut()
             .ok_or_else(|| reject("recovery candidate is unavailable".into()))?;
         self.validate_retired_service_home_return(expected, Some(retained.home_id()))
             .map_err(|error| reject(error.to_string()))?;
@@ -131,6 +131,34 @@ impl ProcessServiceOwner {
             BerylState::reacquire_candidate(retained).map_err(|error| reject(error.to_string()))?;
         let syndic = SyndicStorage::reacquire_candidate(retained)
             .map_err(|error| reject(error.to_string()))?;
+        let settings = crate::settings_service::PreparedSettingsService::prepare_candidate(
+            &retained
+                .recovery_access()
+                .map_err(|error| reject(error.to_string()))?,
+            &state.settings(),
+            self.settings_owner.clone(),
+            self.next_settings_generation()
+                .map_err(|error| reject(error.to_string()))?,
+        )
+        .map_err(|error| reject(error.to_string()))?;
+        let applied = settings.applied_reader();
+        let selection = if self
+            .settings_owner
+            .excluded_keys()
+            .map_err(|error| reject(error.to_string()))?
+            .contains(&beryl_state::SettingKey::ActiveThemeId)
+        {
+            crate::theme_runtime::ThemeRecoverySelection::Unavailable(
+                self.theme_recovery_context.clone().ok_or_else(|| {
+                    reject(
+                        "unavailable theme selection requires its original appearance context"
+                            .into(),
+                    )
+                })?,
+            )
+        } else {
+            crate::theme_runtime::ThemeRecoverySelection::ProvenSnapshot
+        };
         let (provider, sessions) = ProcessScheduledExecutionProvider::new();
         let mut prepared = PreparedRecoveryServiceGraph {
             first_composer: None,
@@ -194,7 +222,10 @@ impl ProcessServiceOwner {
                 RuntimeSessionPreparationConfig {
                     runtime_roots: prepared.state.runtime_roots(),
                     assets: prepared.state.assets(),
-                    policy: configuration.session_policy.clone(),
+                    policy: configuration
+                        .session_policy
+                        .clone()
+                        .with_applied_settings(applied),
                     token_directory: configuration.token_directory.clone(),
                     wsl_supervisor_artifact: configuration.wsl_supervisor_artifact.clone(),
                 },
@@ -217,6 +248,8 @@ impl ProcessServiceOwner {
         prepared.services = Some(
             PreparedRecoveryAppServices::prepare(
                 cas,
+                settings,
+                selection,
                 &prepared.state,
                 prepared.syndic.clone(),
                 configuration,

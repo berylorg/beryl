@@ -23,12 +23,17 @@ impl ProcessServiceOwner {
             return Err(AppServiceCloseError::NotReady);
         }
         self.require_settled_custody()?;
+        self.graph
+            .as_mut()
+            .expect("admitted failed graph")
+            .retire_settings()?;
         let fence = self.process.fence()?;
         if self.windows.main_window_occupancy() != 0 {
             return Err(AppServiceCloseError::NotReady);
         }
         self.attempt = InitialServiceAttemptState::Blocked;
         let mut graph = self.graph.take().expect("admitted failed graph");
+        self.settings_theme_retirement = graph.settings_theme_retirement.take();
         self.begin_catalog_query_close(graph.catalog_query.take());
         if let Some(mut catalog) = graph.catalog_source.take() {
             if let Err(error) = catalog.stop_and_join() {

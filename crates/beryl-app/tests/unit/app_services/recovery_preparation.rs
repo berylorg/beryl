@@ -22,11 +22,18 @@ fn recovery_app_services_remain_private_and_dispose_before_retry() {
         let home = candidate.publish().unwrap();
         faults.fail_next(FaultPoint::BeforeReadConfirmation);
         assert!(home.home_revision().is_err());
-        let candidate = home.recover_same_home().unwrap();
+        let mut candidate = home.recover_same_home().unwrap();
         let reference = candidate.service_reference();
         let generation = candidate.generation();
         let state = BerylState::reacquire_candidate(&candidate).unwrap();
         let syndic = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+        let settings = crate::settings_service::PreparedSettingsService::prepare_candidate(
+            &candidate.recovery_access().unwrap(),
+            &state.settings(),
+            owner.settings_owner.clone(),
+            owner.next_settings_generation().unwrap(),
+        )
+        .unwrap();
         let observer = state.themes();
         let (provider, sessions) = ProcessScheduledExecutionProvider::new();
         let attention = Arc::new(ProcessLifecycleAttentionPool::new());
@@ -94,6 +101,8 @@ fn recovery_app_services_remain_private_and_dispose_before_retry() {
         let observation = faults.block_next(FaultPoint::BeforeThemeWatchObservation);
         let result = PreparedRecoveryAppServices::prepare(
             cas,
+            settings,
+            crate::theme_runtime::ThemeRecoverySelection::ProvenSnapshot,
             if mode == "stale_state" {
                 &stale_state
             } else {

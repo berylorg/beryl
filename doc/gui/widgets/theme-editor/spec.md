@@ -90,6 +90,15 @@ Keyboard and pointer selection use stable role identity rather than visible row 
 
 The horizontal column-trail viewport owns horizontal scrolling. Each role column owns its vertical scrolling. The selected-role property region does not create another vertical scroll container; its rows participate in the external settings-window page-body scroll. Pointer-wheel and touchpad routing follows `scroll-ownership`, and one gesture never scrolls a role column and the settings page together.
 
+A role column becomes the nested vertical wheel target through actual keyboard focus on one of
+its realized rows or its viewport focus proxy. Pointer hover alone never changes that target.
+The routed column consumes the whole vertical gesture, including at an overflow edge; a gesture
+does not transfer to the outer Settings page. With focus outside the navigator, vertical input
+continues to the page. Horizontal and Shift-wheel input belongs to the column trail only while
+focus is inside the navigator. Scrolling and scrollbar interaction remain available under the
+Settings interaction gate; role activation and selection changes remain gated. Deactivation or
+release retires scroll callbacks and chrome together with the mounted navigator identity.
+
 Each role column realizes a fixed-height visible row window plus bounded overscan. Stable role ids
 own logical row focus, selected state, measurement, samples, and pointer anchors across window
 changes. When a focused row leaves its realized window, the widget closes any row-owned popup,

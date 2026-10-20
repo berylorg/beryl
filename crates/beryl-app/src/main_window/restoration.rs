@@ -131,7 +131,7 @@ impl MainWindowRestoreSet {
             .storage
             .revision(&services.store)
             .map_err(|e| e.to_string())?;
-        let home = appearance.prepared().home();
+        let home = appearance.home();
         if home.home_id() != services.store.home_id()
             || Some(home.home_generation()) != services.store.health().generation()
         {

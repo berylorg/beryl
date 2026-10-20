@@ -50,7 +50,6 @@ impl RunningProcessOwner {
                 .target()
                 .snapshot()
                 .current
-                .prepared()
                 .home()
                 .home_generation();
             let publication = owner.interrupted_exit.as_ref().unwrap().publication.clone();

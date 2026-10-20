@@ -41,7 +41,7 @@ pub(super) fn register(
             execution_binding(),
             session,
             ScheduledOrdinaryRequestPolicy::backend_defaults(
-                fixture.state.settings(),
+                fixture.applied_settings(),
                 Some(2_000_000),
                 TIMEOUT,
                 TIMEOUT,

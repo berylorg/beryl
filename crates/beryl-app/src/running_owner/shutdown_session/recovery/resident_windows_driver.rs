@@ -272,7 +272,7 @@ impl RunningProcessOwner {
                 let owner = retained_owner.borrow();
                 owner.validate_interrupted_exit_resident_windows(windows, app)?;
                 let prepared = owner.interrupted_exit_appearance(request)?;
-                let home = prepared.prepared().home();
+                let home = prepared.home();
                 owner
                     .process
                     .services

@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, sync::OnceLock};
 
 mod activity;
+mod theme_editor;
 
 use super::{
     ThemeColor, ThemeFontFamily, ThemeFontScale, ThemeFontStyle, ThemeFontWeight,
@@ -183,6 +184,9 @@ fn supported_properties(id: &str) -> &'static [ThemePropertyId] {
     if let Some(properties) = activity::properties(id) {
         return properties;
     }
+    if let Some(properties) = theme_editor::properties(id) {
+        return properties;
+    }
     if id.starts_with("transcript-view.narrative-block") {
         return NARRATIVE_BLOCK;
     }
@@ -233,6 +237,7 @@ fn supported_properties(id: &str) -> &'static [ThemePropertyId] {
         | "main.separator"
         | "structural.separator"
         | "input.caret"
+        | "settings.input.caret"
         | "focus.ring"
         | "transcript.activity_caret"
         | "markdown.thematic_break"
@@ -429,6 +434,9 @@ const fn rgb(value: [u8; 3]) -> ThemeColor {
 
 fn palette(id: &str) -> Palette {
     if let Some(value) = activity::palette(id) {
+        return value;
+    }
+    if let Some(value) = theme_editor::palette(id) {
         return value;
     }
     if id.starts_with("transcript-view.narrative-") {
@@ -697,6 +705,23 @@ fn notice_severity_palette(id: &str) -> Option<Palette> {
 }
 
 const ROLE_INVENTORY: &[(&str, Option<&str>)] = &[
+    ("settings.window.text", Some("text")),
+    ("theme-editor", Some("text")),
+    ("theme-editor.navigator", Some("theme-editor")),
+    ("theme-editor.column", Some("theme-editor.navigator")),
+    ("theme-editor.column-header", Some("theme-editor")),
+    ("theme-editor.role-row", Some("theme-editor")),
+    ("theme-editor.role-sample", Some("theme-editor.column")),
+    ("theme-editor.role-row.hover", Some("theme-editor.role-row")),
+    (
+        "theme-editor.role-row.pressed",
+        Some("theme-editor.role-row"),
+    ),
+    (
+        "theme-editor.role-row.selected",
+        Some("theme-editor.role-row"),
+    ),
+    ("theme-editor.role-row.focused", Some("focus.ring")),
     ("activity-panel", Some("surface.panel")),
     ("activity-panel.resize-handle", Some("activity-panel")),
     (

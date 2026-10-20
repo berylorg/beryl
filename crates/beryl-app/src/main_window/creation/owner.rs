@@ -85,6 +85,30 @@ impl MainWindowCreationOwner {
         }
     }
 
+    pub(crate) fn resume_after_settings_appearance(
+        running: &std::rc::Rc<std::cell::RefCell<crate::running_owner::RunningProcessOwner>>,
+        home: beryl_model::BerylHomeId,
+        generation: beryl_home_store::HomeGeneration,
+        app: &mut App,
+    ) {
+        let Some(global) = app.try_global::<CreationProcessOwner>() else {
+            return;
+        };
+        let creation = global._owner.clone();
+        let running = std::rc::Rc::downgrade(running);
+        creation.update(app, |creation, cx| {
+            if creation.services.store.home_id() == home
+                && creation.generation == generation
+                && creation
+                    .running_owner
+                    .as_ref()
+                    .is_some_and(|bound| bound.ptr_eq(&running))
+            {
+                creation.resume_pending(cx);
+            }
+        });
+    }
+
     pub fn install(
         services: Arc<MainWindowCreationServices>,
         appearance: Entity<GpuiAppearanceWindowSet>,
@@ -424,6 +448,16 @@ impl MainWindowCreationOwner {
             if let Some(owner) = &self.running_owner {
                 let publication = match owner.upgrade() {
                     Some(owner) => {
+                        if owner
+                            .borrow()
+                            .created_window_publication_waits_for_settings(
+                                self.services.store.home_id(),
+                                self.generation,
+                            )
+                        {
+                            entry.hidden = Some(shell);
+                            return;
+                        }
                         crate::running_owner::RunningProcessOwner::publish_created_window(
                             &owner, shell, cx,
                         )

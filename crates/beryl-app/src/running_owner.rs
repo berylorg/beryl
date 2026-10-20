@@ -36,6 +36,7 @@ mod progress;
 mod running_threads_attention;
 mod running_threads_commands;
 mod runtime_setup;
+mod settings;
 mod shutdown_drafts;
 mod unchanged_running;
 mod unremoved_windows;
@@ -74,7 +75,39 @@ pub(crate) enum StartupCleanup {
     Failed(String),
 }
 
+struct SettingsAppearanceReaders {
+    running_threads: Option<crate::app_services::PublishedRunningThreadsReader>,
+    model_selection: Option<crate::model_selection::PublishedModelSelection>,
+    status_stop: Option<crate::app_services::PublishedExactStopWorker>,
+    activity: Option<crate::activity_service::ActivityWindowReader>,
+    catalog_query: Option<crate::catalog_query::PublishedCatalogQueryReader>,
+}
+
+impl SettingsAppearanceReaders {
+    fn capture(services: &ProcessServiceOwner) -> Self {
+        Self {
+            running_threads: services.running_threads_reader(),
+            model_selection: services.model_selection_reader(),
+            status_stop: services.published_exact_stop_worker(),
+            activity: services.activity_reader(),
+            catalog_query: services.catalog_query_reader(),
+        }
+    }
+
+    fn current(&self) -> bool {
+        self.running_threads
+            .as_ref()
+            .is_some_and(|reader| reader.current())
+    }
+}
+
 pub(crate) struct RunningProcessOwner {
+    settings_window: Option<Entity<crate::settings_window::SettingsWindowController>>,
+    settings_source: Option<crate::settings_service::AppliedSettingsReader>,
+    settings_appearance_busy: bool,
+    settings_appearance_readers: Option<SettingsAppearanceReaders>,
+    settings_observer: Option<gpui::Subscription>,
+    settings_destruction: Option<gpui::WindowsNativeWindowDestroyed>,
     process: RunningProcess,
     startup_cleanup: StartupCleanup,
     confirmation: Option<confirmation::RunningConfirmation>,
@@ -152,11 +185,14 @@ impl RunningProcessOwner {
             .as_ref()
             .and_then(|services| services.graph())
         {
+            let Some(settings) = graph.settings() else {
+                return;
+            };
             graph
                 .cas()
                 .bind_parent_sound(self.process.parent_sound.sink(
                     self.process.notification_audio.ingress(),
-                    graph.state().settings(),
+                    settings.applied_reader(),
                     graph.cas().service_generation(),
                 ));
         }
@@ -252,6 +288,12 @@ impl RunningProcessOwner {
         );
         let surface = process.startup_surface.take();
         let owner = Rc::new(RefCell::new(Self {
+            settings_window: None,
+            settings_source: None,
+            settings_appearance_busy: false,
+            settings_appearance_readers: None,
+            settings_observer: None,
+            settings_destruction: None,
             process: RunningProcess {
                 notification_audio: crate::notification_audio::NotificationAudioLane::new(),
                 parent_sound: crate::parent_completion_sound::ParentCompletionSoundOwner::new(app),
@@ -323,6 +365,7 @@ impl RunningProcessOwner {
             },
         }));
         owner.borrow().bind_parent_sound();
+        Self::project_settings(&owner, app);
         Self::observe_exit_availability(&owner, app);
         Self::observe_lifecycle_attention(&owner, app);
         if let Some(mut surface) = surface {
@@ -362,6 +405,11 @@ impl RunningProcessOwner {
     }
 
     #[cfg(test)]
+    pub(crate) fn test_services_ready(&self) -> bool {
+        self.process.services.is_some()
+    }
+
+    #[cfg(test)]
     pub(crate) fn test_services(&self) -> &ProcessServiceOwner {
         self.process
             .services
@@ -389,6 +437,20 @@ impl RunningProcessOwner {
             .services
             .as_mut()
             .expect("services retained on GUI")
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_settings_controller(
+        &self,
+    ) -> Option<Entity<crate::settings_window::SettingsWindowController>> {
+        self.settings_window.clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_take_settings_destruction(
+        &mut self,
+    ) -> Option<gpui::WindowsNativeWindowDestroyed> {
+        self.settings_destruction.take()
     }
 
     #[cfg(test)]

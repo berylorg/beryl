@@ -17,6 +17,7 @@ mod restored;
 mod running_selection;
 #[cfg(target_os = "windows")]
 mod selection_invocation;
+mod settings_command;
 #[cfg(target_os = "windows")]
 pub(crate) use selection_invocation::MainWindowSelectionInvocation;
 mod running_threads;
@@ -725,6 +726,7 @@ pub struct MainWindowShellRoot {
     pub(super) appearance_registration: Rc<std::cell::Cell<bool>>,
     command_focus: gpui::FocusHandle,
     exit_focus: gpui::FocusHandle,
+    settings_focus: gpui::FocusHandle,
     pub(super) shell_focus: gpui::FocusHandle,
     pub(super) notices: notices::MainWindowShellNotices,
     pub(super) home_warning_startup: Option<Arc<()>>,

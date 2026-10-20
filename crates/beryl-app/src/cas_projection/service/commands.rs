@@ -18,6 +18,13 @@ pub(super) enum PreparedStop {
 }
 
 impl ProjectionConnectionService {
+    pub(crate) fn bind_applied_settings(
+        &self,
+        reader: crate::settings_service::AppliedSettingsReader,
+    ) -> Result<(), LiveCommandAdmissionError> {
+        self.command_authorizer.bind_applied_settings(reader)
+    }
+
     #[cfg(target_os = "windows")]
     pub(crate) fn bind_parent_sound(&self, sink: crate::parent_completion_sound::ParentSoundSink) {
         self.command_authorizer.bind_parent_sound(sink);

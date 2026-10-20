@@ -87,6 +87,7 @@ impl NoticeSource {
 pub struct TestRoot {
     pub widget: Entity<MainWindowNoticeWidget>,
     pub safe_focus: FocusHandle,
+    pub unrelated_focus: FocusHandle,
     pub snapshot: Rc<RefCell<Option<gpui::test::PaintSnapshot>>>,
 }
 
@@ -104,6 +105,12 @@ impl Render for TestRoot {
                     .left(px(4.))
                     .bottom(px(4.))
                     .track_focus(&self.safe_focus)
+                    .tab_stop(true),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .track_focus(&self.unrelated_focus)
                     .tab_stop(true),
             )
             .child(self.widget.clone())
@@ -235,9 +242,10 @@ impl Mounted {
                         )
                     });
                     widget = Some(notice.clone());
-                    let root_entity = app.new(|_| TestRoot {
+                    let root_entity = app.new(|cx| TestRoot {
                         widget: notice,
                         safe_focus,
+                        unrelated_focus: cx.focus_handle(),
                         snapshot: Rc::new(RefCell::new(None)),
                     });
                     root = Some(root_entity.clone());

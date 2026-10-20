@@ -121,6 +121,8 @@ pub(crate) enum AppServiceOpenError {
     Activity(#[from] ActivityPreparationError),
     #[error("theme preparation failed: {0:?}")]
     Theme(ThemeRuntimeStartError),
+    #[error("settings preparation failed: {0}")]
+    Settings(#[from] crate::settings_service::SettingsServiceError),
 }
 
 pub(crate) struct AppServiceOpenFailure {
@@ -157,6 +159,10 @@ impl From<ThemeRuntimeStartError> for AppServiceOpenError {
 }
 
 pub(crate) struct ProcessServiceOwner {
+    settings_owner: crate::settings_service::SettingsProcessOwner,
+    settings_generation: std::sync::atomic::AtomicU64,
+    theme_recovery_context: Option<crate::theme_runtime::ThemeRecoveryContext>,
+    settings_theme_retirement: Option<crate::theme_runtime::ThemeSettingsRetirement>,
     activity_heights: Arc<crate::activity_service::ActivityHeightCustody>,
     runtime_setup_inputs: std::sync::Mutex<Option<MainWindowServiceInputs>>,
     first_configurator:
@@ -196,6 +202,10 @@ pub(crate) struct ProcessServiceOwner {
 }
 
 pub(crate) struct PublishedAppServices {
+    prepared_settings: Option<crate::settings_service::PreparedSettingsService>,
+    settings: Option<Arc<crate::settings_service::SettingsService>>,
+    settings_themes: Option<crate::theme_runtime::SettingsThemeBroker>,
+    settings_theme_retirement: Option<crate::theme_runtime::ThemeSettingsRetirement>,
     model_selection: std::sync::OnceLock<crate::model_selection::PublishedModelSelection>,
     runtime_setup: Arc<runtime_setup::RuntimeSetupService>,
     private_clipboard: crate::main_window::MainWindowPrivateClipboardOwner,
@@ -226,6 +236,10 @@ impl ProcessServiceOwner {
     ) -> Self {
         let process = ProcessAdmissionGate::new();
         Self {
+            settings_owner: crate::settings_service::SettingsProcessOwner::new(home_id),
+            settings_generation: std::sync::atomic::AtomicU64::new(0),
+            theme_recovery_context: None,
+            settings_theme_retirement: None,
             runtime_setup_inputs: std::sync::Mutex::new(None),
             first_configurator: std::sync::Mutex::new(None),
             first_cleanups: std::sync::Mutex::new(Vec::new()),
@@ -406,7 +420,20 @@ impl Drop for PublishedAppServices {
 }
 
 impl PublishedAppServices {
+    fn retire_settings(&mut self) -> Result<(), crate::settings_service::SettingsServiceError> {
+        if let Some(service) = self.settings.as_ref() {
+            service.retire()?;
+        }
+        drop(self.settings.take());
+        drop(self.prepared_settings.take());
+        if let Some(mut broker) = self.settings_themes.take() {
+            self.settings_theme_retirement = Some(broker.retire());
+        }
+        Ok(())
+    }
+
     fn join_components(&mut self) {
+        let _ = self.retire_settings();
         drop(self.catalog_query.take());
         drop(self.catalog_source.take());
         self.private_clipboard.retire();

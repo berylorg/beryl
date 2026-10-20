@@ -208,8 +208,8 @@ impl RunningProcessOwner {
                 let mut retained = retained.borrow_mut();
                 retained.interrupted_exit_services_result(request)?;
                 let prepared = retained.interrupted_exit_appearance(request)?;
-                let home_id = prepared.prepared().home().home_id();
-                let generation = prepared.prepared().home().home_generation();
+                let home_id = prepared.home().home_id();
+                let generation = prepared.home().home_generation();
                 let existing = retained
                     .interrupted_exit
                     .as_ref()
@@ -319,7 +319,7 @@ impl RunningProcessOwner {
         let Some(CandidateSettlement::Services(Ok(graph))) = slot.as_mut() else {
             unreachable!()
         };
-        let home = graph.appearance().prepared().home();
+        let home = graph.appearance().home();
         let home_id = home.home_id();
         let generation = home.home_generation();
         let requirement = self

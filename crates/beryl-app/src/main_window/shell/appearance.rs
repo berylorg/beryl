@@ -141,8 +141,7 @@ impl PreparedWindowAppearance for PreparedShellAppearance {
             .window
             .read_with(app, |root, _| {
                 root.controller.as_ref().is_some_and(|controller| {
-                    controller.appearance.generation.prepared().home()
-                        == self.appearance.generation.prepared().home()
+                    controller.appearance.generation.home() == self.appearance.generation.home()
                 })
             })
             .map_err(|_| AdapterFailureClass::Unavailable)?;
@@ -195,9 +194,7 @@ impl PreparedWindowAppearance for PreparedShellAppearance {
                 {
                     return Err(AdapterFailureClass::Unavailable);
                 }
-                if controller.appearance.generation.prepared().home()
-                    != self.appearance.generation.prepared().home()
-                {
+                if controller.appearance.generation.home() != self.appearance.generation.home() {
                     return Err(AdapterFailureClass::Rejected);
                 }
                 if controller.is_threadless() {

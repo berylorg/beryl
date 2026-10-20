@@ -30,7 +30,8 @@ fn each_retry_reads_latest_instructions_and_blank_explicitly_clears_hidden_conte
     let mut fixture = Fixture::new(191);
     fixture.submit_text(SUBMITTED_TEXT);
     apply_instructions(&fixture, "old construction-time instructions");
-    let request = OrdinaryTurnExecutionRequest::backend_defaults(fixture.state.settings(), TIMEOUT);
+    let request =
+        OrdinaryTurnExecutionRequest::backend_defaults(fixture.applied_settings(), TIMEOUT);
     let server = AttemptServer::spawn(
         "thread/start",
         "policy-retries".into(),
@@ -66,7 +67,8 @@ fn each_retry_reads_latest_instructions_and_blank_explicitly_clears_hidden_conte
 fn absent_instructions_clear_hidden_context_and_unknown_reasoning_stays_omitted() {
     let mut fixture = Fixture::new(192);
     fixture.submit_text(SUBMITTED_TEXT);
-    let request = OrdinaryTurnExecutionRequest::backend_defaults(fixture.state.settings(), TIMEOUT);
+    let request =
+        OrdinaryTurnExecutionRequest::backend_defaults(fixture.applied_settings(), TIMEOUT);
     let server = AttemptServer::spawn(
         "thread/start",
         "policy-absent".into(),
@@ -91,7 +93,8 @@ fn foreign_settings_fail_before_activation_and_preserve_projection_for_corrected
     fixture.submit_text(SUBMITTED_TEXT);
     apply_instructions(&foreign, "foreign instructions");
     apply_instructions(&fixture, "correct home");
-    let request = OrdinaryTurnExecutionRequest::backend_defaults(foreign.state.settings(), TIMEOUT);
+    let request =
+        OrdinaryTurnExecutionRequest::backend_defaults(foreign.applied_settings(), TIMEOUT);
     let server = AttemptServer::spawn(
         "thread/start",
         "policy-home".into(),
@@ -109,7 +112,7 @@ fn foreign_settings_fail_before_activation_and_preserve_projection_for_corrected
     let revision = projection.binding_revision();
     let OrdinaryTurnExecutionFailure::PreActivation {
         projection,
-        source: OrdinaryTurnExecutionError::HomeRead(_),
+        source: OrdinaryTurnExecutionError::BackendDefaultPolicyUnavailable,
     } = execute(&fixture, projection, &request).unwrap_err()
     else {
         panic!("expected typed settings read failure")
@@ -117,7 +120,7 @@ fn foreign_settings_fail_before_activation_and_preserve_projection_for_corrected
     assert_eq!(projection.binding_revision(), revision);
     assert!(projection.is_live().unwrap());
     let corrected =
-        OrdinaryTurnExecutionRequest::backend_defaults(fixture.state.settings(), TIMEOUT);
+        OrdinaryTurnExecutionRequest::backend_defaults(fixture.applied_settings(), TIMEOUT);
     let projection = rejected_projection(execute(&fixture, *projection, &corrected).unwrap());
     session.invalidate_connection();
     drop(projection);
@@ -155,7 +158,7 @@ fn fixed_override_invalidates_shared_defaults(
     );
     let revision = projection.binding_revision();
     let defaults =
-        OrdinaryTurnExecutionRequest::backend_defaults(fixture.state.settings(), TIMEOUT);
+        OrdinaryTurnExecutionRequest::backend_defaults(fixture.applied_settings(), TIMEOUT);
     let OrdinaryTurnExecutionFailure::PreActivation {
         projection,
         source: OrdinaryTurnExecutionError::BackendDefaultPolicyUnavailable,
@@ -207,7 +210,8 @@ fn fixed_collaboration_context_invalidates_shared_default_observation() {
 fn replacement_start_reuses_settings_capability_but_reads_new_values_and_backend_defaults() {
     let mut fixture = Fixture::new(198);
     fixture.submit_text(SUBMITTED_TEXT);
-    let request = OrdinaryTurnExecutionRequest::backend_defaults(fixture.state.settings(), TIMEOUT);
+    let request =
+        OrdinaryTurnExecutionRequest::backend_defaults(fixture.applied_settings(), TIMEOUT);
     let server = AttemptServer::spawn(
         "thread/start",
         "policy-replacement".into(),
@@ -250,7 +254,7 @@ fn production_scheduled_checkout_uses_instructions_applied_after_registration() 
     let ids = scheduler_support::seed_runtime_next_input_without_wake(&mut fixture, 199);
     apply_instructions(&fixture, "registered value");
     let policy = ScheduledOrdinaryRequestPolicy::backend_defaults(
-        fixture.state.settings(),
+        fixture.applied_settings(),
         Some(1_000_000),
         TIMEOUT,
         TIMEOUT,

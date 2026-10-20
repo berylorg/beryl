@@ -91,7 +91,7 @@ impl RunningProcessOwner {
         }
         let mut settlement = recovery.settlement.borrow_mut();
         let snapshot = appearance.read(app).target().snapshot();
-        let home = snapshot.current.prepared().home();
+        let home = snapshot.current.home();
         if !snapshot.active {
             return Err("Recovery appearance candidate identity changed".into());
         }
@@ -162,7 +162,7 @@ impl RunningProcessOwner {
             return Err("Interrupted Exit recovery custody is unavailable".into());
         }
         let snapshot = target.snapshot();
-        let home = snapshot.current.prepared().home();
+        let home = snapshot.current.home();
         let mut settlement = recovery.settlement.borrow_mut();
         let Some(settlement::CandidateSettlement::Services(Ok(graph))) = settlement.as_mut() else {
             unreachable!("validated prepared recovery services")

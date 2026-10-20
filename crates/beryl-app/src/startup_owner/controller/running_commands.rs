@@ -48,6 +48,7 @@ impl RunningExitGates {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct RunningExitCommands(StartupCommands);
 
 pub(crate) struct RunningExitRequest {
@@ -198,6 +199,30 @@ impl RunningExitCommands {
 
     pub(crate) fn disabled_reason(&self) -> Option<&'static str> {
         self.0.0.borrow().exit_gates.disabled_reason()
+    }
+
+    pub(crate) fn publication_waits_for_settings(
+        &self,
+        expected_home: beryl_model::BerylHomeId,
+        expected_generation: beryl_home_store::HomeGeneration,
+    ) -> bool {
+        let state = self.0.0.borrow();
+        let gates = &state.exit_gates;
+        if gates.unavailable
+            || gates.home_unavailable
+            || !gates.settings_reconciliation
+            || state.active_exit.is_some()
+            || state.exit
+        {
+            return false;
+        }
+        gates.home.as_ref().is_some_and(|(home, generation)| {
+            let health = home.health();
+            home.home_id() == expected_home
+                && *generation == Some(expected_generation)
+                && health.generation() == Some(expected_generation)
+                && health.state() == beryl_home_store::HomeHealthState::Healthy
+        })
     }
 
     pub(crate) fn bind_home(&self, home: beryl_home_store::HomeServiceReference) {

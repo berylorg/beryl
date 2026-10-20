@@ -87,7 +87,11 @@ impl RunningProcessOwner {
                     delivered = Err("Interrupted Exit theme activation was cancelled".into());
                 }
             }
-            let _ = cx.update(|app| completed(&retained, delivered, app));
+            let _ = cx.update(|app| {
+                Self::project_settings(&retained, app);
+                retained.borrow().bind_parent_sound();
+                completed(&retained, delivered, app);
+            });
         })
         .detach();
         Ok(())

@@ -133,6 +133,7 @@ fn recovered_candidate_resolves_selection_and_fallback_with_fresh_settings() {
             state.themes(),
             &stale.settings(),
             config(),
+            crate::theme_runtime::ThemeRecoverySelection::ProvenSnapshot,
         )
         .err()
         .unwrap();
@@ -143,6 +144,7 @@ fn recovered_candidate_resolves_selection_and_fallback_with_fresh_settings() {
             state.themes(),
             &state.settings(),
             config(),
+            crate::theme_runtime::ThemeRecoverySelection::ProvenSnapshot,
         )
         .unwrap();
         assert_appearance(&prepared, document);
@@ -182,6 +184,7 @@ fn failed_candidate_settings_reads_join_the_dormant_watcher() {
         state.themes(),
         &state.settings(),
         config(),
+        crate::theme_runtime::ThemeRecoverySelection::ProvenSnapshot,
     )
     .err()
     .unwrap();

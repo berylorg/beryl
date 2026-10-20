@@ -107,7 +107,7 @@ impl RestoredWindowShellPrepared {
     ) -> Result<Box<Self>, (Box<RestoredWindowComposerPrepared>, String)> {
         let validation = prepared.revalidate(attempt).and_then(|()| {
             let binding = prepared.selection_identity().binding();
-            let home = appearance.prepared().home();
+            let home = appearance.home();
             if home.home_id() != binding.home_id()
                 || home.home_generation() != binding.home_generation()
             {

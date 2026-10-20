@@ -22,6 +22,7 @@ pub(in crate::main_window) struct ShellMetrics {
     pub running_width: gpui::Pixels,
     pub new_window_width: gpui::Pixels,
     pub exit_width: gpui::Pixels,
+    pub settings_width: gpui::Pixels,
     pub turn_width: gpui::Pixels,
     pub lineage: bool,
     pub activity: bool,
@@ -73,6 +74,7 @@ impl ShellMetrics {
             running_width: button("Running threads · 18446744073709551615")?,
             new_window_width: button("New Window")?,
             exit_width,
+            settings_width: button("Settings")?,
             turn_width: width("M", "status.line.value", 12., 400.)? + px(20.),
             lineage,
             activity: false,
@@ -95,12 +97,13 @@ impl ShellMetrics {
     }
 
     pub(in crate::main_window) fn minimum(&self) -> gpui::Size<gpui::Pixels> {
-        let count = if self.new_window { 7. } else { 6. };
+        let count = if self.new_window { 8. } else { 7. };
         let toolbar = px(TOOLBAR_PADDING * 2. + TOOLBAR_GAP * (count - 1.) + CONTROL_HEIGHT * 2.)
             + self.new_thread_width
             + self.selector_width
             + self.running_width
             + self.exit_width
+            + self.settings_width
             + if self.new_window {
                 self.new_window_width
             } else {

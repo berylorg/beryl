@@ -38,6 +38,34 @@ pub struct ThemeDocument {
 }
 
 impl ThemeDocument {
+    pub fn with_property_source(
+        &self,
+        role: super::ThemeRoleId,
+        property: ThemePropertyId,
+        source: ThemePropertySource,
+    ) -> Result<Self, ThemeDocumentError> {
+        self.with_property_sources(std::collections::BTreeMap::from([(
+            (role, property),
+            source,
+        )]))
+    }
+
+    pub fn with_property_sources(
+        &self,
+        changes: std::collections::BTreeMap<
+            (super::ThemeRoleId, ThemePropertyId),
+            ThemePropertySource,
+        >,
+    ) -> Result<Self, ThemeDocumentError> {
+        if changes.len() > super::CANONICAL_THEME_PROPERTY_ENTRY_COUNT_MAX {
+            return Err(ThemeDocumentError::TooManyPropertyEntries { line: 0 });
+        }
+        let definition = self.definition.replacing_properties(changes);
+        let next = Self::new(self.id.clone(), self.name.as_deref(), definition)?;
+        next.to_canonical_toml()?;
+        Ok(next)
+    }
+
     pub fn new(
         id: Option<InstalledThemeId>,
         name: Option<&str>,

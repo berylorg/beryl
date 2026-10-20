@@ -6,6 +6,26 @@ use beryl_state::{PreparedThemeChangeSubscription, SettingKey, SettingsState};
 
 use super::*;
 
+#[derive(Clone)]
+pub struct ThemeRecoveryContext {
+    pub(super) home_id: BerylHomeId,
+    pub(super) appearance: Arc<AppearanceGeneration>,
+}
+
+pub enum ThemeRecoverySelection {
+    ProvenSnapshot,
+    Unavailable(ThemeRecoveryContext),
+}
+
+impl ThemeRuntime {
+    pub fn recovery_context(&self) -> Option<ThemeRecoveryContext> {
+        Some(ThemeRecoveryContext {
+            home_id: self.service.as_ref()?.home().home_id(),
+            appearance: self.current()?,
+        })
+    }
+}
+
 pub(crate) struct PreparedThemeRuntime {
     subscription: PreparedThemeChangeSubscription,
     runtime: ThemeRuntime,
@@ -45,19 +65,25 @@ impl PreparedThemeRuntime {
         service: ThemeService,
         settings: &SettingsState,
         config: ThemeRuntimeConfig,
+        selection: ThemeRecoverySelection,
     ) -> Result<Self, ThemeRuntimeStartError> {
         let limits = Self::watch_limits(&config)?;
         let subscription = service
             .prepare_recovered_changes(candidate, limits)
             .map_err(|_| start_error(ThemeRuntimeFailureClass::Subscription))?;
-        let runtime = Self::load_candidate(
-            &candidate
-                .recovery_access()
-                .map_err(|_| start_error(ThemeRuntimeFailureClass::Settings))?,
-            service,
-            settings,
-            config,
-        )?;
+        let runtime = match selection {
+            ThemeRecoverySelection::ProvenSnapshot => Self::load_candidate(
+                &candidate
+                    .recovery_access()
+                    .map_err(|_| start_error(ThemeRuntimeFailureClass::Settings))?,
+                service,
+                settings,
+                config,
+            )?,
+            ThemeRecoverySelection::Unavailable(context) => {
+                ThemeRuntime::load_unavailable(service, context, config)?
+            }
+        };
         Ok(Self {
             subscription,
             runtime,

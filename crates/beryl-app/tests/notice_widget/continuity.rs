@@ -1,9 +1,123 @@
 use super::support::*;
 use beryl_app::main_window::{
-    MainWindowNoticeControlFocus, MainWindowNoticeOverlayAllocation, NoticeContent,
-    NoticeDismissal, NoticeVariant,
+    MainWindowNoticeControlFocus, MainWindowNoticeOverlayAllocation, NoticeCommand,
+    NoticeCommandId, NoticeContent, NoticeDismissal, NoticeVariant,
 };
 use gpui::{Modifiers, ScrollDelta, ScrollWheelEvent, point, px};
+
+#[gpui::test]
+fn empty_and_unfocused_notice_refreshes_preserve_the_main_window_focus_owner(
+    cx: &mut gpui::TestAppContext,
+) {
+    let mounted = Mounted::new(cx);
+    let unrelated = mounted
+        .window
+        .update(cx, |root, window, _| {
+            root.unrelated_focus.focus(window);
+            root.unrelated_focus.clone()
+        })
+        .unwrap();
+    let assert_unrelated = |cx: &mut gpui::TestAppContext| {
+        mounted
+            .window
+            .update(cx, |_, window, app| {
+                assert_eq!(window.focused(app), Some(unrelated.clone()));
+            })
+            .unwrap();
+    };
+    for _ in 0..3 {
+        mounted.replace(None, cx);
+        assert_unrelated(cx);
+    }
+    let mut source = NoticeSource::new(
+        23,
+        NoticeContent::new(
+            NoticeVariant::Info,
+            NoticeDismissal::Dismissible,
+            "unfocused",
+            "detail",
+        ),
+    );
+    mounted.replace(Some(source.record()), cx);
+    assert_unrelated(cx);
+    source.set_allocation(MainWindowNoticeOverlayAllocation::new(
+        48., 12., 12., 320., 240.,
+    ));
+    mounted.replace(Some(source.record()), cx);
+    assert_unrelated(cx);
+    mounted.inert(true, cx);
+    assert_unrelated(cx);
+    mounted.replace(None, cx);
+    assert_unrelated(cx);
+    mounted.inert(false, cx);
+    assert_unrelated(cx);
+    assert!(mounted.events.borrow().is_empty());
+}
+
+#[gpui::test]
+fn removing_a_notice_and_replacing_its_focused_command_repair_only_notice_focus(
+    cx: &mut gpui::TestAppContext,
+) {
+    let mounted = Mounted::new(cx);
+    let source = NoticeSource::new(
+        24,
+        NoticeContent::new(
+            NoticeVariant::Info,
+            NoticeDismissal::Persistent,
+            "first",
+            "",
+        )
+        .with_commands(&[NoticeCommand::enabled(NoticeCommandId::new(51), "First")])
+        .unwrap(),
+    );
+    mounted.replace(Some(source.record()), cx);
+    let mut visual = gpui::VisualTestContext::from_window(mounted.window.into(), cx);
+    let command = visual
+        .debug_bounds(mounted.command_selector(0, cx))
+        .unwrap();
+    visual.simulate_click(command.center(), Modifiers::none());
+    assert_eq!(
+        mounted.diagnostics(cx).focus,
+        MainWindowNoticeControlFocus::Command
+    );
+    let replacement = NoticeSource::new(
+        25,
+        NoticeContent::new(NoticeVariant::Info, NoticeDismissal::Persistent, "next", "")
+            .with_commands(&[NoticeCommand::enabled(NoticeCommandId::new(52), "Next")])
+            .unwrap(),
+    );
+    mounted.replace(Some(replacement.record()), cx);
+    assert_eq!(
+        mounted.diagnostics(cx).focus,
+        MainWindowNoticeControlFocus::Command
+    );
+    mounted.replace(None, cx);
+    assert_eq!(
+        mounted.diagnostics(cx).focus,
+        MainWindowNoticeControlFocus::SafeTarget
+    );
+    let close_source = NoticeSource::new(
+        26,
+        NoticeContent::new(
+            NoticeVariant::Info,
+            NoticeDismissal::Dismissible,
+            "close",
+            "",
+        ),
+    );
+    mounted.replace(Some(close_source.record()), cx);
+    let close = visual.debug_bounds(CLOSE).unwrap();
+    visual.simulate_click(close.center(), Modifiers::none());
+    assert_eq!(
+        mounted.diagnostics(cx).focus,
+        MainWindowNoticeControlFocus::Close
+    );
+    mounted.replace(None, cx);
+    assert_eq!(
+        mounted.diagnostics(cx).focus,
+        MainWindowNoticeControlFocus::SafeTarget
+    );
+}
 
 #[gpui::test]
 fn revision_clears_selection_and_preserves_only_valid_scroll_geometry(

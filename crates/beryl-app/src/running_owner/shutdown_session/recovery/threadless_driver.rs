@@ -272,7 +272,7 @@ impl RunningProcessOwner {
                 {
                     return Err("Interrupted Exit requires a threadless window".into());
                 }
-                let retired_home = prepared.prepared().home().home_id();
+                let retired_home = prepared.home().home_id();
                 owner
                     .process
                     .services
@@ -280,7 +280,7 @@ impl RunningProcessOwner {
                     .ok_or("The complete service owner is on a worker")?
                     .validate_retired_service_home_return(retired, Some(retired_home))
                     .map_err(|error| error.to_string())?;
-                let generation = prepared.prepared().home().home_generation();
+                let generation = prepared.home().home_generation();
                 let previous = owner.process.appearance.clone();
                 let capacity = NonZeroUsize::new(previous.read(app).target().snapshot().capacity)
                     .ok_or("Interrupted Exit appearance capacity is unavailable")?;

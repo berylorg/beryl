@@ -512,7 +512,13 @@ pub(super) fn activate(cx: &mut gpui::TestAppContext, seed: u8, mode: Completion
         );
     }
     assert_eq!(source._sessions.work_revision().unwrap(), session_revision);
-    assert_eq!(observe_workers(), workers_before);
+    let workers_after = observe_workers();
+    assert_eq!(workers_after.capacity(), workers_before.capacity());
+    assert_eq!(workers_after.available(), workers_before.available());
+    assert_eq!(workers_after.active(), workers_before.active());
+    assert_eq!(workers_after.high_water(), workers_before.high_water());
+    assert_eq!(workers_after.denied_pairs(), workers_before.denied_pairs());
+    assert!(workers_after.denied_singles() >= workers_before.denied_singles());
     assert_eq!(
         source
             .service

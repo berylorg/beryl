@@ -109,6 +109,7 @@ fn run_recovery(count: u8, dirty: bool, scenario: Scenario) {
                     );
                 }
                 let native_focus = unsafe { GetForegroundWindow() };
+                wait_for_services(&owner, cx).await;
                 if scenario == Scenario::UncertainEnrollment {
                     owner
                         .borrow_mut()
@@ -281,6 +282,7 @@ fn run_recovery(count: u8, dirty: bool, scenario: Scenario) {
                 )
                 .await;
                 native_support::wait_for_notice(&original_windows, true, cx).await;
+                wait_for_services(&owner, cx).await;
                 assert_eq!(windows(&owner), original_windows);
                 assert_eq!(snapshot(&owner), original_session);
                 assert!(old_permit.reserve().is_err());
@@ -361,6 +363,7 @@ fn run_recovery(count: u8, dirty: bool, scenario: Scenario) {
                 cx.background_executor()
                     .timer(Duration::from_millis(150))
                     .await;
+                wait_for_services(&owner, cx).await;
                 assert!(!owner.borrow().exit_requested());
                 assert_eq!(snapshot(&owner), original_session);
                 if scenario == Scenario::Duplicate {
@@ -379,6 +382,7 @@ fn run_recovery(count: u8, dirty: bool, scenario: Scenario) {
                     ));
                 }
                 if scenario == Scenario::StaleNotice {
+                    wait_for_services(&owner, cx).await;
                     let first_identity = admitted_identity.unwrap();
                     assert!(
                         owner
@@ -470,6 +474,7 @@ fn run_recovery(count: u8, dirty: bool, scenario: Scenario) {
                         "second-generation ordinary failed-home recovery",
                     )
                     .await;
+                    wait_for_services(&owner, cx).await;
                     assert_eq!(snapshot(&owner), original_session);
                     assert_eq!(windows(&owner), original_windows);
                     let retained = owner.borrow();

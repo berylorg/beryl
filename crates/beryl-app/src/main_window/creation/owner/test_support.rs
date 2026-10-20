@@ -2,6 +2,19 @@ use super::*;
 
 impl MainWindowCreationOwner {
     #[cfg(test)]
+    pub(crate) fn test_process_owner(app: &App) -> Entity<Self> {
+        app.global::<CreationProcessOwner>()._owner.clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_hidden_ready_to_publish(&self, window_id: WindowId, app: &mut App) -> bool {
+        self.entries
+            .get(&window_id)
+            .and_then(|entry| entry.hidden.as_ref())
+            .is_some_and(|shell| shell.ready_to_publish(app))
+    }
+
+    #[cfg(test)]
     pub(crate) fn test_entry_status(&self) -> Vec<String> {
         self.entries
             .values()

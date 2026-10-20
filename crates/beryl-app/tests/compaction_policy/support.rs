@@ -9,6 +9,15 @@ mod ordinary;
 pub use ordinary::{execute, obtain};
 
 pub fn apply_timeout(fixture: &Fixture, millis: u64) {
+    assert_eq!(millis % 1_000, 0);
+    fixture.apply_setting(
+        beryl_app::settings_service::SettingsDraftValue::ContextCompactionTimeout(
+            (millis / 1_000).to_string(),
+        ),
+    );
+}
+
+pub fn save_timeout_before_source(fixture: &Fixture, millis: u64) {
     let home = fixture.home();
     let settings = fixture.state.settings();
     let prior = settings

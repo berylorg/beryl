@@ -1,7 +1,7 @@
 use super::super::worker::{ResourceWorker, WorkerLifetime};
 
 use beryl_state::AssetState;
-use gpui::Task;
+use gpui::{Subscription, Task};
 
 use crate::composer_host::{
     ComposerHostAutosaveInterval, ComposerHostAutosaveTimer, ComposerHostPublicationTicket,
@@ -79,6 +79,7 @@ pub(in crate::main_window) struct MainWindowConversationComposerAutosave {
     pub(super) fenced: bool,
     pub(super) adapters: Option<(AssetState, DraftMarkerSealService)>,
     pub(super) settings: Option<(u64, ComposerHostAutosaveInterval)>,
+    pub(super) projection_observer: Option<Subscription>,
     pub(super) last_error: Option<String>,
     #[cfg(feature = "test-faults")]
     pub(super) hold_ready_once: bool,
@@ -97,6 +98,7 @@ impl MainWindowConversationComposerAutosave {
             fenced: false,
             adapters: Some((assets, marker_seals)),
             settings: None,
+            projection_observer: None,
             last_error: None,
             #[cfg(feature = "test-faults")]
             hold_ready_once: false,

@@ -154,7 +154,12 @@ fn prepare_resident_shell(
         .turn_start_admission_requirement(),
     );
     prepared
-        .test_into_shell_owned(Box::new(shell_support::config), seals, submission, appearance)
+        .test_into_shell_owned(
+            Box::new(shell_support::config),
+            seals,
+            submission,
+            appearance,
+        )
         .unwrap_or_else(|failure| panic!("{}", failure.error))
 }
 

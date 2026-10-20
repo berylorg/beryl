@@ -15,10 +15,22 @@ struct MountedRunningOwner(std::rc::Weak<RefCell<RunningProcessOwner>>);
 impl gpui::Global for MountedRunningOwner {}
 
 impl RunningProcessOwner {
+    pub(super) fn settings_flight_readers(&self) -> Option<&SettingsAppearanceReaders> {
+        if !self.settings_appearance_busy || self.process.services.is_some() {
+            return None;
+        }
+        self.settings_appearance_readers
+            .as_ref()
+            .filter(|readers| readers.current())
+    }
+
     pub(crate) fn model_selection_reader(
         &self,
     ) -> Option<crate::model_selection::PublishedModelSelection> {
-        self.process.services.as_ref()?.model_selection_reader()
+        match &self.process.services {
+            Some(services) => services.model_selection_reader(),
+            None => self.settings_flight_readers()?.model_selection.clone(),
+        }
     }
     #[cfg(test)]
     pub(crate) fn test_last_ordinary_command_failure(
@@ -31,21 +43,27 @@ impl RunningProcessOwner {
     pub(crate) fn thread_creation_reader(
         &self,
     ) -> Option<crate::app_services::PublishedRunningThreadsReader> {
-        self.process.services.as_ref()?.thread_creation_reader()
+        match &self.process.services {
+            Some(services) => services.thread_creation_reader(),
+            None => self.settings_flight_readers()?.running_threads.clone(),
+        }
     }
 
     pub(crate) fn running_threads_reader(
         &self,
     ) -> Option<crate::app_services::PublishedRunningThreadsReader> {
-        self.process.services.as_ref()?.running_threads_reader()
+        match &self.process.services {
+            Some(services) => services.running_threads_reader(),
+            None => self.settings_flight_readers()?.running_threads.clone(),
+        }
     }
     pub(crate) fn status_stop_worker(
         &self,
     ) -> Option<crate::app_services::PublishedExactStopWorker> {
-        self.process
-            .services
-            .as_ref()?
-            .published_exact_stop_worker()
+        match &self.process.services {
+            Some(services) => services.published_exact_stop_worker(),
+            None => self.settings_flight_readers()?.status_stop.clone(),
+        }
     }
     #[cfg(test)]
     pub(crate) fn test_order_shells_by_descending_window_id(&mut self, app: &App) {
@@ -94,6 +112,24 @@ impl RunningProcessOwner {
     pub(crate) fn mounted_owner(app: &App) -> Option<std::rc::Weak<RefCell<Self>>> {
         app.try_global::<MountedRunningOwner>()
             .map(|owner| owner.0.clone())
+    }
+
+    pub(crate) fn created_window_publication_waits_for_settings(
+        &self,
+        home: beryl_model::BerylHomeId,
+        generation: beryl_home_store::HomeGeneration,
+    ) -> bool {
+        self.settings_flight_readers().is_some()
+            && self.ordinary_commands_mounted
+            && !self.exit_requested()
+            && self.interrupted_exit.is_none()
+            && self.progress.is_none()
+            && self.shutdown.is_none()
+            && self.final_teardown.is_none()
+            && self
+                .process
+                .commands
+                .publication_waits_for_settings(home, generation)
     }
 
     pub(crate) fn publish_created_window(

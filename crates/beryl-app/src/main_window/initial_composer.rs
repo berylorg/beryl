@@ -112,7 +112,7 @@ impl MainWindowInitialComposerPrepared {
                 .acquisition_service
                 .validate_shell_selection(&custody.acquisition, prepared.selection_identity())?;
             let binding = prepared.selection_identity().binding();
-            let home = appearance.prepared().home();
+            let home = appearance.home();
             if home.home_id() != binding.home_id()
                 || home.home_generation() != binding.home_generation()
             {

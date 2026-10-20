@@ -215,35 +215,26 @@ fn actual_windows_adopt_every_runtime_source_and_preserve_editors(cx: &mut gpui:
     });
     assert_ne!(preview.number(), replacement.number());
     mounted.assert_generation(&replacement, cx);
-    let stopped = mounted.run(cx, |runtime, _| {
-        runtime.stop_preview().unwrap();
+    let stopped = mounted.run(cx, |runtime, fixture| {
+        runtime.stop_preview(&fixture.store).unwrap();
         runtime.current().unwrap()
     });
     mounted.assert_generation(&stopped, cx);
     assert_eq!(color(&stopped), color(&updated));
     mounted.controls[1].reject.store(true, Ordering::SeqCst);
     mounted.run(cx, |runtime, fixture| {
-        let committed = fixture
-            .state
-            .themes()
-            .settings_identity(DomainRevision::new(17).unwrap(), None);
-        let outcome = ConfirmedSettingsTheme::new(
-            ThemeDraftIdentity::new(NonZeroU64::new(19).unwrap()),
-            ThemeDraftRevision::INITIAL,
-            committed,
-            None,
-            beryl_state::PreparedThemeAppearance::fallback(committed),
-        );
+        let outcome = commit_current_selection(fixture, runtime, 19);
         assert_eq!(
-            runtime.consume_settings_outcome(SettingsThemeOutcome::Committed(outcome)),
+            runtime
+                .consume_settings_outcome(&fixture.store, SettingsThemeOutcome::Committed(outcome)),
             Err(ThemeRuntimeFailureClass::Publication)
         );
     });
     mounted.assert_generation(&stopped, cx);
     mounted.controls[1].reject.store(false, Ordering::SeqCst);
-    let retried = mounted.run(cx, |runtime, _| {
+    let retried = mounted.run(cx, |runtime, fixture| {
         assert_eq!(
-            runtime.retry_current_durable().unwrap(),
+            runtime.retry_current_durable(&fixture.store).unwrap(),
             RepositoryAppearanceResult::Published
         );
         runtime.current().unwrap()
@@ -375,7 +366,11 @@ fn gui_call_rejects_before_waiting_or_reading_repository(cx: &mut gpui::TestAppC
         Err(ThemeRuntimeFailureClass::Publication)
     ));
     assert!(matches!(
-        mounted.runtime.as_mut().unwrap().stop_preview(),
+        mounted
+            .runtime
+            .as_mut()
+            .unwrap()
+            .stop_preview(&mounted.fixture.store),
         Err(
             beryl_app::theme_runtime::PreviewPublicationError::WindowSet(
                 AppearancePublicationFailure::Reentrant

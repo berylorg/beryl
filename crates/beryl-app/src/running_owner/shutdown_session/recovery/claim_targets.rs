@@ -320,7 +320,7 @@ impl RunningProcessOwner {
                 let Some(CandidateSettlement::Services(Ok(graph))) = slot.as_mut() else {
                     return Err("New Thread recovery graph is unavailable".into());
                 };
-                let home = graph.appearance().prepared().home();
+                let home = graph.appearance().home();
                 let home_id = home.home_id();
                 let generation = home.home_generation();
                 let adapters = graph.composer_recovery_adapters(

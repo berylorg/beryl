@@ -70,6 +70,24 @@ authority.
   only supported appearance and layout values for declared ids and cannot invent a parallel global
   role family. Nonvisual widget resource constants, including detail-row caps and virtualization
   overscan, are excluded from theme documents and resolution.
+- The Settings typography adapter maps the external widget's base family and size to
+  `settings.window.text`, a static child of `text` supporting only font family, size and weight.
+  ThemeEditor inherits that same base typography. Its opaque color roles are the expanded
+  `theme-editor`, `navigator`, `column`, `column-header`, `role-row`, `role-sample` and row-state
+  identities from its owning widget spec, with exactly those declared opaque color properties and
+  fallback colors. The focused row's ring color maps deterministically to `Color`; part borders
+  use `BorderColor`. Transparent normal fills remain unpainted, and `currentColor` descendants
+  inherit the actual rendered row-state foreground. Fixed widget geometry remains in its spec;
+  this mapping introduces no new value domain or persistent scalar setting.
+- An appearance generation carries its current window/service Home identity separately from the
+  immutable prepared source proof. An unavailable recovery context binds the fresh Home while
+  retaining the prior proof metadata unchanged and read-only; current window identity checks use
+  the generation owner, and mutation/activation checks still require current prepared proof.
+- Confirmed scalar batches advance the proven Settings identity used by future theme preparation
+  even when they do not change the active theme. Updating that metadata cannot activate a different
+  theme or make an excluded active-theme key available. A changed active selection retains its
+  prepared appearance custody through publication; no second scalar batch can supersede it in
+  the gap between commit observation and the process-owned appearance flight.
 - Compact TOML documents encode roles as `[[role]]` records with `id`, optional `static_parent`, and
   supported property entries whose values are source keywords or concrete inline values.
 - One incremental bounded parser, validator, and resolver serves startup, refresh, editor
@@ -240,6 +258,15 @@ authority.
 
 - One process-wide coordinator owns the latest coherent durable base, at most one coherent preview,
   the resulting current appearance generation, and the exact live window-set epoch.
+- The App's eligible adapter budget matches the allowed main-window restoration count plus two:
+  the process-owned preheated Settings window and a bounded replacement/admission slot. These
+  appearance adapters do not create additional durable session-window capacity. Startup's GUI
+  window set and the runtime coordinator use the same budget.
+- App presentation drains only bounded in-memory hints from the existing State subscription.
+  A nonempty batch enters the existing process-owned appearance flight; repository rereads and
+  appearance preparation run off GPUI against the current proven Settings identity. Idle polling
+  creates no flight, repository command, worker or parallel hint queue. Settings operation custody
+  takes precedence over starting a hint flight.
 - Publication prepares one immutable complete appearance and offers that exact generation to every
   live window adapter in the captured epoch. No adapter changes its current generation until all
   required adapters accept; one coordinator commit then advances the shared generation and reports
@@ -313,6 +340,17 @@ authority.
 - Same-home recovery constructs a fresh theme runtime from the unpublished fresh home, typed-state,
   repository, and app-service candidates behind the startup fence. Old cursors, reconciliation
   descriptors, subscriptions, and preview state do not cross that fence.
+- Repository-file reconciliation uses its original typed Theme service scope, separately from
+  scalar Settings command reconciliation. Before retiring that service, its bounded broker drains
+  admitted execution and preserves the original outcome before observation. Reconciliation runs
+  only while the original generation remains usable. If retirement cannot establish exact old or
+  new, the original document operation becomes explicitly unresolved: its exact dirty draft and
+  bounded outcome facts remain read-only context, close/Exit gates release, and no success or
+  noncommit is inferred. Old repository descriptors and execution handles retire with that service.
+  A fresh service never joins an old numeric operation id or silently rebinds or cleans its draft.
+  Discarding that context through ordinary Cancel/close permits a new opening from a freshly proven
+  repository snapshot. Such a snapshot proves the new baseline, not the old operation's outcome.
+  Process-wide unresolved scalar-key exclusions retain their separate Settings ownership.
 - Existing windows may retain the last immutable appearance for coherent presentation while the
   fresh service is unavailable, but it is not storage or mutation authority. The fresh runtime
   publishes only a newly proven installed base or the complete built-in fallback.

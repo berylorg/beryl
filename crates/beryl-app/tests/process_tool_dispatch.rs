@@ -41,7 +41,20 @@ fn owned_tool_dispatch_accepts_lifecycle_and_refuses_unconfigured_branch_without
             scope.spawn(|| support::execute_with_authority(&fixture, projection, &mut tools));
         server.wait_started();
         assert_eq!(server.call("phase_needs_review")["result"]["success"], true);
-        let revision = fixture.home().home_revision().unwrap();
+        // Transport receipts may advance Home independently of resolution admission.
+        let resolution_state = (
+            fixture
+                .state
+                .durable_jobs()
+                .revision(&fixture.home())
+                .unwrap(),
+            fixture.state.catalog().revision(&fixture.home()).unwrap(),
+            fixture.state.assets().revision(&fixture.home()).unwrap(),
+            fixture
+                .storage
+                .discussion_handoff_gate(&fixture.home(), fixture.thread, point_limit())
+                .unwrap(),
+        );
         let response = server.resolve_branch();
         assert_eq!(response["result"]["success"], false);
         let serialized = response.to_string();
@@ -54,7 +67,22 @@ fn owned_tool_dispatch_accepts_lifecycle_and_refuses_unconfigured_branch_without
         assert_eq!(rejection, serde_json::json!({"status": "unavailable"}));
         assert!(!serialized.contains("private resolution"));
         assert!(serialized.len() < 512);
-        assert_eq!(fixture.home().home_revision().unwrap(), revision);
+        assert_eq!(
+            (
+                fixture
+                    .state
+                    .durable_jobs()
+                    .revision(&fixture.home())
+                    .unwrap(),
+                fixture.state.catalog().revision(&fixture.home()).unwrap(),
+                fixture.state.assets().revision(&fixture.home()).unwrap(),
+                fixture
+                    .storage
+                    .discussion_handoff_gate(&fixture.home(), fixture.thread, point_limit())
+                    .unwrap(),
+            ),
+            resolution_state,
+        );
         assert_eq!(server.call("plan_complete")["result"]["success"], false);
         assert!(pool.snapshot().is_empty());
         server.finish(false);
@@ -152,7 +180,7 @@ fn scheduled_checkout_lends_production_tool_authority_and_releases_it_on_retirem
             syndic::execution_binding(),
             session,
             ScheduledOrdinaryRequestPolicy::backend_defaults(
-                fixture.state.settings(),
+                fixture.applied_settings(),
                 Some(1_000_000),
                 TIMEOUT,
                 TIMEOUT,

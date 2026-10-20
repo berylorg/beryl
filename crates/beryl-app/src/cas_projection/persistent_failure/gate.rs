@@ -39,6 +39,7 @@ pub(super) struct GateInner {
     service_generation: ProjectionServiceGeneration,
     state: Mutex<GateState>,
     drained: Condvar,
+    pub(super) applied_settings: Mutex<Option<crate::settings_service::AppliedSettingsReader>>,
     #[cfg(target_os = "windows")]
     pub(super) parent_sound: Mutex<Option<crate::parent_completion_sound::ParentSoundSink>>,
 }
@@ -175,6 +176,7 @@ impl GateInner {
                 election: GateElection::Open,
             }),
             drained: Condvar::new(),
+            applied_settings: Mutex::new(None),
             #[cfg(target_os = "windows")]
             parent_sound: Mutex::new(None),
         })

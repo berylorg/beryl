@@ -1,6 +1,64 @@
 use super::*;
 
 impl ThemeRuntime {
+    pub fn start_unavailable_context(
+        store: &HomeStore,
+        service: ThemeService,
+        context: ThemeRecoveryContext,
+        config: ThemeRuntimeConfig,
+    ) -> Result<Self, ThemeRuntimeStartError> {
+        let subscription = service
+            .subscribe_changes(
+                store,
+                config.watch_interval,
+                config.watch_queue_capacity,
+                config.watch_max_entries_per_poll,
+                config.watch_max_file_bytes,
+            )
+            .map_err(|_| start_error(ThemeRuntimeFailureClass::Subscription))?;
+        let mut runtime = Self::load_unavailable(service, context, config)?;
+        runtime.subscription = Some(subscription);
+        Ok(runtime)
+    }
+
+    pub(super) fn load_unavailable(
+        service: ThemeService,
+        context: ThemeRecoveryContext,
+        config: ThemeRuntimeConfig,
+    ) -> Result<Self, ThemeRuntimeStartError> {
+        if context.home_id != service.home().home_id() {
+            return Err(start_error(ThemeRuntimeFailureClass::Identity));
+        }
+        let appearance = AppearanceCoordinator::new_unavailable_context(
+            config.appearance,
+            service.home(),
+            &context.appearance,
+        );
+        Ok(Self {
+            config,
+            retired_state: service.diagnostics(),
+            service: Some(service),
+            repository: None,
+            subscription: None,
+            appearance: Some(appearance),
+            settings: None,
+            pending_settings_publication: None,
+            selection_available: Arc::new(AtomicBool::new(false)),
+            preparation_admission: Arc::new(AtomicBool::new(true)),
+            active: None,
+            last_observed_document: None,
+            refresh_reread_needed: false,
+            pages_read: 0,
+            watch_batches: 0,
+            watch_hints: 0,
+            app_coalesced_hints: 0,
+            app_overflow_hints: 0,
+            settings_outcomes: 0,
+            repository_requests: 0,
+            last_failure: Some(ThemeRuntimeFailureClass::Reconciliation),
+        })
+    }
+
     pub fn start(
         store: &HomeStore,
         service: ThemeService,
@@ -90,7 +148,10 @@ impl ThemeRuntime {
             repository,
             subscription: None,
             appearance: Some(appearance),
-            settings,
+            settings: Some(settings),
+            pending_settings_publication: None,
+            selection_available: Arc::new(AtomicBool::new(true)),
+            preparation_admission: Arc::new(AtomicBool::new(true)),
             active,
             last_observed_document,
             refresh_reread_needed: false,
@@ -110,6 +171,10 @@ impl ThemeRuntime {
         self.appearance.as_ref().map(AppearanceCoordinator::current)
     }
 
+    pub fn selection_available(&self) -> bool {
+        self.selection_available.load(Ordering::Acquire)
+    }
+
     pub fn attach_publication_target(
         &mut self,
         target: Arc<dyn AppearancePublicationTarget>,
@@ -120,11 +185,40 @@ impl ThemeRuntime {
             .attach_publication_target(target)
     }
 
-    pub fn stop_preview(&mut self) -> Result<StopPreviewResult, PreviewPublicationError> {
-        self.appearance
+    pub fn stop_preview(
+        &mut self,
+        store: &HomeStore,
+    ) -> Result<StopPreviewResult, PreviewPublicationError> {
+        let intent = self
+            .appearance
             .as_mut()
             .ok_or(PreviewPublicationError::CandidateMismatch)?
-            .stop_preview()
+            .reserve_stop_preview()?;
+        if !self.selection_available() {
+            return Err(PreviewPublicationError::CandidateMismatch);
+        }
+        let was_preview = self
+            .appearance
+            .as_ref()
+            .is_some_and(|appearance| appearance.current().is_preview());
+        match self.retry_current_durable(store) {
+            Ok(RepositoryAppearanceResult::Retained(_)) | Err(_) => {
+                return Err(PreviewPublicationError::CandidateMismatch);
+            }
+            Ok(_) => {}
+        }
+        let result = self
+            .appearance
+            .as_mut()
+            .ok_or(PreviewPublicationError::CandidateMismatch)?
+            .finish_stop_preview(intent)?;
+        Ok(
+            if was_preview && matches!(result, StopPreviewResult::AlreadyStopped) {
+                StopPreviewResult::Restored(self.current().expect("running appearance"))
+            } else {
+                result
+            },
+        )
     }
 
     pub fn begin_preview(
@@ -132,6 +226,9 @@ impl ThemeRuntime {
         source: PreviewSource,
         candidate: PreviewCandidateIdentity,
     ) -> Result<PreviewPublicationRequest, PreviewPublicationError> {
+        if !self.selection_available() {
+            return Err(PreviewPublicationError::CandidateMismatch);
+        }
         self.appearance
             .as_mut()
             .ok_or(PreviewPublicationError::CandidateMismatch)?
@@ -143,6 +240,9 @@ impl ThemeRuntime {
         request: PreviewPublicationRequest,
         prepared: PreparedPreviewAppearance,
     ) -> Result<PreviewPublicationResult, PreviewPublicationError> {
+        if !self.selection_available() {
+            return Err(PreviewPublicationError::CandidateMismatch);
+        }
         self.appearance
             .as_mut()
             .ok_or(PreviewPublicationError::CandidateMismatch)?
@@ -185,6 +285,8 @@ impl ThemeRuntime {
     }
 
     pub fn retire(&mut self) {
+        self.preparation_admission.store(false, Ordering::Release);
+        self.selection_available.store(false, Ordering::Release);
         if let Some(subscription) = self.subscription.take() {
             subscription.shutdown();
         }

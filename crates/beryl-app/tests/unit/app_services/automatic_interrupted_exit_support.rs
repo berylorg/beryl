@@ -228,6 +228,7 @@ pub(super) struct Snapshot {
     home: beryl_model::BerylHomeId,
     generation: beryl_home_store::HomeGeneration,
     windows: Vec<gpui::WindowHandle<MainWindowShellRoot>>,
+    settings: gpui::WindowHandle<gpui_settings_window::SettingsWindowView>,
     residents: Vec<(
         gpui::Entity<MainWindowConversationComposer>,
         gpui::Entity<gpui_text_input::RangeTextInput>,
@@ -245,6 +246,12 @@ pub(super) fn capture(owner: &Rc<RefCell<RunningProcessOwner>>, app: &gpui::App)
         .iter()
         .map(|shell| shell.window())
         .collect::<Vec<_>>();
+    let settings = app
+        .windows()
+        .into_iter()
+        .filter_map(|window| window.downcast::<gpui_settings_window::SettingsWindowView>())
+        .collect::<Vec<_>>();
+    assert_eq!(settings.len(), 1);
     let residents = windows
         .iter()
         .filter_map(|window| {
@@ -260,8 +267,25 @@ pub(super) fn capture(owner: &Rc<RefCell<RunningProcessOwner>>, app: &gpui::App)
         home: graph.home().home_id(),
         generation: graph.home().health().generation().unwrap(),
         windows,
+        settings: settings[0],
         residents,
     }
+}
+
+fn assert_preserved_windows(snapshot: &Snapshot, app: &gpui::App) {
+    let live = app.windows();
+    let main = live
+        .iter()
+        .filter_map(|window| window.downcast::<MainWindowShellRoot>())
+        .collect::<Vec<_>>();
+    assert_eq!(main.len(), snapshot.windows.len());
+    assert!(snapshot.windows.iter().all(|window| main.contains(window)));
+    let settings = live
+        .iter()
+        .filter_map(|window| window.downcast::<gpui_settings_window::SettingsWindowView>())
+        .collect::<Vec<_>>();
+    assert_eq!(settings, vec![snapshot.settings]);
+    assert_eq!(live.len(), main.len() + settings.len());
 }
 
 pub(super) async fn verify_and_dispose(
@@ -461,7 +485,7 @@ pub(super) async fn verify_and_dispose(
                 );
                 assert!(!input.read(app).is_enabled());
             }
-            assert_eq!(app.windows().len(), snapshot.windows.len());
+            assert_preserved_windows(&snapshot, app);
         })
         .unwrap();
         RunningProcessOwner::recover_prepared_interrupted_exit(
@@ -496,7 +520,7 @@ pub(super) async fn verify_and_dispose(
                 .is_err()
         );
         cx.update(|app| {
-            assert_eq!(app.windows().len(), snapshot.windows.len());
+            assert_preserved_windows(&snapshot, app);
             for (window, (resident, input, selection)) in
                 snapshot.windows.iter().zip(&snapshot.residents)
             {
@@ -646,7 +670,7 @@ pub(super) async fn verify_and_dispose(
         );
     }
     cx.update(|app| {
-        assert_eq!(app.windows().len(), snapshot.windows.len());
+        assert_preserved_windows(&snapshot, app);
         for window in &snapshot.windows {
             let root = window.read(app).unwrap();
             assert_eq!(root.test_exit_presentation().0, "Exit");

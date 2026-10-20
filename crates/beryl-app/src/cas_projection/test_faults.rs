@@ -14,6 +14,13 @@ mod stop_handoff;
 mod target;
 mod terminal_history;
 
+pub fn bind_applied_settings_for_test(
+    service: &super::ProjectionConnectionService,
+    reader: crate::settings_service::AppliedSettingsReader,
+) -> Result<(), super::LiveCommandAdmissionError> {
+    service.bind_applied_settings(reader)
+}
+
 pub fn request_published_exact_soft_stop_for_test(
     worker: super::ExactStopWorker,
     lifetime: std::sync::Weak<()>,

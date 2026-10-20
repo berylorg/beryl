@@ -1,5 +1,22 @@
 use super::*;
 impl LiveCommandAuthorizer {
+    pub(crate) fn applied_settings(&self) -> Option<crate::settings_service::AppliedSettingsReader> {
+        self.inner.applied_settings.try_lock().ok()?.clone()
+    }
+
+    pub(crate) fn bind_applied_settings(
+        &self,
+        reader: crate::settings_service::AppliedSettingsReader,
+    ) -> Result<(), crate::cas_projection::LiveCommandAdmissionError> {
+        let mut current = self.inner.applied_settings.lock()
+            .map_err(|_| crate::cas_projection::LiveCommandAdmissionError::Closed)?;
+        if current.as_ref().is_some_and(|old| !old.same_source(&reader)) {
+            return Err(crate::cas_projection::LiveCommandAdmissionError::Closed);
+        }
+        *current = Some(reader);
+        Ok(())
+    }
+
     pub(crate) fn try_with_work_open<T>(&self, publish: impl FnOnce() -> T) -> Option<T> {
         self.process.try_admit(|| {
             let _commands = self.try_hold_work_open().ok()?;

@@ -51,6 +51,10 @@ impl ProcessServiceOwner {
             .expect("prepared recovery queries")
             .publish();
         self.graph = Some(PublishedAppServices {
+            prepared_settings: services.settings.take(),
+            settings: None,
+            settings_themes: None,
+            settings_theme_retirement: None,
             model_selection: std::sync::OnceLock::new(),
             runtime_setup: graph
                 .runtime_setup

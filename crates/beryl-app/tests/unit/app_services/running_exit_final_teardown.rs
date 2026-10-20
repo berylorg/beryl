@@ -5,7 +5,7 @@ use windows::{
         Foundation::{LPARAM, WPARAM},
         UI::{
             Controls::TDM_CLICK_BUTTON,
-            WindowsAndMessaging::{FindWindowW, IDCANCEL, IDOK, PostMessageW},
+            WindowsAndMessaging::{FindWindowW, IDCANCEL, IDOK, IsWindow, PostMessageW},
         },
     },
     core::PCWSTR,
@@ -65,8 +65,22 @@ fn run(selected_count: u8, failure: Failure) {
             let StartupCompletion::Running(running) = result else { panic!("startup failed") };
             let invoking = running.windows.window_ids()[0];
             let window = running.windows.shells()[0].window();
+            let original_main = running.windows.shells().iter().map(|shell| {
+                let window = shell.window();
+                let id = window.read(app).unwrap().controller().unwrap().window_id();
+                (window, id, native_window_handle(window.into(), app))
+            }).collect::<Vec<_>>();
             let existing_settings = (failure == Failure::None && selected_count == 0).then(|| settings_window(app));
                     let owner = RunningProcessOwner::test_start_unmounted(running, app);
+            let process_settings = app.windows().into_iter()
+                .filter_map(|window| window.downcast::<gpui_settings_window::SettingsWindowView>())
+                .filter(|window| Some(*window) != existing_settings)
+                .collect::<Vec<_>>();
+            assert_eq!(process_settings.len(), 1);
+            let original_settings = (
+                process_settings[0],
+                native_window_handle(process_settings[0].into(), app),
+            );
             let audio_ingress = owner.borrow().test_process().notification_audio.ingress();
             {
                 let owner = owner.borrow();
@@ -193,8 +207,31 @@ fn run(selected_count: u8, failure: Failure) {
                 }).unwrap();
                 if let Some(native_gate) = native_gate {
                     let deadline = Instant::now() + Duration::from_secs(10);
-                    while cx.update(|app| app.windows().len()).unwrap() == usize::from(selected_count) {
-                        assert!(Instant::now() < deadline, "native destruction never reached its receipt");
+                    loop {
+                        let destroyed = cx.update(|app| {
+                            let live = app.windows();
+                            let first = original_main[0];
+                            if live.contains(&first.0.into())
+                                || unsafe { IsWindow(Some(first.2)).as_bool() }
+                            {
+                                return false;
+                            }
+                            assert!(!live.contains(&original_settings.0.into()));
+                            assert!(!unsafe { IsWindow(Some(original_settings.1)).as_bool() });
+                            let main = live.iter()
+                                .filter_map(|window| window.downcast::<crate::main_window::MainWindowShellRoot>())
+                                .collect::<Vec<_>>();
+                            assert_eq!(main.len(), original_main.len() - 1);
+                            for (window, id, native) in original_main.iter().skip(1) {
+                                assert!(main.contains(window));
+                                assert_eq!(window.read(app).unwrap().controller().unwrap().window_id(), *id);
+                                assert!(unsafe { IsWindow(Some(*native)).as_bool() });
+                            }
+                            assert_eq!(live.len(), main.len());
+                            true
+                        }).unwrap();
+                        if destroyed { break; }
+                        assert!(Instant::now() < deadline, "the original first main window and Settings native destruction did not reach the held receipt");
                         cx.background_executor().timer(Duration::from_millis(10)).await;
                     }
                     assert!(!observed.get());
@@ -298,6 +335,24 @@ fn run(selected_count: u8, failure: Failure) {
     });
     assert!(finished.get());
     assert_reopens(&directory);
+}
+
+fn native_window_handle(
+    handle: gpui::AnyWindowHandle,
+    app: &mut gpui::App,
+) -> windows::Win32::Foundation::HWND {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    app.update_window(handle, |_, window, _| {
+        let native = window.window_handle().unwrap();
+        let RawWindowHandle::Win32(native) = native.as_raw() else {
+            panic!("expected a live Windows native window");
+        };
+        let native = windows::Win32::Foundation::HWND(native.hwnd.get() as *mut _);
+        assert!(unsafe { IsWindow(Some(native)).as_bool() });
+        native
+    })
+    .unwrap()
 }
 
 fn settings_window(

@@ -26,6 +26,7 @@ fn native_recovered_first_conversation_submits_code_and_routes_fresh_inner_range
             Box::pin(async move {
                 let window = windows(&owner)[0];
                 native_code::draw(window, cx);
+                wait_for_services(&owner, cx).await;
                 let prior_panel = window
                     .read_with(cx, |root, _| root.test_transcript_panel())
                     .unwrap();

@@ -30,6 +30,7 @@ fn native_recovered_new_thread_submits_code_and_routes_fresh_inner_ranges() {
                     .read_with(cx, |composer, _| composer.selection_identity())
                     .unwrap();
                 native_code::draw(window, cx);
+                wait_for_services(&owner, cx).await;
                 assert!(owner.borrow().runtime_setup_services().is_some());
                 owner.borrow_mut().test_enable_resident_frame_capture();
                 let target = Arc::new(Mutex::new(None));

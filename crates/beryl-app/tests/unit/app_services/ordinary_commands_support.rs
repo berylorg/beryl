@@ -453,7 +453,6 @@ fn run_mounted_case_with_workers(
                     let owner = if runtime_configuration.is_none() {
                         let owner = RunningProcessOwner::start(process.take().unwrap(), app);
                         eprintln!("mounted fixture command consumer installed");
-                        *original.borrow_mut() = snapshot(&owner).windows().to_vec();
                         *returned.borrow_mut() = Some(owner.clone());
                         Some(owner)
                     } else {
@@ -472,11 +471,12 @@ fn run_mounted_case_with_workers(
                                     services
                                 }).await;
                                 let owner = cx.update(|app| RunningProcessOwner::start(process, app)).unwrap();
-                                *original.borrow_mut() = snapshot(&owner).windows().to_vec();
                                 *returned.borrow_mut() = Some(owner.clone());
                                 owner
                             }
                         };
+                        wait_for_services(&owner, cx).await;
+                        *original.borrow_mut() = snapshot(&owner).windows().to_vec();
                         let original_windows = windows(&owner);
                         loop {
                             let (sender, receiver) = futures_channel::oneshot::channel();
@@ -530,6 +530,7 @@ fn run_mounted_case_with_workers(
                                 cx.background_executor().timer(Duration::from_millis(10)).await;
                             }
                         }
+                        wait_for_services(&owner, cx).await;
                         eprintln!("mounted fixture entering scenario");
                         let diagnostic_owner = owner.clone();
                         scenario(owner, faults, cx).await;
@@ -757,6 +758,7 @@ pub(super) async fn wait_for_unviewed_catalog_source(
 ) {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
+        wait_for_services(owner, cx).await;
         let ready = {
             let owner = owner.borrow();
             let graph = owner.test_services().graph().unwrap();
@@ -843,6 +845,15 @@ pub(super) fn activate_exit(window: Window, cx: &mut AsyncApp) {
     window
         .update(cx, |root, _, _| root.test_activate_exit_command())
         .unwrap();
+}
+
+pub(super) async fn wait_for_services(owner: &Owner, cx: &mut AsyncApp) {
+    wait_until(
+        cx,
+        || owner.borrow().test_services_ready(),
+        "running service custody returned from its current worker",
+    )
+    .await;
 }
 
 pub(super) async fn wait_until(cx: &mut AsyncApp, ready: impl Fn() -> bool, what: &str) {

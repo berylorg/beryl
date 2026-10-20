@@ -875,3 +875,32 @@ The five owning storage targets pass 63/63; ordinary native routes cross the for
 on unchanged worker stacks. Later graph-retirement frame waits remain a separate unaccepted
 recovery issue. The precise acceptance and evidence limits are in the
 [status-frame audit](../audits/native-staging-status-stack.md).
+
+The same fixed-worker budget also exposed original unpublished New Window retirement beneath
+220,560-byte whole-state dispatch and 160,032-byte outcome-installation frames. Debugger-at-startup
+runs passed; attachment to the actual nextest child reproduced the overflow. Resolve nearest-symbol
+stack labels against the actual private function prologues before choosing the correction. Separate
+original custody extraction from I/O and result installation from execution; preserve every outcome
+and work budget. The [creation-frame audit](../audits/native-window-creation-stack.md) accepts 99
+owning passes and native retirement completion, while keeping the earlier publication refusal open.
+An ordinary mixed-transcript edit exposed the same lifetime problem in a different App caller:
+final mutation-finish locals occupied 140,240 bytes while earlier internal pages were staged. The
+final coherence probe was only 5,720 bytes; changing its storage getters would target the last
+probe rather than the dominant caller. Extract only the final resolution/finish/install stage,
+preserving all earlier validation and staging and outer original-coordinator restoration. Rebuilt
+page-stage allocation drops to 30,832 bytes; the isolated final helper remains a real 110,056-byte
+frame during finishing. The [composer-finish audit](../audits/native-composer-finish-stack.md) accepts
+the native route and 44 owning cases without claiming a universal stack maximum.
+## Paint-Dependent Original Capture Continuation
+
+Native lineage recovery could retire its graph and then park with original GUI capture Advancing,
+one scheduled continuation and no pending worker. Exact diagnostics identify the retained target
+as a visible, inactive, non-minimized main window. Its native next-frame callback had not delivered;
+increasing a test deadline or forcing activation would not establish correct capture ownership.
+
+Capture and prepublication realization require window-affine text/layout resources, not native
+paint. Schedule successive bounded quanta through the existing 16 ms foreground continuation,
+with the same single scheduled wake, exact flight checks, worker completion path and cancellation
+custody. Replace the native-frame dependency rather than racing it with a second scheduler. Yield
+between quanta and preserve native visibility/placement. Native minimum-publication deferral keeps
+its separate contract. Runtime qualification belongs to the Settings mounting audit.

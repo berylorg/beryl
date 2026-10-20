@@ -144,7 +144,7 @@ impl MainWindowShellRoot {
         let authenticated = source
             .as_ref()
             .ok_or("threadless recovery source is unavailable")?;
-        let previous = controller.appearance.generation.prepared().home();
+        let previous = controller.appearance.generation.home();
         if controller.composer_mount.is_some()
             || authenticated.window().window_id() != *window_id
             || authenticated.home_id() != previous.home_id()
@@ -263,7 +263,7 @@ impl MainWindowShellController {
             _ => None,
         };
         if let Some((home_id, generation)) = identity {
-            let home = self.appearance.generation.prepared().home();
+            let home = self.appearance.generation.home();
             if home.home_id() != home_id || home.home_generation() != generation {
                 return Err(
                     "recovered shell requires fresh appearance before interaction release".into(),

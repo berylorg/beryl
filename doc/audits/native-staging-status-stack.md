@@ -2,8 +2,8 @@
 
 ## Status
 
-Accepted on 2026-10-20 for the reproduced native candidate-authentication overflow. Complete
-Settings and end-to-end recovery qualification remain unaccepted under their owning plan phase.
+Accepted on 2026-10-20 for the reproduced native candidate-authentication overflow. Later complete
+Settings and affected recovery qualification is recorded in [Settings acceptance](settings-workflow-mounting.md).
 
 ## Failure And Correction
 
@@ -42,8 +42,9 @@ original GUI capture scheduled and Advancing. Their deadline panics are distinct
 `0xc00000fd` overflow. Independent acceptance review confirmed the observed checkpoints qualify
 the narrow frame-separation boundary without another duplicate capture-only test. It does not
 accept those later recovery continuations, claim a fully passing native suite or establish
-universal measured stack headroom. The App working tree still contains unaccepted Settings work.
+universal measured stack headroom. Those were the evidence limits at this prerequisite's acceptance;
+the subsequent Settings acceptance qualifies all three complete native lineage routes.
 
-Fresh debugger logs and test configuration remain in `.aipm/tasks/settings-mounting/` through
-acceptance. The enduring stack ownership lesson is also recorded in
+Fresh debugger logs and test configuration were retained through their final Settings acceptance
+consumer. The enduring stack ownership lesson is also recorded in
 [ordinary close and recovery](../failures/ordinary-close-recovery.md#native-candidate-authentication-status-frame).

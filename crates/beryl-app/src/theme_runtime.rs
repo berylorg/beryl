@@ -16,6 +16,13 @@ mod gpui_publication;
 mod identity;
 mod publication;
 mod service;
+mod settings_bridge;
+
+pub use settings_bridge::{
+    SettingsThemeBroker, SettingsThemeReader, ThemeSettingsBridgeError, ThemeSettingsCatalog,
+    ThemeSettingsCompletion, ThemeSettingsFocus, ThemeSettingsPage, ThemeSettingsResult,
+    ThemeSettingsRetirement, ThemeSettingsTicket, ThemeSettingsWork,
+};
 
 pub(crate) use service::preparation::PreparedThemeRuntime;
 
@@ -45,7 +52,8 @@ pub use identity::{
 };
 pub use service::{
     ConfirmedSettingsTheme, RepositoryAppearanceResult, SettingsThemeOutcome, SettingsThemeResult,
-    ThemeRepositoryReconciliationResult, ThemeRepositoryRequest, ThemeRepositoryRequestOrigin,
-    ThemeRepositoryRequestResult, ThemeRuntime, ThemeRuntimeConfig, ThemeRuntimeDiagnostics,
-    ThemeRuntimeFailureClass, ThemeRuntimeStartError, ThemeWatchDrainResult,
+    ThemeRecoveryContext, ThemeRecoverySelection, ThemeRepositoryReconciliationResult,
+    ThemeRepositoryRequest, ThemeRepositoryRequestOrigin, ThemeRepositoryRequestResult,
+    ThemeRuntime, ThemeRuntimeConfig, ThemeRuntimeDiagnostics, ThemeRuntimeFailureClass,
+    ThemeRuntimeStartError, ThemeSettingsSource, ThemeWatchDrainResult,
 };

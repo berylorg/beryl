@@ -13,6 +13,7 @@ pub(super) struct ObservedHomeFailure {
 
 impl RunningProcessOwner {
     fn project_exit_availability(owner: &Rc<RefCell<Self>>, app: &mut App) {
+        Self::project_settings(owner, app);
         Self::project_observed_home_failure(owner, app);
         Self::observe_running_home_failure(owner, app);
         Self::project_running_home_recovery_notices(owner, app);

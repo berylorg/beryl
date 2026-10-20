@@ -284,6 +284,26 @@ tooltip text/typography use `tooltip.text`. Activity-specific roles remain direc
   existing theme service/runtime composition. Only the published graph exposes its non-owning
   reader/commands. The controller owns the window-local staged draft; the service owns admitted
   command custody and process-lifetime unresolved-key exclusions independently of GUI observers.
+  Temporary exclusive appearance-worker custody does not retire that published generation.
+  The running owner retains a fixed set of its existing generation-qualified ordinary read facades
+  for that exact flight: running-thread/thread-creation, model selection, exact status/Stop,
+  Activity and Catalog query access. Facades keep their owning currentness checks and remain
+  published while the mutable owner is off GPUI. They do not reacquire, copy or retag service
+  authority. The flight drops these retained facades when the owner returns; genuine retirement,
+  unavailable graphs and generation replacement retain their existing invalidation semantics.
+  Executable creation/admission services remain subject to their ordinary live-owner gates.
+  An already admitted New Window retains its exact hidden shell in the original bounded
+  construction entry while that exact appearance flight temporarily prevents publication. This
+  remains original preparation with unchanged capacity, deadline and cancellation, not another
+  parked controller or queued construction. It does not reacquire or replay the command. After
+  original services return and current Settings gates are projected, an owner/home-generation-
+  qualified wake resumes the existing construction driver. Publication revalidates all original
+  source, selection, cancellation, generation, appearance, Home, Exit and native guards. A true
+  refusal follows original abandonment; a successor appearance flight retains the same wait.
+  Initial Settings preheat and recovered-service rebinding precede ordinary projection, but cannot
+  lend the mutable service owner to appearance work until ordinary command mounting and interrupted
+  recovery completion have finished. Exit, shutdown and final teardown retain exclusive custody.
+  Deferred appearance requests remain queued under their original identities until admission opens.
   Across generation replacement, the process composition retains home-qualified compact exclusions,
   original intent/outcome facts and the installed Home-registry operation handle. Old executable
   Home/State/theme handles retire; the registry handle preserves only its original reconciliation
@@ -308,7 +328,10 @@ tooltip text/typography use `tooltip.text`. Activity-specific roles remain direc
   limits. Installed-theme and role collections use revision-bound bounded pages and fixed residency;
   they never become resident vectors to populate a picker or selected detail.
 - Off-GPUI preparation validates the entire modified scalar set and, when needed, prepares the exact
-  active-theme appearance. One typed State `ApplySettings` contribution publishes every modified
+  active-theme appearance. Before enabling Apply or modified OK, one coalesced read-only qualification
+  validates the staged theme for its exact source/window/draft identity. Qualification claims no
+  operation identity, Home receipt or command custody, and actual Apply still performs its own
+  preparation. One typed State `ApplySettings` contribution publishes every modified
   scalar atomically with captured expected records/revisions or none. No repository file write or
   theme-document draft is part of that scalar batch. A stale preparation is a definite refusal;
   there is no automatic resubmission of an edited or rejected draft.
@@ -367,6 +390,11 @@ tooltip text/typography use `tooltip.text`. Activity-specific roles remain direc
   ownership, bounded source/draft identities and original outcomes. They do not enter scalar
   Apply/OK. Their cancellation/close/Exit restrictions follow the owning theming contract; notably
   Save As never rebinds or cleans the original document draft or activates the new installed id.
+  A generation-owned bounded theme broker performs typed repository I/O away from GPUI, retains
+  admitted original outcomes independently of observers and drains before service retirement.
+  Repository-file uncertainty that cannot resolve before retirement becomes the theme system's
+  explicit unresolved read-only context; it is not adopted into a fresh Theme service or translated
+  into scalar Home-registry custody. Fresh reads cannot answer or clean that original operation.
   Orphan old shell Settings sources are not a production dependency or a persistence adapter.
 - Structural Home failure fences new work and presents existing Home unavailability. Retirement
   cancels source/page preparation, drains admitted work and transfers only bounded original intent

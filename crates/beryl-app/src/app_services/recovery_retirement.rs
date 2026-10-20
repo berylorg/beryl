@@ -51,6 +51,8 @@ pub(super) struct ServiceGraphRetirement {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ServiceGraphRetirementError {
+    #[error(transparent)]
+    Settings(#[from] crate::settings_service::SettingsServiceError),
     #[error("service graph recovery retirement is already retained")]
     AlreadyRetained,
     #[error("recovery retirement requires the exact published failed generation")]
@@ -284,6 +286,19 @@ impl ProcessServiceOwner {
     ) -> Result<(), ServiceGraphRetirementError> {
         self.validate_failed_service_graph_retirement(expected)?;
         let fence = self.process.fence()?;
+        let graph = self
+            .graph
+            .as_mut()
+            .ok_or(ServiceGraphRetirementError::Stale)?;
+        if let Some(context) = graph
+            .loaded_theme
+            .as_ref()
+            .and_then(|theme| theme.recovery_context())
+        {
+            self.theme_recovery_context = Some(context);
+        }
+        graph.retire_settings()?;
+        self.settings_theme_retirement = graph.settings_theme_retirement.take();
         self.attempt = InitialServiceAttemptState::Blocked;
         self.recovery_retirement = Some(ServiceGraphRetirement {
             fence,

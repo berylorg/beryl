@@ -2,7 +2,7 @@ use std::num::NonZeroU64;
 
 use beryl_state::{
     PreparedThemeAppearance, ThemeAppearanceSource, ThemeDocumentDigest, ThemeDocumentIdentity,
-    ThemeDraftIdentity, ThemeDraftRevision, ThemeSettingsIdentity,
+    ThemeDraftIdentity, ThemeDraftRevision, ThemeHomeIdentity, ThemeSettingsIdentity,
 };
 
 use super::{
@@ -116,6 +116,7 @@ impl DurablePublicationIdentity {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AppearancePublication {
     Durable,
+    UnavailableContext,
     Preview {
         source: PreviewSource,
         candidate: PreviewCandidateIdentity,
@@ -127,6 +128,7 @@ pub enum AppearancePublication {
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppearanceGeneration {
     number: AppearanceGenerationNumber,
+    home: ThemeHomeIdentity,
     prepared: PreparedThemeAppearance,
     publication: AppearancePublication,
 }
@@ -139,9 +141,27 @@ impl AppearanceGeneration {
     ) -> Self {
         Self {
             number,
+            home: prepared.home(),
             prepared,
             publication,
         }
+    }
+
+    pub(crate) fn unavailable_context(
+        number: AppearanceGenerationNumber,
+        home: ThemeHomeIdentity,
+        prepared: PreparedThemeAppearance,
+    ) -> Self {
+        Self {
+            number,
+            home,
+            prepared,
+            publication: AppearancePublication::UnavailableContext,
+        }
+    }
+
+    pub const fn home(&self) -> ThemeHomeIdentity {
+        self.home
     }
 
     #[must_use]

@@ -63,11 +63,13 @@ pub(super) async fn complete(
     window
         .update(cx, |_, native, _| native.activate_window())
         .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
     loop {
         let complete = match owner.borrow().automatic_recovery_outcome().as_deref() {
             Some(InterruptedExitRecoveryOutcome::Completed) => {
                 assert!(matches!(control, Control::Normal | Control::DropReady));
                 reached.load(Ordering::Acquire)
+                    && owner.borrow().test_services_ready()
                     && owner.borrow().test_services().graph().is_some_and(|graph| {
                         graph
                             .home()
@@ -98,6 +100,45 @@ pub(super) async fn complete(
         };
         if complete {
             break;
+        }
+        if Instant::now() >= deadline {
+            let state = {
+                let owner = owner.borrow();
+                let recovery = owner
+                    .automatic_recovery_outcome()
+                    .map(|outcome| match &*outcome {
+                        InterruptedExitRecoveryOutcome::Running => "Running".to_owned(),
+                        InterruptedExitRecoveryOutcome::Completed => "Completed".to_owned(),
+                        InterruptedExitRecoveryOutcome::Cancelled => "Cancelled".to_owned(),
+                        InterruptedExitRecoveryOutcome::Unavailable(error) => {
+                            format!("Unavailable({error})")
+                        }
+                    });
+                (
+                    reached.load(Ordering::Acquire),
+                    owner.test_services_ready(),
+                    recovery,
+                    owner.test_thread_creation_recovery_stage(),
+                    owner.test_ordinary_command_status(),
+                    owner
+                        .test_last_ordinary_command_failure()
+                        .map(|(window, error)| (window, error.to_owned())),
+                )
+            };
+            let root = window
+                .update(cx, |root, window, app| {
+                    (
+                        root.test_ordinary_thread_activation_diagnostics(),
+                        root.test_thread_confirmation_diagnostics(),
+                        root.test_running_activation_failure(),
+                        root.test_lineage_readiness(app),
+                        window.focused(app),
+                    )
+                })
+                .unwrap();
+            panic!(
+                "ordinary {control:?} activation did not reach original recovery: owner={state:?}, root={root:?}"
+            );
         }
         cx.background_executor()
             .timer(Duration::from_millis(10))

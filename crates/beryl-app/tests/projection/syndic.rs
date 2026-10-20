@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+#[path = "../support/applied_settings.rs"]
+mod applied_settings;
 #[path = "syndic/assets.rs"]
 mod assets;
 #[path = "../support/syndic_command.rs"]
@@ -70,6 +72,7 @@ impl ScheduledOrdinaryExecutionProvider for UnavailableScheduledOrdinaryProvider
 }
 
 pub struct Fixture {
+    applied_settings: std::sync::OnceLock<applied_settings::AppliedSettingsFixture>,
     _directory: tempfile::TempDir,
     pub store: ProjectionConnectionService,
     pub process_admission: beryl_app::process_admission::ProcessAdmissionGate,
@@ -93,6 +96,24 @@ impl std::ops::Deref for FixtureHome<'_> {
 }
 
 impl Fixture {
+    fn settings_source(&self) -> &applied_settings::AppliedSettingsFixture {
+        self.applied_settings.get_or_init(|| {
+            applied_settings::AppliedSettingsFixture::new(&self.home(), self.state.settings())
+        })
+    }
+
+    pub fn applied_settings(&self) -> beryl_app::settings_service::AppliedSettingsReader {
+        self.settings_source().reader()
+    }
+
+    pub fn apply_setting(&self, value: beryl_app::settings_service::SettingsDraftValue) {
+        self.settings_source().apply(value);
+    }
+
+    pub fn retire_settings(&self) {
+        self.settings_source().retire();
+    }
+
     pub fn home_path(&self) -> &std::path::Path {
         self._directory.path()
     }
@@ -323,6 +344,7 @@ impl Fixture {
             )
             .unwrap();
         Self {
+            applied_settings: std::sync::OnceLock::new(),
             _directory: directory,
             store,
             process_admission,
@@ -354,6 +376,7 @@ impl Fixture {
 
     pub fn into_service(self) -> (tempfile::TempDir, ProjectionConnectionService) {
         let Self {
+            applied_settings,
             _directory,
             store,
             process_admission: _,
@@ -365,6 +388,7 @@ impl Fixture {
             next_item: _,
             clock: _,
         } = self;
+        drop(applied_settings);
         (_directory, store)
     }
 

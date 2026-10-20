@@ -12,11 +12,18 @@ impl PreparedRecoveryServiceGraph {
     }
 }
 
-pub(crate) fn prepared(candidate: HomeRecoveryCandidate) -> PreparedRecoveryServiceGraph {
+pub(crate) fn prepared(mut candidate: HomeRecoveryCandidate) -> PreparedRecoveryServiceGraph {
     let one = NonZeroUsize::new(1).unwrap();
     let owner = ProcessServiceOwner::new(candidate.home_id(), one, one);
     let state = BerylState::reacquire_candidate(&candidate).unwrap();
     let syndic = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+    let settings = crate::settings_service::PreparedSettingsService::prepare_candidate(
+        &candidate.recovery_access().unwrap(),
+        &state.settings(),
+        owner.settings_owner.clone(),
+        owner.next_settings_generation().unwrap(),
+    )
+    .unwrap();
     let configuration = crate::app_services::tests::configuration();
     let runtime_setup = super::super::runtime_setup::RuntimeSetupService::prepare(
         Arc::new(candidate.service_reference()),
@@ -70,6 +77,8 @@ pub(crate) fn prepared(candidate: HomeRecoveryCandidate) -> PreparedRecoveryServ
         .unwrap_or_else(|error| panic!("handoff preparation: {}", error.error()));
     let services = PreparedRecoveryAppServices::prepare(
         cas,
+        settings,
+        crate::theme_runtime::ThemeRecoverySelection::ProvenSnapshot,
         &state,
         syndic.clone(),
         configuration,

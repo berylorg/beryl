@@ -285,13 +285,17 @@ fn native_progressive_model_menu_pointer_keyboard_reasoning_and_focus_use_real_a
                 server.enqueue(ModelResponse::page_range(64, 64, None));
                 let prior_focus = window
                     .update(cx, |root, native, app| {
-                        let focus = native.focused(app);
+                        let input = editor.read(app).gpui_input();
+                        assert!(input.read(app).is_surface_current_and_interactive());
+                        let focus = gpui::Focusable::focus_handle(input.read(app), app);
+                        native.focus(&focus);
+                        assert_eq!(native.focused(app), Some(focus.clone()));
                         root.test_toggle_model_menu(native, app);
                         let state = root.test_model_menu_state().unwrap();
                         assert!(state.2);
                         assert_eq!(state.0, 0);
                         assert_eq!(root.test_model_status().0.reasoning, None);
-                        focus
+                        Some(focus)
                     })
                     .unwrap();
                 loop {
@@ -1045,7 +1049,10 @@ fn native_completed_thread_status_uses_authentic_loaded_session_metadata_without
                             .is_none()
                     );
                     let policy = ScheduledOrdinaryRequestPolicy::backend_defaults(
-                        graph.state().settings(),
+                        graph
+                            .settings()
+                            .expect("published Settings source")
+                            .applied_reader(),
                         Some(1_000_000),
                         TIMEOUT,
                         TIMEOUT,

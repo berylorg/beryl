@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub(super) struct PreparedAppServices {
+    settings: Option<crate::settings_service::PreparedSettingsService>,
     runtime_setup: Option<Arc<super::runtime_setup::RuntimeSetupService>>,
     paste_resources: crate::main_window::MainWindowComposerPasteResources,
     process: ProcessAdmissionGate,
@@ -90,6 +91,7 @@ impl PreparedAppServices {
     ) -> Result<Self, PreparedAppServiceFailure> {
         let (provider, sessions) = ProcessScheduledExecutionProvider::new();
         let mut prepared = Self {
+            settings: None,
             runtime_setup: None,
             paste_resources: configuration.paste_resources,
             process: owner.process.clone(),
@@ -108,6 +110,20 @@ impl PreparedAppServices {
         let result: Result<(), AppServiceOpenError> = (|| {
             check_cancellation(cancellation)?;
             let candidate = prepared.candidate.as_mut().expect("private candidate");
+            let generation = owner.next_settings_generation()?;
+            prepared.settings = Some(
+                crate::settings_service::PreparedSettingsService::prepare_candidate(
+                    &candidate.recovery_access()?,
+                    &prepared.state.settings(),
+                    owner.settings_owner.clone(),
+                    generation,
+                )?,
+            );
+            let applied = prepared
+                .settings
+                .as_ref()
+                .expect("prepared settings")
+                .applied_reader();
             prepared.runtime_setup = Some(
                 super::runtime_setup::RuntimeSetupService::prepare(
                     Arc::new(candidate.service_reference()),
@@ -155,7 +171,7 @@ impl PreparedAppServices {
                     RuntimeSessionPreparationConfig {
                         runtime_roots: prepared.state.runtime_roots(),
                         assets: prepared.state.assets(),
-                        policy: configuration.session_policy,
+                        policy: configuration.session_policy.with_applied_settings(applied),
                         token_directory: configuration.token_directory,
                         wsl_supervisor_artifact: configuration.wsl_supervisor_artifact,
                     },
@@ -257,6 +273,10 @@ impl PreparedAppServices {
             .expect("prepared catalog queries")
             .publish();
         let graph = PublishedAppServices {
+            prepared_settings: self.settings.take(),
+            settings: None,
+            settings_themes: None,
+            settings_theme_retirement: None,
             model_selection: std::sync::OnceLock::new(),
             runtime_setup: self
                 .runtime_setup

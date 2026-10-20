@@ -427,6 +427,53 @@ pub(super) async fn verify_and_dispose(
     dispose_recovered(owner, windows, appearance, cx).await;
 }
 
+pub(super) async fn shutdown_settings(owner: &Rc<RefCell<RunningProcessOwner>>, cx: &mut AsyncApp) {
+    let settings = cx
+        .update(|app| {
+            let settings = owner.borrow().test_settings_controller();
+            if let Some(settings) = settings {
+                let window = settings
+                    .read(app)
+                    .native_window()
+                    .expect("retained Settings controller owns its original window")
+                    .window_handle();
+                assert!(
+                    settings
+                        .update(app, |settings, cx| settings.shutdown(cx))
+                        .unwrap()
+                );
+                let destroyed = owner
+                    .borrow_mut()
+                    .test_take_settings_destruction()
+                    .expect("original process-held Settings destruction receipt is retained");
+                Some((settings, window, destroyed))
+            } else {
+                assert!(app.windows().iter().all(|window| {
+                    window
+                        .downcast::<gpui_settings_window::SettingsWindowView>()
+                        .is_none()
+                }));
+                None
+            }
+        })
+        .unwrap();
+    if let Some((settings, window, destroyed)) = settings {
+        destroyed
+            .await
+            .expect("original Settings native destruction completed");
+        cx.update(|app| {
+            assert!(!app.windows().contains(&window.into()));
+            assert!(settings.read(app).native_window().is_none());
+            assert!(app.windows().iter().all(|window| {
+                window
+                    .downcast::<gpui_settings_window::SettingsWindowView>()
+                    .is_none()
+            }));
+        })
+        .unwrap();
+    }
+}
+
 pub(super) async fn dispose_recovered(
     owner: Rc<RefCell<RunningProcessOwner>>,
     windows: Vec<gpui::WindowHandle<MainWindowShellRoot>>,
@@ -471,6 +518,7 @@ pub(super) async fn dispose_recovered(
         }
         drop(draft);
     }
+    shutdown_settings(&owner, cx).await;
     let mut running = Rc::try_unwrap(owner)
         .ok()
         .unwrap()

@@ -11,6 +11,8 @@ use crate::{
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum AppServiceCloseError {
+    #[error(transparent)]
+    Settings(#[from] crate::settings_service::SettingsServiceError),
     #[error("the complete service graph is unavailable")]
     Unavailable,
     #[error("the service graph already owns a shutdown attempt")]
@@ -227,12 +229,18 @@ impl ProcessServiceOwner {
     }
 
     fn consume_shutdown_graph(&mut self) -> Result<(), AppServiceCloseError> {
+        self.graph
+            .as_mut()
+            .or(self.closing_graph.as_mut())
+            .ok_or(AppServiceCloseError::Unavailable)?
+            .retire_settings()?;
         self.attempt = InitialServiceAttemptState::Blocked;
         let mut graph = self
             .graph
             .take()
             .or_else(|| self.closing_graph.take())
             .expect("ready or retained closing graph");
+        self.settings_theme_retirement = graph.settings_theme_retirement.take();
         self.begin_catalog_query_close(graph.catalog_query.take());
         if let Some(mut catalog) = graph.catalog_source.take() {
             if let Err(error) = catalog.stop_and_join() {

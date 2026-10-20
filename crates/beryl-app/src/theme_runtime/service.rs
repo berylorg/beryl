@@ -1,5 +1,6 @@
 use std::{
     num::{NonZeroU64, NonZeroUsize},
+    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 
@@ -17,9 +18,9 @@ use beryl_state::{
 use super::{
     AppearanceCoordinator, AppearanceCoordinatorConfig, AppearanceDiagnostics,
     AppearanceGeneration, AppearancePublicationFailure, AppearancePublicationTarget,
-    DurablePublicationIdentity, DurablePublicationOutcome, DurableRetryOutcome,
-    PreparedPreviewAppearance, PreviewCandidateIdentity, PreviewPublicationError,
-    PreviewPublicationRequest, PreviewPublicationResult, PreviewSource, StopPreviewResult,
+    DurablePublicationIdentity, DurablePublicationOutcome, PreparedPreviewAppearance,
+    PreviewCandidateIdentity, PreviewPublicationError, PreviewPublicationRequest,
+    PreviewPublicationResult, PreviewSource, StopPreviewResult,
 };
 use std::sync::Arc;
 
@@ -28,6 +29,10 @@ mod load;
 mod operations;
 pub(crate) mod preparation;
 mod publication;
+mod settings;
+
+pub use preparation::{ThemeRecoveryContext, ThemeRecoverySelection};
+pub use settings::ThemeSettingsSource;
 
 use load::{
     installed_identity, load_observed, load_prepared, map_live_failure, map_live_load_failure,
@@ -133,6 +138,26 @@ impl ConfirmedSettingsTheme {
             active,
             prepared,
         }
+    }
+
+    pub const fn draft(&self) -> ThemeDraftIdentity {
+        self.draft
+    }
+
+    pub const fn revision(&self) -> ThemeDraftRevision {
+        self.revision
+    }
+
+    pub const fn committed(&self) -> ThemeSettingsIdentity {
+        self.committed
+    }
+
+    pub const fn active(&self) -> Option<&InstalledThemeId> {
+        self.active.as_ref()
+    }
+
+    pub const fn prepared(&self) -> &PreparedThemeAppearance {
+        &self.prepared
     }
 }
 
@@ -334,7 +359,10 @@ pub struct ThemeRuntime {
     repository: Option<ThemeRepositoryObservation>,
     subscription: Option<ThemeChangeSubscription>,
     appearance: Option<AppearanceCoordinator>,
-    settings: ThemeSettingsIdentity,
+    settings: Option<ThemeSettingsIdentity>,
+    pending_settings_publication: Option<(ThemeDraftIdentity, ThemeDraftRevision)>,
+    selection_available: Arc<AtomicBool>,
+    preparation_admission: Arc<AtomicBool>,
     active: Option<InstalledThemeId>,
     last_observed_document: Option<ThemeDocumentIdentity>,
     refresh_reread_needed: bool,
@@ -349,28 +377,40 @@ pub struct ThemeRuntime {
 }
 
 impl ThemeRuntime {
+    pub fn take_change_hints(&mut self) -> Result<Vec<ThemeChangeHint>, ThemeRuntimeFailureClass> {
+        if self.appearance.is_none() || self.service.is_none() {
+            return Err(ThemeRuntimeFailureClass::Retired);
+        }
+        let subscription = self
+            .subscription
+            .as_ref()
+            .ok_or(ThemeRuntimeFailureClass::Subscription)?;
+        let mut hints = Vec::with_capacity(self.config.max_hints_per_drain.get());
+        while hints.len() < self.config.max_hints_per_drain.get() {
+            match subscription.try_recv() {
+                Ok(Some(hint)) => hints.push(hint),
+                Ok(None) => break,
+                Err(_) => {
+                    self.last_failure = Some(ThemeRuntimeFailureClass::Subscription);
+                    return Err(ThemeRuntimeFailureClass::Subscription);
+                }
+            }
+        }
+        Ok(hints)
+    }
+
     pub fn drain_change_hints(
         &mut self,
         store: &HomeStore,
     ) -> Result<ThemeWatchDrainResult, ThemeRuntimeFailureClass> {
         self.ensure_running()?;
-        let mut hints = Vec::with_capacity(self.config.max_hints_per_drain.get());
-        while hints.len() < self.config.max_hints_per_drain.get() {
-            let hint = match self
-                .subscription
-                .as_ref()
-                .expect("running subscription")
-                .try_recv()
-            {
-                Ok(Some(hint)) => hint,
-                Ok(None) => break,
-                Err(_) => {
-                    self.retire_with(ThemeRuntimeFailureClass::Subscription);
-                    return Err(ThemeRuntimeFailureClass::Subscription);
-                }
-            };
-            hints.push(hint);
-        }
+        let hints = match self.take_change_hints() {
+            Ok(hints) => hints,
+            Err(failure) => {
+                self.retire_with(failure);
+                return Err(failure);
+            }
+        };
         let received = hints.len();
         self.consume_change_hints_inner(
             store,
@@ -430,7 +470,11 @@ impl ThemeRuntime {
             }
         }
         self.watch_batches = self.watch_batches.saturating_add(1);
-        let appearance = if overflow || manifest {
+        let appearance = if (overflow || manifest || active_document)
+            && self.pending_settings_publication.is_some()
+        {
+            self.retry_current_durable(store)?
+        } else if overflow || manifest {
             self.refresh_repository(store)
         } else if active_document {
             self.reload_active_document(store)
@@ -463,6 +507,8 @@ impl ThemeRuntime {
     }
 
     fn retire_with(&mut self, failure: ThemeRuntimeFailureClass) {
+        self.preparation_admission.store(false, Ordering::Release);
+        self.selection_available.store(false, Ordering::Release);
         if let Some(subscription) = self.subscription.take() {
             subscription.shutdown();
         }
@@ -481,6 +527,7 @@ impl ThemeRuntime {
 
 impl Drop for ThemeRuntime {
     fn drop(&mut self) {
+        self.preparation_admission.store(false, Ordering::Release);
         if let Some(subscription) = self.subscription.take() {
             subscription.shutdown();
         }

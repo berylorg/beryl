@@ -413,7 +413,7 @@ impl GpuiAppearanceWindowSet {
                 StalePublicationReason::CurrentGeneration,
             ));
         }
-        if request.generation.prepared().home() != snapshot.current.prepared().home() {
+        if request.generation.home() != snapshot.current.home() {
             return Err(AppearancePublicationFailure::Stale(
                 StalePublicationReason::ForeignService,
             ));

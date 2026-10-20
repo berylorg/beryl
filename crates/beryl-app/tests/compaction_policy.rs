@@ -38,7 +38,7 @@ const EXECUTION_ROOT: &str = r"C:\work\beryl";
 #[test]
 fn settings_resolution_distinguishes_absent_applied_rejected_and_foreign_home() {
     let fixture = Fixture::new(201);
-    let policy = ContextCompactionTimeoutPolicy::applied_settings(fixture.state.settings());
+    let policy = ContextCompactionTimeoutPolicy::applied_settings(fixture.applied_settings());
     let resolved = policy.resolve(&fixture.home()).unwrap();
     assert_eq!(resolved.duration(), Duration::from_secs(180));
     assert_eq!(resolved.source(), Source::AbsentDefault);
@@ -52,15 +52,23 @@ fn settings_resolution_distinguishes_absent_applied_rejected_and_foreign_home() 
         (u64::MAX, 180, Source::RejectedSavedValue),
         (2_000, 2, Source::Applied),
     ] {
-        apply_timeout(&fixture, millis);
-        let resolved = policy.resolve(&fixture.home()).unwrap();
+        let saved = Fixture::new(201);
+        support::save_timeout_before_source(&saved, millis);
+        let saved_policy =
+            ContextCompactionTimeoutPolicy::applied_settings(saved.applied_settings());
+        let resolved = saved_policy.resolve(&saved.home()).unwrap();
         assert_eq!(resolved.duration(), Duration::from_secs(seconds));
         assert_eq!(resolved.source(), source);
     }
     let foreign = Fixture::new(202);
     assert!(matches!(
         policy.resolve(&foreign.home()),
-        Err(ContextCompactionError::HomeRead(_))
+        Err(ContextCompactionError::Unavailable)
+    ));
+    fixture.retire_settings();
+    assert!(matches!(
+        policy.resolve(&fixture.home()),
+        Err(ContextCompactionError::Unavailable)
     ));
     let fixed = ContextCompactionTimeoutPolicy::fixed(Duration::from_secs(7));
     let resolved = fixed.resolve(&fixture.home()).unwrap();
@@ -75,10 +83,11 @@ fn manual_admission_reads_latest_settings_and_join_retains_original_deadline() {
     fixture.submit_text(SUBMITTED_TEXT);
     apply_timeout(&fixture, 20_000);
     let manual =
-        ContextCompactionRequest::applied_settings(fixture.thread, fixture.state.settings());
+        ContextCompactionRequest::applied_settings(fixture.thread, fixture.applied_settings());
     let server = CompactionServer::spawn(true);
     let (session, projection) = obtain(&fixture, &server);
-    let request = OrdinaryTurnExecutionRequest::backend_defaults(fixture.state.settings(), TIMEOUT);
+    let request =
+        OrdinaryTurnExecutionRequest::backend_defaults(fixture.applied_settings(), TIMEOUT);
     let outcome = thread::scope(|scope| {
         let worker = scope.spawn(|| execute(&fixture, projection, &request));
         server.wait_started();
@@ -98,9 +107,9 @@ fn manual_admission_reads_latest_settings_and_join_retains_original_deadline() {
             .store
             .compact_thread(ContextCompactionRequest::applied_settings(
                 fixture.thread,
-                foreign.state.settings()
+                foreign.applied_settings()
             )),
-        Err(ContextCompactionError::HomeRead(_))
+        Err(ContextCompactionError::Unavailable)
     ));
     assert_eq!(fixture.home().home_revision().unwrap(), revision);
     apply_timeout(&fixture, 1_000);
@@ -120,7 +129,7 @@ fn manual_admission_reads_latest_settings_and_join_retains_original_deadline() {
             .store
             .compact_thread(ContextCompactionRequest::applied_settings(
                 fixture.thread,
-                foreign.state.settings(),
+                foreign.applied_settings(),
             ))
             .unwrap();
         assert_eq!(joined, ContextCompactionOutcome::StillRunning);
@@ -156,7 +165,8 @@ fn apply_during_ordinary_turn_is_used_only_when_lifecycle_compaction_is_admitted
     let mut fixture = Fixture::new(205);
     let submitted = fixture.submit_text(SUBMITTED_TEXT);
     apply_timeout(&fixture, 20_000);
-    let request = OrdinaryTurnExecutionRequest::backend_defaults(fixture.state.settings(), TIMEOUT);
+    let request =
+        OrdinaryTurnExecutionRequest::backend_defaults(fixture.applied_settings(), TIMEOUT);
     let server = CompactionServer::spawn(true);
     let (session, projection) = obtain(&fixture, &server);
     thread::scope(|scope| {
@@ -198,7 +208,7 @@ fn apply_during_ordinary_turn_is_used_only_when_lifecycle_compaction_is_admitted
                 .store
                 .compact_thread(ContextCompactionRequest::applied_settings(
                     fixture.thread,
-                    fixture.state.settings()
+                    fixture.applied_settings()
                 ))
                 .unwrap(),
             ContextCompactionOutcome::StillRunning
@@ -221,7 +231,7 @@ fn lifecycle_settings_failure_keeps_typed_cause_and_admits_no_compaction() {
     let submitted = fixture.submit_text(SUBMITTED_TEXT);
     let request = OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), TIMEOUT)
         .with_context_compaction_timeout_policy(ContextCompactionTimeoutPolicy::applied_settings(
-            foreign.state.settings(),
+            foreign.applied_settings(),
         ));
     let server = CompactionServer::spawn(false);
     let (session, projection) = obtain(&fixture, &server);
@@ -246,7 +256,7 @@ fn lifecycle_settings_failure_keeps_typed_cause_and_admits_no_compaction() {
                 &result,
                 Err(OrdinaryTurnExecutionFailure::AfterActivation {
                     source: OrdinaryTurnExecutionError::ContextCompaction(
-                        ContextCompactionError::HomeRead(_)
+                        ContextCompactionError::Unavailable
                     )
                 })
             ),

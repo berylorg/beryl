@@ -80,7 +80,7 @@ impl RunningProcessOwner {
             let Some(CandidateSettlement::Services(Ok(graph))) = slot.as_mut() else {
                 unreachable!("validated prepared graph bindings")
             };
-            let home = graph.appearance().prepared().home().home_id();
+            let home = graph.appearance().home().home_id();
             if generation == expected || !graph.matches_candidate(home, generation) {
                 return Err("publication belongs to another recovery candidate".into());
             }

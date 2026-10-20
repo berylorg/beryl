@@ -154,6 +154,56 @@ fn execute_settings(fixture: &RuntimeFixture, value: SettingValue) {
     ));
 }
 
+fn commit_current_selection(
+    fixture: &RuntimeFixture,
+    runtime: &ThemeRuntime,
+    draft: u64,
+) -> ConfirmedSettingsTheme {
+    let settings = fixture.state.settings();
+    let prior = settings
+        .setting(&fixture.store, SettingKey::DeveloperInstructions)
+        .unwrap();
+    let contribution = settings.apply(
+        settings.revision(&fixture.store).unwrap(),
+        ApplySettings::new(vec![SettingUpdate::new(
+            SettingKey::DeveloperInstructions,
+            prior
+                .as_ref()
+                .map_or(ExpectedSettingRevision::Absent, |record| {
+                    ExpectedSettingRevision::Exact(record.revision())
+                }),
+            SettingValue::developer_instructions("committed selection fixture").unwrap(),
+        )])
+        .unwrap(),
+    );
+    let mut command = HomeCommand::new(fixture.store.home_revision().unwrap());
+    command.add(contribution).unwrap();
+    assert!(matches!(
+        fixture.store.execute(command),
+        CommandOutcome::Committed { .. }
+    ));
+    let active = settings
+        .setting(&fixture.store, SettingKey::ActiveThemeId)
+        .unwrap();
+    let identity = fixture.state.themes().settings_identity(
+        settings.revision(&fixture.store).unwrap(),
+        active.as_ref(),
+    );
+    runtime
+        .settings_source()
+        .unwrap()
+        .prepare_selection(
+            &fixture.store,
+            ThemeDraftIdentity::new(NonZeroU64::new(draft).unwrap()),
+            ThemeDraftRevision::INITIAL,
+            identity,
+            active.as_ref().map(|record| {
+                InstalledThemeId::new(record.value().as_active_theme_id().unwrap()).unwrap()
+            }),
+        )
+        .unwrap()
+}
+
 fn install_active(fixture: &RuntimeFixture) {
     install_theme(fixture, "active", "Active", ACTIVE_DOCUMENT);
 }
@@ -478,19 +528,10 @@ fn confirmed_settings_publication_ends_preview_and_foreign_service_is_rejected()
         .unwrap();
     assert!(runtime.current().unwrap().is_preview());
 
-    let service = fixture.state.themes();
-    let committed = service.settings_identity(DomainRevision::new(2).unwrap(), None);
-    let prepared = beryl_state::PreparedThemeAppearance::fallback(committed);
-    let outcome = ConfirmedSettingsTheme::new(
-        ThemeDraftIdentity::new(NonZeroU64::new(7).unwrap()),
-        ThemeDraftRevision::INITIAL,
-        committed,
-        None,
-        prepared,
-    );
+    let outcome = commit_current_selection(&fixture, &runtime, 7);
     assert_eq!(
         runtime
-            .consume_settings_outcome(SettingsThemeOutcome::Committed(outcome))
+            .consume_settings_outcome(&fixture.store, SettingsThemeOutcome::Committed(outcome))
             .unwrap(),
         SettingsThemeResult::Published
     );
@@ -506,7 +547,10 @@ fn confirmed_settings_publication_ends_preview_and_foreign_service_is_rejected()
         beryl_state::PreparedThemeAppearance::fallback(foreign_settings),
     );
     assert_eq!(
-        runtime.consume_settings_outcome(SettingsThemeOutcome::ReconciledExactNew(foreign_outcome)),
+        runtime.consume_settings_outcome(
+            &fixture.store,
+            SettingsThemeOutcome::ReconciledExactNew(foreign_outcome)
+        ),
         Err(ThemeRuntimeFailureClass::Settings)
     );
 }

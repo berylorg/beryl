@@ -1,6 +1,6 @@
 use crate::notification_audio::{AudioIngress, SoundKind};
 use beryl_home_store::{HomeGeneration, HomeHealthState, HomeServiceReference};
-use beryl_state::{SettingKey, SettingsState};
+use crate::settings_service::AppliedSettingsReader;
 use std::sync::{
     Arc, Weak,
     atomic::{AtomicBool, AtomicU8, Ordering},
@@ -56,7 +56,7 @@ pub(crate) struct ParentCompletionSoundOwner {
 pub(crate) struct ParentSoundSink {
     facts: Weak<DesktopFacts>,
     audio: AudioIngress,
-    settings: SettingsState,
+    settings: AppliedSettingsReader,
     service_generation: crate::cas_projection::ProjectionServiceGeneration,
 }
 
@@ -108,7 +108,7 @@ impl ParentCompletionSoundOwner {
     pub(crate) fn sink(
         &self,
         audio: AudioIngress,
-        settings: SettingsState,
+        settings: AppliedSettingsReader,
         service_generation: crate::cas_projection::ProjectionServiceGeneration,
     ) -> ParentSoundSink {
         ParentSoundSink {
@@ -204,15 +204,18 @@ impl ParentSoundSink {
         if !current() {
             return;
         }
-        let record = match self.settings.setting(home, SettingKey::EndTurnSound) {
-            Ok(Some(record)) => record,
-            Ok(None) => return,
+        let snapshot = match self.settings.snapshot() {
+            Ok(snapshot) => snapshot,
             Err(error) => {
-                tracing::warn!(%error, "parent completion sound settings read failed");
+                tracing::warn!(%error, "parent completion sound settings are unavailable");
                 return;
             }
         };
-        let Some(Some(path)) = record.value().as_end_turn_sound() else {
+        if snapshot.identity.home_id != home.home_id()
+            || snapshot.identity.home_generation != expected {
+            return;
+        }
+        let Ok(Some(path)) = snapshot.end_turn_sound() else {
             return;
         };
         let attention = facts.platform.snapshot();

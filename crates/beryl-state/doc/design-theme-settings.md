@@ -46,8 +46,21 @@ theme repository service and Beryl-owned typed scalar settings only.
   themes or requires a whole document resident. A document load reobserves its manifest row and
   document identity after streaming and immediately before publication, yielding typed retry or
   freshness failure on a race. Diagnostics are content-free bounded counts only.
+- Pure typed document-draft edits belong to this package alongside its canonical schema and
+  validator. A property/source edit returns a new bounded typed document only after validating the
+  role, property eligibility, source, value and existing document limits; refusal preserves the
+  original document. Removing a local source uses the existing inheritance/default semantics.
+  App editors do not mutate private definition maps or serialize and reparse TOML to emulate an
+  edit. This boundary performs no repository write, activation or durable revision advance; Save
+  and Save As retain their existing revision-checked command ownership.
 
 ## Typed settings
+
+The finite theme role schema includes the Settings base typography and ThemeEditor opaque color
+roles defined by the [theme runtime](../../../doc/systems/theme-runtime/design.md#theme-schema-parsing-and-resolution)
+and owning widget specs. Property eligibility remains exact: the base typography role supports
+family, size and weight, and ThemeEditor exposes only declared opaque colors. Transparent and
+`currentColor` presentation uses the runtime adapter contract rather than invented concrete values.
 
 - Settings records contain validated Beryl-owned scalar preferences, exact setting-schema versions,
   and record revisions. Theme documents and order remain in the repository service; only active

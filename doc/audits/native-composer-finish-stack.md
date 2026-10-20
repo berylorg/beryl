@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted on 2026-10-20 for the reproduced native mutation-finish stack boundary. Complete
-Settings and broader product-flow acceptance remain pending.
+Accepted on 2026-10-20 for the reproduced native mutation-finish stack boundary. Later complete
+Settings qualification is recorded in [Settings acceptance](settings-workflow-mounting.md);
+broader product-flow acceptance remains separate.
 
 ## Failure And Correction
 
@@ -41,6 +42,6 @@ Independent final review accepts the reproduced boundary; no universal stack-hea
 The earlier 217 broader Settings passes remain reusable under the sole mechanical helper delta,
 qualified by the owning protocol cases and the actual native failure path. The new mixed case
 raises broader qualified coverage to 218; the 44 owning cases are separate prerequisite evidence.
-Exact first-chance trace, focused disassembly and qualification inputs remain in
-`.aipm/tasks/settings-mounting/` through their final acceptance and diagnosis consumer. The broader
-Settings selection retains its separate unqualified cases and recorded changed-input analysis.
+Exact first-chance trace, focused disassembly and qualification inputs were retained through their
+final Settings acceptance and diagnosis consumer. The complete broader selection and changed-input
+analysis are recorded in Settings acceptance without changing this prerequisite's evidence limits.
