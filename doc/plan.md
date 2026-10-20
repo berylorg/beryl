@@ -5,37 +5,40 @@ phases unless a major blocker requires Operator input. Preserve accepted shell, 
 transcript, composer, Settings, restoration and replacement editing. Preserve unrelated skills/memory.
 Commit and push accepted phases; no installation is authorized.
 
-# Phase 795: Mount The Complete Settings Workflow (finished)
+# Phase 798: Qualify Checkpoint 4 Product Flows (finished)
 
-Independently accepted the complete toolbar/window/draft, scalar and theme publication, applied
-consumers, original recovery custody and native lifetime boundary. The exact broader selection
-establishes 462/462 distinct passes; owning State, Settings, theme, consumer and prerequisite checks
-remain qualified. All 157 changed Cargo/Rust inputs match canonical; normal production checks pass.
-[Acceptance and evidence limits](audits/settings-workflow-mounting.md).
+Independently accepted shell/navigation, transcript/composer, Settings and recovery composition,
+configured limits/refusal, original custody and release. Reused accepted owning evidence with its
+stated limits; no production change or unrelated broad rerun was needed. All 361 attributed Settings
+fixture targets and its exact task directory are absent; shared/ambiguous resources remain untouched.
+[Gate acceptance](audits/checkpoint-four-product-flow-qualification.md).
 
-# Phase 798: Qualify Checkpoint 4 Product Flows (wip)
+# Phase 800: Qualify Non-GUI Discussion Handoff Coordination (wip)
 
-Confirm the accepted shell/navigation, transcript/composer, Settings and recovery product flows,
-configured limits and owned-resource release against the
-[Checkpoint 4 gate](rework/beryl-home/REWORK.md#checkpoint-4-build-the-multi-window-shell-and-navigation).
-Use the existing linked feature, system, package and GUI authorities; this phase qualifies their
-composition and does not redefine behavior or close the whole rework.
+Reconcile the first remaining Checkpoint 6 non-GUI coordination gate against the accepted coordinator,
+atomic participants and later complete graph publication/recovery. Controlling authority is the
+[handoff system](systems/branch-discussion-handoff/design.md),
+[branch behavior](features/branch-discussions/design.md) and
+[App discussion participants](../crates/beryl-app/doc/design-feature-adapters.md#discussion-resolution-admission).
+The intended consumer is later branch-resolution product mounting; this qualification does not
+accept its tool/GUI workflow or rebuild already accepted components.
 
-Review every remaining Checkpoint 4 checklist boundary and its accepted evidence. Trace representative
-ordinary product paths through startup, selected/threadless windows, navigation and new-window
-creation, transcript/composer operations, Settings publication and failed-home recovery. Confirm
-bounded sources, configured capacity/refusal behavior, original outcome custody and release across
-cancellation, replacement and final native destruction. Reuse accepted evidence where relevant
-inputs and assumptions remain unchanged; qualify concrete gaps rather than repeat unrelated suites.
+Trace initial and fresh same-home candidate convergence, retained nondispatch settlement before CAS
+preparation, publication-fenced ordinary scanning, exact resolution admission, generated parent
+execution and final joined disposal. Check configured page/record/ready/reconciliation bounds,
+original uncertain command custody, unknown-dispatch refusal, parent ordering and absence of
+implicit retry. Distinguish historical component-only acceptance from later graph composition.
+Reuse qualified evidence where source, dependency and assumptions remain valid; run focused
+branch-bearing integration checks only for concrete missing evidence. A genuinely missing production
+capability needs a separate ready implementation boundary before changing code.
 
-Obtain independent whole-gate review, preserve a concise durable product-flow qualification audit,
-close/compact Checkpoint 4 only after acceptance, and commit/push the accepted phase. Retain explicit
-limits on native Settings paint, sustained scrolling and universal stack headroom. Any distinct
-implementation outcome or material authority gap needs its own ready bounded phase.
+Obtain independent whole-boundary review, preserve concise durable qualification, reconcile the
+stale aggregate tracker item and commit/push acceptance. Reconcile any overlapping already accepted
+creation prerequisites without treating captured creation as acceptance of the remaining complete
+branch-resolution workflow. Feed the next bounded ready product slice after this gate.
 
-Current milestone: Settings is accepted with independently reconciled 462/462 broader identities,
-current owning evidence and no remaining source finding. Its exact task logs/configuration and
-retained-fixture ledgers are under `.aipm/tasks/settings-mounting/` until owned-resource cleanup
-finishes; preserve unrelated `.tmp`, canonical target and memory. Next, reconcile Checkpoint 4
-composition/evidence, clean only positively attributed task resources after their last consumer,
-and obtain independent gate review before later product mounting. No blocker is known.
+Current milestone: Checkpoint 4 is closed at accepted source `5e063ae8`; all Checkpoint 5 items are
+accepted. Readiness investigation confirms the bounded coordinator, initial/recovery graph handoff,
+retained nondispatch prefix and pending-proof shutdown refusal already exist. An assigned read-only
+investigation is locating the exact owning receipts and any branch-bearing integration evidence gap.
+No source edits or test processes are active; no blocker is known.
