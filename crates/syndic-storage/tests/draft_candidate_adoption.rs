@@ -2207,6 +2207,9 @@ fn settled_head(
         syndic_storage::DraftPieceSettlementClosureV1::SealedImport(_) => {
             panic!("ordinary mutation fixture produced a sealed import settlement")
         }
+        syndic_storage::DraftPieceSettlementClosureV1::OrdinaryRootReplacement(_) => {
+            panic!("ordinary mutation fixture produced an accepted-input root replacement")
+        }
     }
 }
 

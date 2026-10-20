@@ -148,37 +148,7 @@ impl SyndicStorage {
                 let session = session
                     .as_ref()
                     .ok_or(DraftMutationStagingErrorV1::Invariant)?;
-                let Some(operation) = session.active_operation().copied() else {
-                    return Err(DraftMutationStagingErrorV1::Invariant);
-                };
-                let settlement = DraftPieceSettlementKeyV1::new(
-                    identity.draft_id(),
-                    identity.session_id(),
-                    identity.operation_id().as_piece_operation(),
-                );
-                let Some((current_build, current_session)) =
-                    super::mutation::authenticated_staging_build_from_store(
-                        self, store, settlement,
-                    )
-                    .map_err(|_| DraftMutationStagingErrorV1::Invariant)?
-                else {
-                    return Err(DraftMutationStagingErrorV1::Invariant);
-                };
-                if !operation.is_building()
-                    || operation.operation_id() != identity.operation_id().as_piece_operation()
-                    || current_session != *session
-                    || operation.build_receipt() != Some(current_build.progress_receipt())
-                    || current_build.progress_receipt().key().transition_ordinal()
-                        < build.key().transition_ordinal()
-                    || receipt.custody_after() != DraftMutationStagingCustodyTagV1::Building
-                    || receipt.build_endpoint() != Some(build)
-                {
-                    return Err(DraftMutationStagingErrorV1::Invariant);
-                }
-                DraftMutationStagingStatusV1::Building {
-                    staging: head.receipt(),
-                    build: current_build.progress_receipt(),
-                }
+                building_status(self, store, identity, &head, &receipt, session, build)?
             }
             lifecycle @ (DraftMutationStagingLifecycleV1::Cancelled
             | DraftMutationStagingLifecycleV1::Rejected
@@ -454,6 +424,47 @@ fn staging_command_outcome_expectation(
             }
         }
     }
+}
+
+#[inline(never)]
+fn building_status(
+    storage: &SyndicStorage,
+    store: &beryl_home_store::HomeStore,
+    identity: DraftMutationStagingIdentityV1,
+    head: &DraftMutationStagingHeadV1,
+    receipt: &DraftMutationStagingProgressReceiptV1,
+    session: &DraftEditorCandidateSessionV1,
+    build: DraftPieceBuildProgressReceiptReferenceV1,
+) -> Result<DraftMutationStagingStatusV1, DraftMutationStagingErrorV1> {
+    let Some(operation) = session.active_operation().copied() else {
+        return Err(DraftMutationStagingErrorV1::Invariant);
+    };
+    let settlement = DraftPieceSettlementKeyV1::new(
+        identity.draft_id(),
+        identity.session_id(),
+        identity.operation_id().as_piece_operation(),
+    );
+    let Some((current_build, current_session)) =
+        super::mutation::authenticated_staging_build_from_store(storage, store, settlement)
+            .map_err(|_| DraftMutationStagingErrorV1::Invariant)?
+    else {
+        return Err(DraftMutationStagingErrorV1::Invariant);
+    };
+    if !operation.is_building()
+        || operation.operation_id() != identity.operation_id().as_piece_operation()
+        || current_session != *session
+        || operation.build_receipt() != Some(current_build.progress_receipt())
+        || current_build.progress_receipt().key().transition_ordinal()
+            < build.key().transition_ordinal()
+        || receipt.custody_after() != DraftMutationStagingCustodyTagV1::Building
+        || receipt.build_endpoint() != Some(build)
+    {
+        return Err(DraftMutationStagingErrorV1::Invariant);
+    }
+    Ok(DraftMutationStagingStatusV1::Building {
+        staging: head.receipt(),
+        build: current_build.progress_receipt(),
+    })
 }
 
 pub(super) fn staging_outcome_matches(

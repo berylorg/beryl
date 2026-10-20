@@ -859,3 +859,19 @@ All 31 explicitly recorded ordinary fixture homes are absent, including the reta
 fixture removed after its child exited. The older ambiguous Temp directory remains untouched.
 Bounded logs and inventories remain in `.tmp/ordinary-recovery-integration`; executable bootstrap
 and crash-reporter process-entry mounting remain separate planned boundaries.
+
+## Native Candidate Authentication Status Frame
+
+On 2026-10-20, broader Settings qualification exposed three lineage routes overflowing during
+ordinary dirty-editor candidate authentication. Fresh first-chance evidence identifies the WinRT
+worker's approximately 1 MiB stack and an approximately 215 KiB staging-status frame retained above
+candidate-session decoding. No Settings or published-reader frame appears in that chain. The
+Building branch reserves its large authentication locals even when the status is Receiving.
+
+Move that branch into a private non-inlined helper borrowing the existing head, receipt and
+session. Preserve read/validation order, short-circuit conditions, exact failures, receipt values,
+encoding and supported limits. Increasing the Rust test-thread stack does not enlarge WinRT stacks.
+The five owning storage targets pass 63/63; ordinary native routes cross the former failure point
+on unchanged worker stacks. Later graph-retirement frame waits remain a separate unaccepted
+recovery issue. The precise acceptance and evidence limits are in the
+[status-frame audit](../audits/native-staging-status-stack.md).

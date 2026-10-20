@@ -508,10 +508,7 @@
   publication, original eligible-outcome custody and source-qualified cleanup. Canonical checks,
   407 distinct affected cases and independent review passed; coherent source publication and frozen
   queries remain separate gates; [qualification](../../audits/source-authenticated-thread-acquisition-qualification.md).
-- [x] Corrected baseline native staging and failed-resident reconstruction stack custody while
-  preserving authentication and original recovery outcomes. Canonical checks, 96 distinct cases
-  and independent review passed on unchanged production worker stacks;
-  [qualification](../../audits/native-editing-recovery-stack-qualification.md).
+- [x] Bounded native staging, candidate authentication and failed-resident reconstruction on unchanged worker stacks; [initial qualification](../../audits/native-editing-recovery-stack-qualification.md) and [status-frame qualification](../../audits/native-staging-status-stack.md).
 - [x] Accepted coherent background Catalog source certification, bounded generation-owned frozen
   retention, exact guarded rebuild and startup/recovery retirement custody. Canonical affected
   App qualification passes 95/95 with current checks and independent review;
