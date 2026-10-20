@@ -5,25 +5,38 @@ phases unless a major blocker requires Operator input. Preserve accepted shell, 
 transcript, composer, Settings, restoration and replacement editing. Preserve unrelated skills/memory.
 Commit and push accepted phases; no installation is authorized.
 
-# Phase 805: Establish Asset And Deferred Cleanup Readiness (finished)
+# Phase 806: Establish Shared Image Processing Architecture (finished)
 
-Independent readiness review accepted the source/evidence map and separated existing sidecar,
-reference, paste, label and runtime-projection foundations from missing shared renditions, original
-commands, generated finalization and title wiring; [readiness and evidence limits](audits/asset-processing-readiness.md).
-The next architecture phases resolve material ownership before implementation. Phase804 is
-committed/pushed as `46836654`; its test artifacts and 73 retained Homes are reclaimed.
+Independent complete-boundary review accepted the image-system, App and owned GPUI contracts for
+source authority, bounded PNG rows, process caches, upload/pins, graph drain and device generation;
+[architecture readiness and runtime evidence limits](audits/shared-image-processing-architecture.md).
+Owned GPUI authority is committed/pushed as `18a7e7402e`; runtime pins are unchanged. No source or
+runtime tests were changed/run. Phase805 was committed/pushed as `0e89e7bb`.
 
-# Phase 806: Establish Shared Image Processing Architecture (pending)
+# Phase 807: Deliver Bounded Image Renditions (wip)
 
-Complete the owning image-system, App and GPUI contracts for one process media configuration,
-bounded original-source/decoder admission, shared renderer resource domain, admitted-pixel upload,
-window pins, cancellation and device generation before scheduling that implementation.
+Mount actual asset-backed Ready composer and transcript inspection through the accepted
+[rendition contract](systems/image-assets/renditions.md), App image-processing supplement and owned
+GPUI admitted-resource supplement. Preserve marker/media identity, original-command independence,
+origin/fallback focus and all existing selection/restoration lifecycles.
 
-# Phase 807: Deliver Bounded Image Renditions (pending)
+- Implement the shared native admitted-RGBA resource domain, checked staging/texture tickets,
+  unique window pins, frame-safe release, consumer retirement and shared device generation in the
+  owned fork. Qualify actual Windows allocation owners and late-ticket refusal.
+- Implement App's one immutable media configuration, process CPU owner, graph attachment,
+  authenticated occurrence/source workers, bounded PNG preflight/row sampler, reservations and
+  completion elections. Qualify private decoder allocation-growth/workspace assumptions; do not
+  treat `png::Limits` as a total heap cap. Reuse the existing paste queue.
+- Mount Ready pins in the existing composer/transcript inspection consumers, with exact stale,
+  cancel, unsupported and capacity outcomes. No whole-original raster decode or per-window cache
+  bypass. Wire attachment drain into replacement and shutdown before disposing the old graph.
+- Run focused checks/tests and native two-window sharing, mounted pixels, window/revision release,
+  cancellation, capacity boundaries, consumer/device-loss drain and lazy re-upload proofs. Announce
+  native GUI runs beforehand. Complete independent source/runtime review of the integrated boundary.
 
-After Phase806 readiness, mount actual asset-backed Ready previews through the shared bounded
-source/decode/CPU/staging/GPU path, preserving identity and proving multi-window release and
-device-loss behavior. No whole-original decode or per-window cache bypass.
+Current milestone: accepted architecture is concrete and source implementation has not begun.
+No Cargo or native test is running. Keep source validation in the canonical validation checkout;
+manifest changes require locked metadata plus focused Cargo check before language-server restart.
 
 # Phase 808: Deliver Original-Image Copy And Save (pending)
 

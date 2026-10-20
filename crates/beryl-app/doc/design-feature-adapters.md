@@ -16,6 +16,9 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
 
 ## Discussions, Images, And Transcript
 
+The [image-processing boundary](design-image-processing.md) owns the image service, source-to-pixel
+preparation and shared renderer integration consumed by these feature adapters.
+
 - Branch-discussion adapters transport exact selection provenance, context-owner descriptors,
   durable-job commands, and structured tool outcomes. Workers receive no GPUI, store, repository,
   or window handles, and the adapter invents no resolve, archive, parent, retry, or replacement

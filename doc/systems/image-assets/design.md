@@ -13,6 +13,12 @@ Allow many drafts and turns to share exact bytes without making a thread directo
 
 # Decisions
 
+## Rendition Contract
+
+[Shared image renditions](renditions.md) is normative for source authorization, supported software
+decoding, process/App/GPUI ownership, stage admission, configuration values, pins, device generation
+and source-to-paint qualification. Storage, durable references and generated admission remain here.
+
 ## Runtime Resource Boundary
 
 - `doc/systems/bounded-resource-dataflow/design.md` owns the shared bounded-resource invariant and
@@ -528,10 +534,11 @@ Allow many drafts and turns to share exact bytes without making a thread directo
   `gpu_texture_entries`, `gpu_texture_bytes`, `window_pin_entries`, and `window_pin_gpu_bytes`.
   Startup fails rather than running with an absent, zero, inconsistent, or arithmetic-overflowing
   capacity.
-- A waiting decode reserves one of `decoder_queue_items`. When scheduled, it releases that queue
-  reservation and reserves one of exactly `decoder_slots`, one CPU surface entry, and the complete
-  bounded output against `surface_max_bytes` and `cpu_surface_bytes` before decode begins. Visible
-  demand takes priority over preload.
+- A waiting rendition reserves one of `decoder_queue_items`. Scheduling transfers that reservation
+  to one of exactly `decoder_slots` for its bounded source verification/preflight and decoding.
+  After preflight and before decoding begins, it reserves one CPU surface entry and the complete
+  bounded output against `surface_max_bytes` and `cpu_surface_bytes`. Source/verification leases
+  are released before decoder construction. Visible demand takes priority over preload.
 - The shared CPU thumbnail/tile cache admits only when both `cpu_surface_entries` and
   `cpu_surface_bytes` remain satisfied. Each reserved decoder output counts as one entry, and its
   allocation capacity counts as bytes; promotion to a resident decoded surface transfers rather
@@ -561,8 +568,9 @@ Allow many drafts and turns to share exact bytes without making a thread directo
   admit new work. Leaving the realized editor/transcript range, replacing its revision, switching
   threads, closing a window, cancelling a request, or removing a preview releases the
   corresponding pin. An unpinned entry may remain only within its cache caps.
-- GPU device loss increments a device generation, cancels old-generation uploads, releases all
-  upload staging, drops every old-generation texture, and preserves only admitted CPU renditions
+- GPU device loss advances the shared device generation, fences and cancels old-generation uploads,
+  drains their staging and native uses before releasing the corresponding allocation charges,
+  drops every old-generation texture, and preserves only admitted CPU renditions
   within the CPU cache. After device recovery, currently visible pins request lazy re-upload under
   the same staging and GPU caps; no durable asset or transcript state changes and no full-history
   or full-asset preload runs.
