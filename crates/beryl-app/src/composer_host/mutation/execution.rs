@@ -388,53 +388,63 @@ impl SyndicComposerHost {
                 );
                 self.stage_internal_translated_page(store, &mut pending, finish, translated)?;
             }
-            let intended_extent = DraftLogicalExtentV1::new(
-                finish.intended_extent().byte_len(),
-                finish.intended_extent().line_count(),
-            );
-            let intended = match pending.resolved_intended {
-                Some(intended) => intended,
-                None => position::resolve_intended(
-                    self,
-                    store,
-                    pending.binding,
-                    pending.begin,
-                    pending.proposal,
-                    finish,
-                )?,
-            };
-            let storage_finish = DraftMutationFinishInputV1::new(
-                pending.head.source(),
-                pending.head.proposal(),
-                intended_extent,
-                canonical_position(intended.caret())?,
-                canonical_position(intended.selection_anchor())?,
-                canonical_position(intended.selection_head())?,
-                pending.fragment_chain,
-            );
-            let prepared = self.storage.prepare_draft_mutation_staging_finish(
-                &pending.head,
-                &pending.session,
-                storage_finish,
-            )?;
-            if !matches!(
-                self.run_staging_command(store, &prepared, None)?,
-                StagingCommandResult::Target
-            ) {
-                return Err(ComposerHostError::MutationMalformed);
-            }
-            pending.head = prepared.target_head().clone();
-            pending.session = prepared
-                .target_session()
-                .cloned()
-                .ok_or(ComposerHostError::MutationMalformed)?;
-            pending.intended = Some(intended);
-            pending.finish_input = None;
-            pending.phase = ComposerHostMutationPhase::Finished;
-            Ok(())
+            self.finish_staged_mutation_input(store, &mut pending, finish)
         })();
         self.restore_active_mutation(pending);
         result
+    }
+
+    #[inline(never)]
+    fn finish_staged_mutation_input(
+        &mut self,
+        store: &HomeStore,
+        pending: &mut ComposerHostMutationCoordinator,
+        finish: MutationFinishInput,
+    ) -> Result<(), ComposerHostError> {
+        let intended_extent = DraftLogicalExtentV1::new(
+            finish.intended_extent().byte_len(),
+            finish.intended_extent().line_count(),
+        );
+        let intended = match pending.resolved_intended {
+            Some(intended) => intended,
+            None => position::resolve_intended(
+                self,
+                store,
+                pending.binding,
+                pending.begin,
+                pending.proposal,
+                finish,
+            )?,
+        };
+        let storage_finish = DraftMutationFinishInputV1::new(
+            pending.head.source(),
+            pending.head.proposal(),
+            intended_extent,
+            canonical_position(intended.caret())?,
+            canonical_position(intended.selection_anchor())?,
+            canonical_position(intended.selection_head())?,
+            pending.fragment_chain,
+        );
+        let prepared = self.storage.prepare_draft_mutation_staging_finish(
+            &pending.head,
+            &pending.session,
+            storage_finish,
+        )?;
+        if !matches!(
+            self.run_staging_command(store, &prepared, None)?,
+            StagingCommandResult::Target
+        ) {
+            return Err(ComposerHostError::MutationMalformed);
+        }
+        pending.head = prepared.target_head().clone();
+        pending.session = prepared
+            .target_session()
+            .cloned()
+            .ok_or(ComposerHostError::MutationMalformed)?;
+        pending.intended = Some(intended);
+        pending.finish_input = None;
+        pending.phase = ComposerHostMutationPhase::Finished;
+        Ok(())
     }
 
     pub fn execute_mutation(
