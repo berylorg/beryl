@@ -121,6 +121,9 @@ impl MainWindowCreation {
         if matches!(&self.state, CreationState::Acquired { .. }) {
             return self.advance_acquired();
         }
+        if matches!(&self.state, CreationState::Unpublished(_)) {
+            return self.advance_unpublished();
+        }
         self.advance_other_state(appearance)
     }
 
@@ -153,7 +156,9 @@ impl MainWindowCreation {
             }
             CreationState::Initial(_) => unreachable!("initial creation advances in place"),
             CreationState::Retiring(initial) => self.retire_initial(initial),
-            CreationState::Unpublished(unpublished) => self.prepare_abandonment(unpublished),
+            CreationState::Unpublished(_) => {
+                unreachable!("unpublished creation advances after extraction")
+            }
             CreationState::Abandonment(abandonment) => self.abandon_acquisition(abandonment),
             CreationState::AbandonmentPending(reconciliation) => {
                 self.reconcile_abandonment(reconciliation)

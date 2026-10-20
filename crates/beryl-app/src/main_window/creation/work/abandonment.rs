@@ -2,13 +2,36 @@ use super::*;
 
 impl MainWindowCreation {
     #[inline(never)]
+    pub(super) fn advance_unpublished(&mut self) -> CreationStep {
+        let unpublished = self.take_unpublished();
+        self.prepare_abandonment(unpublished)
+    }
+
+    #[inline(never)]
+    fn take_unpublished(&mut self) -> MainWindowShellUnpublished {
+        let state = std::mem::replace(&mut self.state, CreationState::Settled);
+        match state {
+            CreationState::Unpublished(unpublished) => unpublished,
+            _ => unreachable!("unpublished creation retains its original shell custody"),
+        }
+    }
+
+    #[inline(never)]
     pub(super) fn prepare_abandonment(
         &mut self,
         unpublished: MainWindowShellUnpublished,
     ) -> CreationStep {
-        match unpublished
-            .prepare_abandonment(&self.services.acquisition, CommandCancellation::new())
-        {
+        let outcome =
+            unpublished.prepare_abandonment(&self.services.acquisition, CommandCancellation::new());
+        self.finish_abandonment_preparation(outcome)
+    }
+
+    #[inline(never)]
+    fn finish_abandonment_preparation(
+        &mut self,
+        outcome: MainWindowShellAbandonmentPreparationOutcome,
+    ) -> CreationStep {
+        match outcome {
             MainWindowShellAbandonmentPreparationOutcome::ExactAcquired { abandonment } => {
                 self.state = CreationState::Abandonment(abandonment);
             }

@@ -6,13 +6,13 @@ preserving accepted shell, catalog/navigation, Activity, transcript, composer hi
 restoration and replacement editing. Preserve unrelated skills/memory. Commit and push accepted
 phases; no installation is authorized.
 
-# Phase 796: Bound Native Draft Authentication Stack Frames (finished)
+# Phase 797: Bound Native Window-Creation Retirement Frames (finished)
 
-Independently accepted the private staging-status frame separation with unchanged authentication,
-encoding, public interfaces and native worker stacks. All 63 owning storage cases and normal
-Syndic/App/binary checks passed; all three native routes crossed the reproduced overflow boundary.
-Later recovery waits remain unaccepted under Settings; [precise evidence](audits/native-staging-status-stack.md).
-
+Independently accepted the private original unpublished-retirement frame separation without
+custody, validation, outcome, budget, allocation or stack-size changes. All 99 owning cases and
+normal App/binary checks pass; both native reproductions finish retirement and report the earlier
+publication refusal instead of overflowing. End-to-end creation remains unaccepted under Settings;
+[precise evidence](audits/native-window-creation-stack.md).
 # Phase 795: Mount The Complete Settings Workflow (wip)
 
 Implement the actual toolbar Settings command after Exit and the process-owned preheated external
@@ -72,20 +72,29 @@ facades, dropping them atomically on owner return and refusing fallback on genui
 Startup ordinary mounting and interrupted recovery completion precede appearance admission. The
 Exit gate now uses actual exit_requested(), replacing the incorrect waiting_for_exit listener flag
 that permanently blocked idle appearance work. This correction passed independent source review;
-the real held-flight regression still needs execution. Its bounded fixture diagnostics distinguish
-ordinary command mounting, Home/theme failure and actual flight admission. No production test hook.
+the real held-flight regression passes continuity/refusal, original publication invalidation and
+actual Exit teardown, retaining the one original main-window Session record. No production test hook.
 
-Broader 459-case startup/recovery/shell qualification remains incomplete. The native stack defect
-is resolved by the accepted prerequisite above. Latest native Enter and minimum-size cases pass;
-Pointer/Space intermittently park after graph retirement with original GUI capture Advancing and
-its exact next-frame callback queued. Worker diagnosis is checking the callback target's actual
-native visibility/minimized state against pinned GPUI scheduling before selecting any correction.
-Temporary phase breadcrumbs and a bounded test wait expose this state; remove transient breadcrumbs
-when diagnosis is complete. No plan/design blocker has been established.
+Broader 460-case startup/recovery/shell qualification remains incomplete. The original packet
+finished 159 cases with 156 passes, one corrected model-menu focus precondition and two native
+created-after-startup overflows. Attached-debugger evidence identifies the latter as the separate
+window-creation retirement prerequisite above. Three debugger-at-startup passes had missed it.
+The model-menu correction passes. A 302-case continuation stopped after 40 results: 19 passed and
+21 native fixtures refused the missing retained-directory ledger before admission. Future native
+runs bind an absolute task-local ledger; rerun those preconditions rather than weaken them. The
+combined packets establish 175 distinct passes, subject to changed-input review for the prerequisite;
+One prior recovered New Window pass must repeat after the correction; 286 original cases remain
+to qualify, including the two publication failures. Exact main/Settings handle
+and native-destruction fixture corrections await their 17 affected cases.
 
-Remaining work: qualify actual appearance-flight reader continuity after the Exit predicate fix;
-resolve the native recovery continuation, complete broader affected regression qualification and
-final normal production checks, then obtain final independent correction acceptance. Retain the
+Bounded foreground capture independent of paint passes all three native lineage routes and the
+held-appearance/original-cancellation coverage. Fresh Runtime Setup fixture lookups wait for live
+service custody. The Space fixture waits only for the proven Settings appearance gate; unexpected
+refusal remains immediate. Independent whole-boundary semantic/lifetime source review accepts the
+Settings snapshot; this is not runtime or phase acceptance. Any causal production correction
+requires delta review. [Draft audit](audits/settings-workflow-mounting.md).
+Remaining work: complete broader affected regression qualification and final normal production
+checks, then obtain final independent correction acceptance. Retain the
 exact scalar/repository custody, pending publication intent, fresh Retry/Stop, Save/Save As and
 source-authentication corrections described in the audit and
 [durable publication lesson](failures/theme-runtime-durable-publication.md).
