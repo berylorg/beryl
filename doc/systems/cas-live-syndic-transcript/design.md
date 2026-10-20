@@ -591,6 +591,64 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 - Rendering the synthetic discussion-context item performs no CAS request, and CAS projection never reads rendered text.
 - Missing provenance, unsupported shape, or exceeded context limit makes branch execution unavailable rather than guessed or truncated.
 
+### Context-Aware Lineage
+
+- The projected logical prefix is the represented immutable Syndic turn prefix plus its ordered
+  discussion-context insertions. Native proof binds that prefix identity and context-placement
+  commitment; it need not serialize native tool, media or other rich history into recovery text.
+  An exact native prefix remains eligible when no lossless text-only recovery is available.
+- Each inherited context is included only when the selected turn path crosses into a local turn
+  of its owning discussion. The target discussion additionally includes its own context after its
+  immutable source-parent turn, even when the pending first local turn is excluded from the
+  represented prefix. Context belonging only to an excluded parent suffix is excluded. Contexts
+  at an equal boundary retain owning-thread ancestor-to-descendant order, each before its first
+  selected local turn; the target's new context follows inherited context at that boundary.
+- The original submitted context owner, envelope and source-parent boundary remain authoritative
+  after first-input replacement. Owner membership in the later selected path is not required.
+  Later parent divergence does not invalidate that immutable source. A missing boundary on the
+  target path is unavailability, not permission to relocate or omit context.
+- Syndic supplies a bounded opaque preparation witness for that exact logical prefix and a flat,
+  fixed-size context-lineage proof. Its ordered context count, framed-byte total and commitment
+  contain no retained context list or recursively embedded lineage proof. Canonical frame bytes,
+  hash preimages, lineage tags and closed establishment variants are defined by
+  [the V7 context extension](../../../crates/syndic-storage/doc/design-schema-v7.md#discussion-context-projection-extension).
+- A new native discussion projection forks the exact proven source prefix into a fresh idle
+  target, then injects only the target discussion's one new context item. The required inherited
+  context commitment must equal the proven native cut's commitment. Full-fork inclusion is never
+  inferred from a matching last turn when the source contains later context. Publication follows
+  exact injection success and completion-time observation; no model turn starts during seeding.
+  First-input replacement may seed that same immutable original context into a fresh target when
+  its native cut precedes the earlier injection; it creates no new envelope or owner.
+- A current binding, same-process resume or descendant native fork may reuse established context
+  only when the exact source binding and native cut prove the required ordered context commitment.
+  It sends no context again. A fork whose cut excludes a prior context cannot inherit that
+  context's installation claim. Native target establishment and context installation are separate
+  facts until their complete binding is durably published.
+- Fresh recovery streams the complete eligible prefix, interleaving every required context frame
+  at its immutable boundary. It excludes the pending current input and never appends all context
+  at the beginning or end. The source identity binds the complete closed item sequence and the
+  ordered context commitment. It neither turns synthetic context into a canonical turn nor reads
+  its rendered presentation.
+- The 65,536-byte selected-passage limit is unchanged. Each frame has exactly 461 additional UTF-8
+  bytes. A native seed charges its one full frame to the existing injection limit and the known
+  model-window admission bound, without imposing recovery shape or total-prefix limits on native
+  history. Recovery charges all ordinary item text and complete frames to its existing 262,144
+  item and UTF-8-byte ceilings and known model-window bound. No truncation, smaller selection,
+  hidden summary or suffix replay substitutes for a refused projection.
+- Establishment authenticates exact Home/service generation, thread and selected prefix, pending
+  parent or eligible idle scope, execution and tool profile, source binding/native cut, immutable
+  context identities, and target process/loaded generation. Context-aware injection authority is
+  process-scoped; a different CAS process establishes a fresh projection rather than adopting an
+  old injected binding. Existing same-thread serialization and preparation-flight limits apply.
+- Each injection attempt consumes its fresh target. Rejection, proven nondispatch, cancellation,
+  transport loss and completion unknown remain distinct; none permits reinjection into that
+  target. Exact injection success without complete durable publication grants no dispatch.
+  Publication uncertainty retains its original opaque natural-record scope; only `ExactNew`
+  followed by an exact eligible binding reread can grant a capability. New targets may reconstruct
+  the same logical context once after old targets are abandoned; later turns in an authorized
+  lineage never resend it. Source drift or capability loss preserves admitted input and follows
+  existing projection failure/recovery custody without manufacturing a second submission.
+
 ## Exact Soft Stop
 
 - Beryl provides exact CAS soft interruption as the sole stop mechanism for one exact active

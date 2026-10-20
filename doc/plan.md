@@ -5,55 +5,63 @@ phases unless a major blocker requires Operator input. Preserve accepted shell, 
 transcript, composer, Settings, restoration and replacement editing. Preserve unrelated skills/memory.
 Commit and push accepted phases; no installation is authorized.
 
-# Phase 800: Qualify Non-GUI Discussion Handoff Coordination (finished)
+# Phase 801: Define Discussion Context Projection Proofs (finished)
 
-Independently accepted coordinator, typed participants, scoped routing and complete-graph custody.
-The two new graph cases pass 2/2, closing exact pending-proof shutdown and fresh-prefix recovery
-coverage; prior component/broader evidence and normal production checking remain qualified. Only
-three test paths changed; task artifacts are cleaned. Child execution and status/Retry remain separate.
-[Acceptance and evidence limits](audits/non-gui-discussion-handoff-qualification.md).
+Independent architecture-readiness review accepted the finite context proof, exact provenance
+frame, native inclusion and bounded replay contracts. Ordinary encodings and all 103 families
+remain unchanged; no runtime/model qualification is claimed.
+[Acceptance and evidence limits](audits/discussion-context-projection-readiness.md).
 
-# Phase 801: Define Discussion Context Projection Proofs (wip)
+# Phase 802: Execute Discussions Through Proven Context Lineages (wip)
 
-Complete the missing context-projection contract before changing execution guards. Existing
-[branch first-submission behavior](features/branch-discussions/design.md#first-submission) and
-[CAS context authority](systems/cas-live-syndic-transcript/design.md#branch-selection-context)
-already require exact immutable selected assistant context once before the first local user turn.
-The intended consumer is the ordinary discussion execution/lineage pipeline, including nested
-branches, first-input replacement and fresh recovery. This phase changes owning documentation only.
+Implement exact-once assistant context through the ordinary discussion execution/lineage pipeline,
+including first dispatch, continuation/resume, native forks, replacement, nesting and fresh recovery.
+The accepted [CAS context contract](systems/cas-live-syndic-transcript/design.md#context-aware-lineage),
+[Syndic history boundary](../crates/syndic-storage/doc/design-history-storage.md),
+[exact V7 extension](../crates/syndic-storage/doc/design-schema-v7.md#discussion-context-projection-extension)
+and [App establishment authority](../crates/beryl-app/doc/design-live-projection-and-scheduling.md#discussion-context-establishment)
+control implementation. Preserve accepted creation/provenance, readonly context, first-submission
+ancestry and label authority; status/Retry mounting remains separate. No install or model run.
 
-Specify the finite source/target binding proof and versioned provenance frame in the owning CAS,
-[Syndic history](../crates/syndic-storage/doc/design-history-storage.md),
-[V7 schema](../crates/syndic-storage/doc/design-schema-v7.md) and
-[App projection](../crates/beryl-app/doc/design-live-projection-and-scheduling.md) authorities.
-Bind exact immutable envelope, insertion boundary, complete projected sequence and target generation
-without an unbounded retained context list or recursive proof. Preserve ordinary proof/byte semantics,
-original submitted context ownership after replacement, and source validity after parent divergence.
+Add flat context-aware lineage values/codecs and package-issued bounded source witnesses, preserving
+ordinary tags 0/1 and recovery V1 byte-for-byte. Stream the exact frame, ordered context summary and
+source identity through existing bounded reads/pages. Authenticate original submitted owners even
+off path after replacement, selected-path crossings and immutable boundaries without context vectors
+or recursively retained proofs. Keep canonical turn/items distinct from synthetic context.
 
-Define native prefix fork plus only the new context seed, proven continuation/resume without resend,
-and bounded recovery replay with every required context at its immutable boundary. Specify role,
-frame identity/digest/accounting, context-limit refusal, source and tool-profile fences, and exact
-binding-publication outcomes. Existing consumed-target semantics must keep ambiguous injection
-non-authorizing and prohibit same-target reinjection; no private CAS wrapper, fabricated user or
-application-instruction context is permitted.
+Extend native planning, binding publication/activation and exact same-source recovery to authenticate
+the context commitment and actual native cut. Rich native prefixes remain eligible independently of
+text replay. Seed only the target's missing context into a fresh forked idle target; proven existing
+context is reused without resend. Complete recovery interleaves every required frame with canonical
+items through the existing one-page broker and validates exact roles, counts, bytes, digest and EOF.
+Open context execution guards only when the complete authenticated source path exists.
 
-Obtain independent architecture-readiness review across complete lifecycle, failure/cancellation,
-nesting/replacement/recovery and fixed proof/page/custody bounds. Resolve material choices in the
-owning docs before authorizing source work. Record acceptance concisely, reconcile the tracker,
-commit/push, then detail the following execution phase. No software install or model run is authorized.
+Compose App orchestration with the existing consumed idle-target injection, preparation flights,
+leases and publication fences. Observe completion time after success and preserve the ordering
+floor. Cancellation, source/tool/generation drift, rejection, nondispatch, lost acknowledgement,
+clock failure and uncertain publication must retain their original classification and cleanup
+custody; no same-target reinjection, duplicate input or capability before exact durable publication.
 
-Current milestone: provider feasibility is established at pinned CAS 0.146.0 using stable typed
-thread/inject_items for started and forked targets;
-[pinned source evidence](memory/github.com/berylorg/codex-fork/commit/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/assistant-context-injection.md).
-Ordinary preflight, native preparation and recovery intentionally still reject context-owned threads.
-Current Native/RecoveredInjection proofs and canonical-only replay omit discussion-context facts.
-Do not remove those guards before finite context proof and replay authority are complete. Existing
-creation/provenance, readonly context, storage ancestry and label prerequisites remain accepted.
-No unsupported-provider blocker is known. No build/test process or task artifact remains active.
+Qualify exact wire order/role/text and unchanged current user input, no-resend continuation/resume,
+rich native seeding, parent divergence, nested/excluded-suffix/equal boundaries, first-input
+replacement with original owner off path, fresh complete replay, maximum frames and model/byte
+refusal. Cover source substitution/drift, before/after-dispatch cancellation, injection/publication
+ambiguity, process replacement and bounded page/custody release. Use focused storage/backend/App
+nextest targets, affected ordinary regressions and normal production checks, then independent
+complete-boundary review. Record scoped receipts and compact the plan/tracker only after acceptance.
 
-# Phase 802: Execute Discussions Through Proven Context Lineages (pending)
+Current milestone: authority is accepted; source work starts from existing closed guards and
+Native/RecoveredInjection-only proofs. Existing typed forked-idle injection and bounded recovery
+transport are reusable. No technical blocker, build/test process or task artifact is active.
 
-After the context authority above passes readiness, implement exact-once assistant-context
-establishment through ordinary first dispatch, continuation, replacement, nested branch and fresh
-recovery paths with authenticated publication and original failure custody. Qualify the complete
-execution behavior without rebuilding accepted creation or accepting the separate status/Retry GUI.
+# Phase 803: Mount Discussion Status And Exact Handoff Retry (pending)
+
+Mount the [feature-owned status strip](features/branch-discussions/gui.md#discussion-status-strip)
+and explicit same-job retry through the existing settlement service. Qualify coherent status,
+composer gates, unavailable outcomes and exact retry custody without introducing Resolve or Archive.
+
+# Phase 804: Qualify Complete Discussion And Resolution Flow (pending)
+
+Close the rework's discussion checkpoint with complete child conversation and resolution handoff
+evidence, including parent ordering, restart, ambiguous outcomes, archive and navigation, reusing
+accepted component evidence only within its established scope.

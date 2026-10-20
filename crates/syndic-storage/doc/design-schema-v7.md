@@ -1296,6 +1296,203 @@ rollback or a replacement operation identity.
   candidate, not visible membership. Any reachable membership, set, head, transcript entry, or
   context envelope still requires its complete exact reverse agreement.
 
+## Discussion Context Projection Extension
+
+This extension adds no family, keyspace version or record version. Existing lineage tags `0`
+(native) and `1` (recovered injection), recovery V1, and every context-free encoding, digest and
+item byte remain unchanged. Lineage tag `2` is the closed context-aware shape below, wherever
+lineage already occurs in valid/active bindings, stale observations and execution snapshots.
+There is no optional trailing extension, recursively nested lineage or serialized context list.
+
+### Canonical Frame And Entry Identity
+
+`H` is SHA-256; concatenation is exact bytes. New domain strings below are ASCII including the
+explicit terminal NUL. Integers in hash preimages and new binary fields are unsigned big-endian
+`u64` unless specified otherwise. Identities are their existing 16 raw bytes; digests are 32 raw
+bytes. The existing canonical represented-prefix and selected-path encodings are unchanged.
+
+One selected passage is encoded as exactly one assistant-role message containing exactly one
+`output_text`. Its text is the following ASCII header, the exact accepted UTF-8 selection, and
+the trailer. Every displayed header line ends with one LF; the empty line contributes one more
+LF. No BOM, CR, indentation, extra newline, escaping, trimming or normalization is inserted.
+Identity placeholders use exactly 32 lowercase hexadecimal digits. Numeric placeholders use
+exactly 16 lowercase hexadecimal digits with leading zeroes; the SHA-256 placeholder uses 64.
+
+```text
+[Beryl discussion context v1]
+source_thread=<source thread identity>
+source_turn=<source turn identity>
+source_item=<source item identity>
+source_projection=<source projection identity>
+projection_revision=<source projection revision>
+range_start=<selected range start>
+range_end=<selected range end>
+selected_utf8_bytes=<selected byte length>
+selected_sha256=<selected bytes SHA-256>
+
+```
+
+The trailer is exactly `LF || "[/Beryl discussion context v1]"` without a following LF. The
+header is 430 bytes and trailer 31 bytes: a frame is `selected_bytes + 461`, at most 65,997
+UTF-8 bytes. Selection bytes that resemble header/trailer syntax remain literal content; their
+declared length and digest, not delimiter search, define the accepted passage. Frame version is
+one. `F = H("syndic/context-frame/v1\0" || complete_frame_bytes)`.
+
+An execution entry requires a submitted-turn owner. Its identity `E` is:
+
+```text
+H("syndic/context-entry/v1\0" || home16 || owning_discussion16 || submitted_owner16 ||
+  envelope_revision || envelope_version:u8=1 || source_thread16 || source_turn16 ||
+  source_item16 || source_projection16 || projection_revision || range_start || range_end ||
+  selected_digest32 || created_at_unix_millis || frame_utf8_bytes || F32)
+```
+
+The named envelope's exact stored text must match its selected digest and range length. Its
+owner, owning thread, original immutable parent/source turn and source descriptor must agree.
+The original submitted owner remains the entry identity when later replacement removes that
+owner turn from the selected path. A draft owner cannot be relabeled as submitted execution proof.
+Frame digest and entry identity are commitments; they do not replace complete canonical-byte
+comparison where an exact natural-record replay requires that comparison.
+
+### Ordered Context And Projection Commitments
+
+The effective ordered entries follow the system's
+[selected-path crossing rule](../../../doc/systems/cas-live-syndic-transcript/design.md#context-aware-lineage).
+Each entry is emitted after its immutable source-parent turn and before the first selected local
+turn of its owning discussion. The target's own context is emitted at that boundary even before
+its first local turn is represented. Only thread-ancestry entries whose boundary is on that exact
+selected path are eligible. Inherited context from an excluded suffix is absent. Equal boundaries
+use immutable owning-thread ancestor-to-descendant order. An owning discussion appears at most once.
+
+For entries `E1..En` with complete frame lengths `b1..bn`, define:
+
+```text
+C0 = H("syndic/context-sequence/v1/empty\0")
+Ci = H("syndic/context-sequence/v1/step\0" || C(i-1)32 || i || Ei32 || bi)
+ContextSummary = n:u64 || sum(bi):u64 || Cn32
+```
+
+All increments and sums are checked. An empty summary has zero count/bytes and exactly `C0`;
+a nonempty summary has positive count/bytes. A context-aware target has a nonempty summary and
+nonempty represented prefix. Summary aggregates are logical `u64` facts, not a native whole-history
+capacity limit. Derivation retains hash state and counters, not the entry sequence.
+
+`X` is SHA-256 of the existing canonical `ExecutionBinding` encoding. `T` is the existing complete
+tool-profile encoding, including its version byte. For the target binding key's thread `thread16`:
+
+```text
+P = H("syndic/context-projection/v1\0" || home16 || thread16 ||
+      canonical_established_represented_prefix || ContextSummary || X32 || T)
+```
+
+`P` commits the complete logical native prefix and its context placement without requiring a
+text-only representation of native history. It is not a digest of hidden CAS state and grants no
+capability without the complete authenticated binding and target-generation facts.
+
+### Flat Lineage Tag 2
+
+In exact field order, the common shape is:
+
+```text
+tag:u8=2, version:u8=1, establishment:u8,
+home16, established_represented_prefix, ContextSummary, P32,
+context_ordering_floor_unix_millis:u64,
+target_loaded_generation(process:u64, thread:u64), establishment_payload
+```
+
+The loaded-generation components, envelope/source/binding revisions, and relevant identities obey
+their existing validity rules. A `SourceAnchor` is exactly `source_thread16 || binding_revision`.
+A `NativeCut` is exactly the existing represented-prefix encoding followed by its `ContextSummary`.
+The cut describes the actual inherited native history before a seed, not the target's final
+context summary. An `InjectionObservation` is exactly `item_count:u64 || utf8_bytes:u64 ||
+sequence_digest32 || completed_at_unix_millis:u64`. Its completion observation is taken after exact
+injection success. The common loaded generation names that successful target.
+It records establishment, not each later loaded-session registration. Preserving an existing proof
+preserves that original observation; the current live lease is checked separately and must belong
+to the same CAS process. A newly established inherited-native proof records its new target's exact
+loaded generation rather than retagging the old proof.
+The ordering floor equals that completion time for seed/replay and is retained from the exact
+source proof for inherited-native context. For native seeding, a tag-2 source contributes its
+ordering floor, a legacy recovered-injection source its existing completion time, and a native
+context-free source zero. A new seed's completion cannot precede that source floor. Ordinary
+activation cannot predate the floor, preserving injection-before-turn ordering
+without following a recursive chain of source proofs. A native cut may conservatively retain
+its source's later floor even when that cut excludes the source's last context insertion.
+
+The closed establishment tags and payloads are:
+
+- `0`, native seed: `SourceAnchor || NativeCut || seed_entry_E32 || InjectionObservation`.
+  The source is an exact native fork through the target's source-parent prefix. The final summary
+  is exactly the cut summary plus the target's one context entry. The injection observation
+  contains one item, its full frame length and the closed item-sequence digest of that sole frame.
+  Seeding a fresh replacement target may use the same original envelope/owner/entry: a new target
+  seed does not create a new context identity. It is required when the native cut precedes that
+  entry's earlier injection, including replacement of the first submitted input.
+- `1`, inherited native context: `native_mechanism:u8 || SourceAnchor || NativeCut`.
+  Mechanism uses the existing native tags `1=Continuation`, `2=Resume`, `3=Fork`; `0=Fresh`
+  rejects. The final summary equals the proven native cut summary. No injection occurs. An exact
+  current binding may instead retain its existing complete tag-2 proof unchanged as turns advance.
+- `2`, complete replay: `replay_version:u8=2 || InjectionObservation`. The observation covers all
+  eligible ordinary items and every required complete frame, in exact logical order. There is no
+  native source anchor or partial replay shape.
+
+The common maximum is 180 bytes; native-seed, inherited-native and replay shapes are at most
+397, 310 and 237 bytes respectively, including the common prefix. Each contains at most one
+source binding anchor and no embedded source proof. The immutable source binding is authenticated
+as an already-established proof together with the named current head/reservation and native cut;
+routine publication never recursively walks establishment history. Explicit validation may check
+the named immutable relationships through bounded pages. Canonical decoding rejects unknown tags,
+versions, forbidden mechanisms, invalid identifiers/revisions, inconsistent empty-summary encoding,
+impossible local counts, overflow, extra/missing payload or trailing bytes. It performs no ancestry
+or dependency read. Scoped authenticated preparation/publication/validation separately proves the
+entry/envelope and boundary agreement, native-cut inclusion, complete context summary, `P`, source
+execution/tool profile, and exact target/currentness relationships. A hash or syntactically valid
+flat payload cannot manufacture that package-issued semantic witness.
+
+Ordinary binding advancement preserves the establishment prefix, context summary, `P`, ordering
+floor and original injection observation while its separately stored represented prefix advances.
+`P` is recomputed against the establishment prefix, not each later tail. A new inherited-native
+proof names its own
+established prefix and generation and reauthenticates the source's required cut. A stale observation
+retains its exact proof as non-authorizing provenance. No context-aware proof authorizes use in a
+different CAS process; fresh projection is required after process-generation loss.
+
+### Context-Aware Replay And Transport Identity
+
+Replay version 2 uses the existing closed roles and exact `RecoveryItemSequenceAccumulator` V1
+algorithm over the expanded ordered sequence, including full frame text as assistant/output-text
+items. That accumulator's domain remains `beryl.syndic.recovery-item-sequence.v1\0`, followed by
+total item count and UTF-8 bytes, then each one-based ordinal, role byte (`0=user/input_text`,
+`1=assistant/output_text`), item byte length and exact item bytes. This does not reinterpret
+context-free recovery version 1. The context commitment additionally binds envelope identities
+and placement; equal frame text alone is insufficient.
+
+A seed or replay's transport source identity is:
+
+```text
+H("beryl-context-projection-source-v1\0" || purpose:u8 || home16 || home_generation:u64 ||
+  service_generation:u64 || target_thread16 || canonical_selected_path ||
+  canonical_established_represented_prefix || source_domain_revision:u64 || P32 ||
+  item_count:u64 || utf8_bytes:u64 || sequence_digest32)
+```
+
+Purpose is exactly `0=native seed`, `1=complete replay`. Home/service generation and the source
+revision bind one prepared read lifetime; they are not substituted into immutable context identity.
+The exact target loaded generation is bound separately by the establishment proof and live lease.
+All source metadata, page headers, item ordinals, declared lengths, offsets, terminal markers and
+EOF agree with this identity. Pages contain at most 65,536 UTF-8 bytes and may split a frame,
+retaining scalar boundaries and the existing one-page transfer protocol. No complete framed string
+or context collection is required in memory.
+
+Complete replay retains the existing maximum of 262,144 nonempty items and 262,144 UTF-8 bytes,
+including every frame byte, and the existing known positive model-window limit
+`min(262144, floor(model_context_window_tokens / 2))`. Native seeding applies that same item/byte
+and model-window admission to its sole frame only; no text replay requirement or recovery
+total cap applies to its inherited native prefix. Existing context-free V1 limits are unchanged.
+Preflight counts context frames and exact lengths before reading replay text. Source revision,
+selected-path or generation drift, absent/unsupported provenance, budget refusal and cancellation
+are distinct non-success outcomes; no prefix is silently shortened.
+
 ## Build Coordinate Mapping Encoding
 
 `draft-piece-build-mapping` is an immutable primary family with record V1. Its key is the exact
@@ -2195,10 +2392,16 @@ Canonical-byte replay and captured deletion-absence checks retain their separate
   compact generation head and, for the exact-rejection abandonment variant, at most the one named
   leaf rather than every member. Logical backlog size never authorizes a resident route vector or a
   process-memory safety cap.
-- One recovery projection contains from one through 262,144 nonempty canonical text items and at most 262,144 logical UTF-8 text bytes. The item ceiling follows from the byte ceiling and therefore does not introduce a smaller retained-history or turn-count limit.
+- One recovery projection contains from one through 262,144 nonempty closed projected text items
+  and at most 262,144 logical UTF-8 text bytes. Context-aware replay includes complete context
+  frames under the [context extension](#discussion-context-projection-extension); context-free V1
+  keeps its canonical items unchanged. The item ceiling follows from the byte ceiling and
+  therefore does not introduce a smaller retained-history or turn-count limit.
 - Recovery assembly first walks only the exact immutable parent topology and matching
-  recovery-complete turn states, adding only compact item counts with checked arithmetic. In the
-  pending-parent scope, the one immediate authority-lost tail-context exception is authenticated
+  recovery-complete turn states, adding only compact item counts with checked arithmetic. The
+  context-aware version also derives the required immutable context-boundary crossings and
+  framed-byte/count commitments under the bounded context extension, without retaining a list.
+  In the pending-parent scope, the one immediate authority-lost tail-context exception is authenticated
   independently before its ordinary item proof; no earlier incomplete turn is accepted. Explicit
   `incomplete` remains terminal for lifecycle accounting rather than recovery-complete. An item
   total above 262,144 is rejected

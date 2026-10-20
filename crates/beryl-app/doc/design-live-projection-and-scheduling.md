@@ -291,6 +291,51 @@ topology and typed execution surfaces.
   by resume or reinjection.
 - Caller usability begins only after exact durable binding publication.
 
+### Discussion Context Establishment
+
+- The coordinator consumes Syndic's opaque prepared context-prefix witness and flat lineage proof
+  under the [system context contract](../../../doc/systems/cas-live-syndic-transcript/design.md#context-aware-lineage).
+  It does not assemble context ancestry, infer insertion from current rendered text, create a
+  context-only turn or accept caller-authored envelope/frame/proof bytes.
+- Native seeding retains the exact fork result as a fresh idle target, derives the sole assistant
+  item from the named immutable envelope, and uses the ordinary bounded injection transport.
+  Seeding is inside the existing per-thread preparation flight and loaded-session lease. No
+  binding capability escapes between native fork, context injection and atomic publication.
+  Native prefix proof permits rich/tool/media history; only the new seed is charged to injection
+  and known model-window admission. It does not run text-recovery preflight on native history.
+- Proven continuation/resume/inherited fork sends no seed. First-input replacement distinguishes
+  an included original context from a native terminal cut before its injection. The latter seeds
+  the same immutable original owner into the fresh target; absence of the old owner turn from the
+  selected path cannot erase context or authorize a replacement envelope.
+- Complete replay uses the versioned Syndic source and existing capacity-one page broker. Storage
+  supplies canonical items interleaved with required context at their proven boundaries, including
+  nesting and equal-boundary ordering. The coordinator transfers the sole 65,536-byte page and
+  compact fixed proofs; it retains no ancestor/context vector, complete frame or recovered history.
+  The source identity, exact totals, roles, offsets, item/sequence terminal markers and EOF must
+  agree before the backend can return exact injection success.
+- Source admission freezes Home/service and source revisions, selected/pending-parent scope,
+  execution and closed thread options, pinned tool profile, known model-window facts and exact
+  source binding/native cut. Before publication it rechecks the current source/target authority,
+  cancellation and process/loaded generation; ordinary dispatch independently requires the exact
+  published context-aware witness. A thread's context owner alone is never dispatch authority.
+- Success obtains its completion timestamp immediately after injection, then asks Syndic to
+  publish the exact context-aware binding. The timestamp and ordering floor preserve provider
+  injection-before-activation ordering. A missing/invalid clock observation, source drift,
+  cancellation, routing failure or target-generation loss abandons that unpublished target and
+  releases the page, broker directions, lease and reservation through existing custody.
+- Every failed injection consumes its target, including proven nondispatch. A response timeout or
+  lost acknowledgement does not authorize another injection into that target or an ordinary turn
+  start. Failed/uncertain binding publication retains the original opaque reconciliation scope;
+  `ExactNew` plus the exact complete binding reread is the only authorizing recovery. Retirement
+  fences old handles; fresh same-home recovery reconstructs from fresh authenticated source facts.
+  It never rebinds an old process's injected proof or recreates accepted input.
+- Verification covers exact first dispatch and unchanged ordinary encoding, no-resend continuation,
+  native rich-prefix seeding, parent divergence, nested/equal boundaries, first-input replacement
+  with original owner off path, complete fresh replay and model/byte limits. It also covers source
+  substitution/drift, cancellation before and after injection, uncertain injection/publication,
+  process replacement and one-page/custody release at every terminal cut. Exact item order, role,
+  bytes and count must be observable through the typed backend seam without a model run.
+
 ## Failed Shutdown Admission Reopening
 
 - The service reopens only its own current fenced process admission after all counted reservations

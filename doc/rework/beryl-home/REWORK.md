@@ -240,6 +240,7 @@
     retains its existing scope.
 - [x] Mounted bounded readonly discussion context with exact provenance, themed realization and
   Copy-only interaction; [acceptance](../../audits/transcript-mounting-readiness.md#synthetic-discussion-context-acceptance).
+- [x] Accepted finite discussion-context proof and replay authority before ordinary execution; [readiness](../../audits/discussion-context-projection-readiness.md).
 - [ ] Implement branch discussion creation, immutable selection provenance,
   first submission, ordinary child conversation, and inherited image-label authority without
   copying historical label maps.

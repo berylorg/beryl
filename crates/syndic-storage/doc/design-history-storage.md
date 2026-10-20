@@ -399,6 +399,39 @@ eligible idle selection represents its committed prefix; an existing pending sel
 only its authenticated parent prefix. An active, unknown-terminal, repair-pending or unsupported
 context returns typed unavailability rather than guessing a prefix or changing history source.
 
+Discussion-context planning consumes the system's
+[context-aware lineage contract](../../../doc/systems/cas-live-syndic-transcript/design.md#context-aware-lineage).
+An opaque prepared witness authenticates the immutable submitted owner, envelope revision and
+complete source descriptor, exact selected bytes/digest, owning discussion and source-parent
+boundary. It authenticates selected-path crossings and derives the ordered context commitment
+without requiring the original owner turn to remain selected. Parent divergence after creation
+does not replace those immutable facts. The initial draft owner is not execution authority;
+first submission's already-defined owner transition precedes execution planning.
+
+The witness carries only fixed-size source/target anchors, count/byte commitments and the closed
+establishment variant defined by V7. Native planning proves the exact source binding and cut,
+including its inherited context commitment, without reading or reconstructing native history
+bodies. Only the new seed envelope is required as text for native seeding. Rich or unsupported
+recovery items in the native prefix do not make an otherwise exact native plan unavailable.
+Continuation/resume and a native descendant fork require the exact context-inclusion proof;
+context ownership alone neither rejects a proven binding nor establishes inclusion.
+
+Preparation may make yielding passes through bounded immutable thread/turn-lineage pages and
+envelope ranges. It retains one current envelope/range, fixed counters and hash state, and bounded
+point-read anchors, never a context vector, ancestry frontier or recursive proof. Equal boundaries
+are ordered through immutable owning-thread lineage. A changed mutable source head or domain
+revision produces conflict; missing immutable agreement produces typed unavailability or corruption
+under the existing read contract. Preparation is cancellable and grants no provider capability.
+
+The serialized binding writer reauthenticates the witness's exact Home/domain provenance,
+thread/execution, selected-path/input-gate scope, current binding and named source head/reservation.
+Immutable context/path derivation is carried by the package-issued witness; writer publication
+does not repeat an ancestry walk or scan historical context. The complete new binding, CAS
+reservation and reverse membership publish atomically under existing revision/identity rules.
+Natural replay compares the original command's complete canonical bytes and effects, not just a
+context digest. Context-aware stale/active/snapshot transitions preserve the same complete proof.
+No new record family or independent context-delivery journal is introduced.
+
 The returned basis is descriptive planning evidence. It creates no draft, turn, input admission,
 dispatch or cleanup authority. Binding publication authenticates that basis and its unchanged
 selection/gate/source revisions through the existing atomic mutation and reconciliation boundary;
@@ -562,8 +595,9 @@ invalid structure from insufficient capacity.
   scalar carry.
 - Malformed or undecidable projection syntax is emitted as source-preserving spans of at most 8,192
   UTF-8 bytes.
-- One recovery projection contains 1 through 262,144 nonempty canonical text items and at most
-  262,144 logical UTF-8 bytes. The item ceiling follows from the byte ceiling.
+- One recovery projection contains 1 through 262,144 nonempty closed projected text items and at
+  most 262,144 logical UTF-8 bytes, including complete frames in context-aware replay. Context-free
+  V1 retains its canonical items unchanged. The item ceiling follows from the byte ceiling.
 - Callers may request smaller page bounds. Larger requests clamp to the declared ceiling and return
   a stable continuation cursor rather than allocating a larger page.
 - An authenticated thread-lineage head also permits a cursor at an exact zero-based ancestor
@@ -596,6 +630,17 @@ Recovery preflight for historical text first proves immutable topology, supporte
 media exclusion, nonempty item count, and the 262,144 item/byte ceilings without reading item text.
 An accepted preflight returns only compact counts, tail, selected-path and represented-prefix facts,
 sequence digest, and source revision. It retains no item vector or text accessor.
+
+Context-aware recovery uses the V7 extension's versioned source identity and flat proof. It first
+counts required context frames and their exact framed lengths together with canonical items;
+it rejects an excessive count/byte budget before replay text reads. Replay inserts a frame only
+at its authenticated source-parent boundary and includes inherited contexts only for selected
+local-turn crossings, plus the target's own context. It handles original owners off the selected
+path through their immutable context link, including first-input replacement. Every frame is one
+assistant/output-text item even when its bytes span multiple pages. Its full framing and selected
+bytes participate in the ordinary closed item accumulator; an additional ordered context
+commitment binds envelope/provenance and placement rather than only equal displayed text.
+Context-free V1 recovery retains its existing source identity, item bytes, ordinals and digest.
 
 A ready proof opens one opaque non-cloneable cursor. Each read fills caller-provided bounded storage
 with at most one nonempty 65,536-byte valid UTF-8 range and reports item ordinal, role, declared item
