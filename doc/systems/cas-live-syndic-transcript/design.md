@@ -603,6 +603,10 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   represented prefix. Context belonging only to an excluded parent suffix is excluded. Contexts
   at an equal boundary retain owning-thread ancestor-to-descendant order, each before its first
   selected local turn; the target's new context follows inherited context at that boundary.
+  An independent fork without its own context envelope also carries inherited context when its
+  immutable selected turn path crosses the owning discussion's local history. Context inclusion
+  follows that selected turn lineage, including owning threads referenced by it; the target's
+  separate discussion-handoff thread-parent relationship does not restrict those crossings.
 - The original submitted context owner, envelope and source-parent boundary remain authoritative
   after first-input replacement. Owner membership in the later selected path is not required.
   Later parent divergence does not invalidate that immutable source. A missing boundary on the

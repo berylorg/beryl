@@ -1360,9 +1360,10 @@ The effective ordered entries follow the system's
 [selected-path crossing rule](../../../doc/systems/cas-live-syndic-transcript/design.md#context-aware-lineage).
 Each entry is emitted after its immutable source-parent turn and before the first selected local
 turn of its owning discussion. The target's own context is emitted at that boundary even before
-its first local turn is represented. Only thread-ancestry entries whose boundary is on that exact
-selected path are eligible. Inherited context from an excluded suffix is absent. Equal boundaries
-use immutable owning-thread ancestor-to-descendant order. An owning discussion appears at most once.
+its first local turn is represented. Owning threads referenced by the selected immutable turn
+lineage supply eligible entries whose boundary is on that exact path, including independent fork
+targets without their own context envelope. Inherited context from an excluded suffix is absent.
+Equal boundaries use immutable owning-thread ancestor-to-descendant order. An owning discussion appears at most once.
 
 For entries `E1..En` with complete frame lengths `b1..bn`, define:
 

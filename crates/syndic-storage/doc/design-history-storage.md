@@ -432,6 +432,29 @@ Natural replay compares the original command's complete canonical bytes and effe
 context digest. Context-aware stale/active/snapshot transitions preserve the same complete proof.
 No new record family or independent context-delivery journal is introduced.
 
+Absence of a target-owned context envelope does not establish context-free history. Publication
+and activation preserve inherited context through the represented tail's authenticated original
+dispatch snapshot and its origin-thread context, including independent fork roots. Ordinary,
+lifecycle and provider descendants retain their admitted context-aware lineage in that snapshot.
+Missing or substituted activated provenance is an error, rather than evidence that a legacy native
+or recovery proof is sufficient. The writer uses this compact existing closure to require the
+prepared context witness without scanning ancestry; explicit whole-history validation independently
+checks the complete selected-path context derivation.
+
+A terminal turn with genuine unattempted dispatch provenance can lack that snapshot. A nonempty
+prefix ending at this ambiguous cut requires package-issued context classification from bounded
+preparation, even when the classification proves an empty context summary. Its exact Home/domain
+identity and generation, selected prefix and source anchors are revalidated at publication and activation.
+Activation prepares its current classification outside the writer and carries it into the exact
+activation command. Coherent preparation checks the domain revision across its reads; activation
+revalidates the named thread/path, binding, gate and source anchors rather than requiring the
+unrelated global domain revision to remain unchanged through Activity enrollment or handoff
+reservation. The ordinary current-command revision guard remains in force.
+A raw legacy proof without this classification is refused; absent dispatch provenance cannot
+establish context absence. Empty
+classification retains ordinary native/recovery bytes, while a nonempty classification requires
+the context-aware proof and its complete witness. This adds no durable record or field.
+
 The returned basis is descriptive planning evidence. It creates no draft, turn, input admission,
 dispatch or cleanup authority. Binding publication authenticates that basis and its unchanged
 selection/gate/source revisions through the existing atomic mutation and reconciliation boundary;

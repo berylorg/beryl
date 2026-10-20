@@ -50,9 +50,23 @@ ambiguity, process replacement and bounded page/custody release. Use focused sto
 nextest targets, affected ordinary regressions and normal production checks, then independent
 complete-boundary review. Record scoped receipts and compact the plan/tracker only after acceptance.
 
-Current milestone: authority is accepted; source work starts from existing closed guards and
-Native/RecoveredInjection-only proofs. Existing typed forked-idle injection and bounded recovery
-transport are reusable. No technical blocker, build/test process or task artifact is active.
+Current milestone: the initial authority is accepted and pushed as `106d5d78`; independent review
+also accepted the selected-turn-lineage and ambiguous-cut classification clarification. Opaque
+context bases, native seed/inherited/replay proofs, bounded pages, authenticated publication and
+App preflight/activation classification are implemented for development qualification. No Model
+change was required. Target-owned envelope absence and unattempted dispatch absence cannot prove
+empty context; the [invalidated assumptions](failures/discussion-context-execution.md) preserve why.
+
+The three initial owning storage context cases pass after complete canonical fixture and opaque
+activation classification corrections. Earlier development checks passed normal Syndic/App
+libraries and 28 ordinary lineage/binding cases; affected final checks still need the completed
+source. The eight-case typed App target is being rerun after the inherited-context fix; its prior
+7/8 result isolated ordinary descendant context loss. Finish advanced nested/replacement/codec/
+corruption and ambiguous-cut cases, affected regressions, normal production checks and independent
+complete-boundary review. Source and execution acceptance remain pending; no technical blocker.
+
+Task-scoped configuration and retained development logs are in
+`.aipm/tasks/discussion-context-execution/`; root owns serial canonical verification and cleanup.
 
 # Phase 803: Mount Discussion Status And Exact Handoff Retry (pending)
 

@@ -51,3 +51,19 @@ Implementation acceptance must independently qualify actual ordinary execution, 
 ordering and failure custody. The preflight, native preparation and recovery guards remain closed
 until the complete context-aware source path exists; documentation acceptance alone grants no
 execution capability. No model or provider runtime was run for this boundary.
+
+## Selected-History Classification Clarification
+
+Implementation exposed an ambiguity in the phrase thread ancestry: `CreateThread::from_tail`
+preserves selected turn history while creating an independent thread without its own envelope.
+The system and schema now explicitly use selected immutable turn-origin crossings. A missing
+target-owned envelope cannot establish context absence.
+
+Independent correction review also checked the compact publication guard against supported
+terminal Unattempted provenance. Missing dispatch snapshots cannot prove an empty context set.
+The history contract requires package-issued classification, including an authenticated empty
+result, at that ambiguous nonempty cut, with exact source revalidation and no writer ancestry walk.
+Activated/cancelled cuts retain their authenticated snapshot/binding closure. The correction passed
+independent architecture-readiness review with no further unresolved contract or new durable field.
+Its [invalidated assumptions](../failures/discussion-context-execution.md) are preserved separately.
+This remains documentation readiness; source and runtime qualification are pending.
