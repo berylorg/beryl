@@ -111,49 +111,48 @@ impl RecoveredPendingCursor {
 /// Compact proof that one existing turn is safe undispatched pending work.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RecoveredPendingSource {
-    source_revision: DomainRevision,
-    thread_id: SyndicThreadId,
-    turn_id: SyndicTurnId,
-    gate_revision: InputGateRevision,
-    state_revision: TurnStateRevision,
-    minimum_timestamp: SyndicTimestamp,
+    pending: crate::PendingDispatchEvidence,
 }
 
 impl RecoveredPendingSource {
     /// Returns the domain revision fencing all facts in this source.
     #[must_use]
     pub const fn source_revision(self) -> DomainRevision {
-        self.source_revision
+        self.pending.source_revision()
     }
 
     /// Returns the owning thread.
     #[must_use]
     pub const fn thread_id(self) -> SyndicThreadId {
-        self.thread_id
+        self.pending.thread_id()
     }
 
     /// Returns the existing pending turn that must execute without another promotion.
     #[must_use]
     pub const fn turn_id(self) -> SyndicTurnId {
-        self.turn_id
+        self.pending.turn_id()
     }
 
     /// Returns the exact safe-pending gate revision.
     #[must_use]
     pub const fn gate_revision(self) -> InputGateRevision {
-        self.gate_revision
+        self.pending.gate_revision()
     }
 
     /// Returns the exact source-free pending turn-state revision.
     #[must_use]
     pub const fn state_revision(self) -> TurnStateRevision {
-        self.state_revision
+        self.pending.state_revision()
     }
 
     /// Returns the lower timestamp bound from turn-state and thread-history activity.
     #[must_use]
     pub const fn minimum_timestamp(self) -> SyndicTimestamp {
-        self.minimum_timestamp
+        self.pending.minimum_timestamp()
+    }
+
+    pub const fn pending_dispatch_evidence(self) -> crate::PendingDispatchEvidence {
+        self.pending
     }
 }
 

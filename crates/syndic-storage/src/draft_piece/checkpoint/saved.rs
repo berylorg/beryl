@@ -90,7 +90,7 @@ impl SyndicStorage {
     }
 }
 
-fn current_selector(
+pub(super) fn current_selector(
     storage: &SyndicStorage,
     store: ReadAccess<'_>,
     thread: beryl_model::SyndicThreadId,

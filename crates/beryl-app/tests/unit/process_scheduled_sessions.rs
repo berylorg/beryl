@@ -2,6 +2,8 @@ use super::*;
 
 #[path = "process_session_idle_retirement.rs"]
 mod idle_retirement;
+#[path = "process_session_projection_custody.rs"]
+mod projection_custody;
 #[path = "shutdown_connection_capture.rs"]
 mod shutdown_capture;
 use crate::cas_projection::{
@@ -17,11 +19,24 @@ fn owned_service(
     BerylState,
     ScheduledExecutionSessions,
 ) {
+    owned_service_with_faults(capacity, None)
+}
+
+fn owned_service_with_faults(
+    capacity: u64,
+    faults: Option<beryl_home_store::test_faults::FaultController>,
+) -> (
+    tempfile::TempDir,
+    ProjectionConnectionService,
+    BerylState,
+    ScheduledExecutionSessions,
+) {
     let directory = tempfile::tempdir().unwrap();
-    let mut home = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
-        directory.path(),
-        HomeSchemaVersion::CURRENT,
-    ))
+    let options = HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT);
+    let mut home = match faults {
+        Some(faults) => beryl_home_store::HomeOpenCandidate::open_with_faults(options, faults),
+        None => beryl_home_store::HomeOpenCandidate::open(options),
+    }
     .unwrap();
     let storage = SyndicStorage::register(&mut home).unwrap();
     let state = BerylState::register(&mut home).unwrap();

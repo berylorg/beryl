@@ -93,6 +93,35 @@ fn lifecycle_continuation_uses_durable_home_and_preserves_current_draft() {
         } => {}
         outcome => panic!("expected clean lifecycle compaction settlement, got {outcome:?}"),
     }
+    let pending = fixture
+        .storage
+        .pending_dispatch_evidence(&fixture.store, fixture.thread, point_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(pending.turn_kind(), TurnKind::BerylLifecycleContinuation);
+    let sources = fixture
+        .storage
+        .recovered_pending_page(
+            &fixture.store,
+            fixture.storage.revision(&fixture.store).unwrap(),
+            None,
+            beryl_home_store::CursorReadLimits::new(
+                16,
+                syndic_storage::DELIVERY_RECOVERY_GATE_PAGE_MAX_BYTES,
+            )
+            .unwrap(),
+            point_limit(),
+        )
+        .unwrap();
+    assert_eq!(
+        sources
+            .records()
+            .iter()
+            .find(|source| source.thread_id() == fixture.thread)
+            .unwrap()
+            .pending_dispatch_evidence(),
+        pending
+    );
 
     let after = fixture
         .storage

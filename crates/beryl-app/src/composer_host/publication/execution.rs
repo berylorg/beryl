@@ -10,6 +10,14 @@ use syndic_storage::{
 
 use super::*;
 
+#[cfg(all(test, feature = "test-faults"))]
+mod selector_tests {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/composer_selector_renewal.rs"
+    ));
+}
+
 impl SyndicComposerHost {
     pub(in crate::composer_host) fn execute_publication_lane(
         &mut self,
@@ -344,9 +352,23 @@ impl SyndicComposerHost {
         let generation = head.published_candidate_generation();
         let session_is_current = selector.selector_revision() == head.published_selector_revision()
             && pair == current_pair;
-        let exact_outcome = outcome_selector == Some(selector)
+        let exact_outcome = if let Some(outcome_selector) = outcome_selector
+            && session_is_current
             && pair == outcome_pair
-            && generation == outcome_generation;
+            && generation == outcome_generation
+        {
+            let qualified = self.storage.qualify_draft_editor_candidate_selector(
+                store,
+                DraftEditorCandidateActivationBindingV1::from_head(&head),
+                outcome_selector,
+            )?;
+            if qualified != selector {
+                return Err(ComposerHostError::PublicationPending);
+            }
+            true
+        } else {
+            false
+        };
         let same_session_descendant = session_is_current && generation > outcome_generation;
         let exact_supersession = outcome_selector.is_none()
             && session_is_current

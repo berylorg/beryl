@@ -22,6 +22,11 @@ pub enum Step {
         reply: Reply,
     },
     Unsubscribe(&'static str),
+    UnsubscribeAfter {
+        target: &'static str,
+        before_ack: Box<dyn FnOnce() + Send>,
+    },
+    UnsubscribeLost(&'static str),
     Turn {
         target: &'static str,
         text: &'static str,
@@ -111,6 +116,21 @@ impl WireServer {
                             &mut socket,
                             json!({"id":request["id"],"result":{"status":"unsubscribed"}}),
                         );
+                    }
+                    Step::UnsubscribeAfter { target, before_ack } => {
+                        assert_eq!(request["method"], "thread/unsubscribe");
+                        assert_eq!(request["params"]["threadId"], target);
+                        before_ack();
+                        send(
+                            &mut socket,
+                            json!({"id":request["id"],"result":{"status":"unsubscribed"}}),
+                        );
+                    }
+                    Step::UnsubscribeLost(target) => {
+                        assert_eq!(request["method"], "thread/unsubscribe");
+                        assert_eq!(request["params"]["threadId"], target);
+                        socket.close(None).unwrap();
+                        return;
                     }
                     Step::Turn { target, text } => turn(&mut socket, request, target, text),
                 }

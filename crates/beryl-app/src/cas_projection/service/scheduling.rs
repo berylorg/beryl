@@ -1,6 +1,14 @@
 use super::flight_registry::FlightRegistry;
 use super::*;
 
+#[cfg(all(test, feature = "test-faults"))]
+mod pending_provenance_tests {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/scheduled_pending_provenance.rs"
+    ));
+}
+
 impl ProjectionConnectionService {
     /// Returns bounded content-free state for the one-shot persistent-failure cut.
     #[must_use]
@@ -240,13 +248,14 @@ impl ProjectionConnectionService {
             self.service_generation,
             thread_id,
             execution_binding,
+            None,
             worker,
             self.persistent_failure
                 .as_ref()
                 .expect("open service retains persistent-failure coordination")
                 .terminal_disposer(self.home_id, self.home_generation),
             flight,
-        );
+        )?;
         let mut result = self
             .scheduled_ordinary_provider
             .as_ref()

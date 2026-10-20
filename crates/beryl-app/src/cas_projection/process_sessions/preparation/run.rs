@@ -1,20 +1,53 @@
 use super::*;
 use crate::discussion_settlement::{DiscussionPreparationFailure, DiscussionSettlementService};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum PreparationOutcome {
+    Settled,
+    HomeAdvanced,
+}
+
+enum PreparationError {
+    Handoff(DiscussionPreparationFailure),
+    HomeAdvanced,
+}
+
+impl From<DiscussionPreparationFailure> for PreparationError {
+    fn from(failure: DiscussionPreparationFailure) -> Self {
+        Self::Handoff(failure)
+    }
+}
+
 impl PreparationContext {
     pub(super) fn run(
         &self,
         sessions: &ScheduledExecutionSessions,
         admission: &ScheduledOrdinaryAdmission,
         service: Option<&DiscussionSettlementService>,
-    ) {
-        let Ok(reservation) = handoff::reserve(self, admission, service) else {
-            return;
+    ) -> PreparationOutcome {
+        self.run_with_launch_spec(sessions, admission, service, || self.launch_spec(admission))
+    }
+
+    pub(super) fn run_with_launch_spec(
+        &self,
+        sessions: &ScheduledExecutionSessions,
+        admission: &ScheduledOrdinaryAdmission,
+        service: Option<&DiscussionSettlementService>,
+        lookup: impl FnOnce() -> Result<ManagedBackendLaunchSpec, target::TargetError>,
+    ) -> PreparationOutcome {
+        let reservation = match handoff::reserve(self, admission, service) {
+            Ok(reservation) => reservation,
+            Err(_) => return PreparationOutcome::Settled,
         };
-        if let Err(failure) = self.prepare_session(sessions, admission)
-            && let Some(reservation) = reservation
-        {
-            handoff::settle(self, sessions, reservation, failure);
+        match self.prepare_session(sessions, admission, lookup) {
+            Err(PreparationError::HomeAdvanced) => PreparationOutcome::HomeAdvanced,
+            Err(PreparationError::Handoff(failure)) => {
+                if let Some(reservation) = reservation {
+                    handoff::settle(self, sessions, reservation, failure);
+                }
+                PreparationOutcome::Settled
+            }
+            Ok(()) => PreparationOutcome::Settled,
         }
     }
 
@@ -22,18 +55,20 @@ impl PreparationContext {
         &self,
         sessions: &ScheduledExecutionSessions,
         admission: &ScheduledOrdinaryAdmission,
-    ) -> Result<(), DiscussionPreparationFailure> {
+        lookup: impl FnOnce() -> Result<ManagedBackendLaunchSpec, target::TargetError>,
+    ) -> Result<(), PreparationError> {
         let Some(acquisition) = admission.acquisition() else {
             return Ok(());
         };
         let admission_context = self.admission.with_acquisition(acquisition);
-        let spec = match self.launch_spec(admission) {
+        let spec = match lookup() {
             Ok(spec) => spec,
             Err(error) => {
                 self.owner
                     .revoke_retry(admission.thread_id(), admission.execution_binding());
                 return match error {
-                    target::TargetError::Unavailable(failure) => Err(failure),
+                    target::TargetError::Unavailable(failure) => Err(failure.into()),
+                    target::TargetError::HomeAdvanced => Err(PreparationError::HomeAdvanced),
                     _ => Ok(()),
                 };
             }
@@ -56,7 +91,7 @@ impl PreparationContext {
         let interest = match interest {
             Ok(interest) => interest,
             Err(RuntimeInterestError::Unavailable(failure)) => {
-                return Err(handoff::runtime_failure(failure));
+                return Err(handoff::runtime_failure(failure).into());
             }
             Err(_) => return Ok(()),
         };
@@ -75,7 +110,7 @@ impl PreparationContext {
             status = interest.wait_for_change(status, self.timeout);
         }
         if let RuntimeInterestStatus::Unavailable(failure) = status {
-            return Err(handoff::runtime_failure(failure));
+            return Err(handoff::runtime_failure(failure).into());
         }
         if !matches!(status, RuntimeInterestStatus::Ready(_))
             || !self.matches_launch_spec(admission, &spec)?
@@ -86,7 +121,7 @@ impl PreparationContext {
         let (connector, ready) = match self.owner.session_connector(&interest) {
             Ok(ready) => ready,
             Err(crate::cas_projection::RuntimeSessionAdmissionError::RuntimeFailed(failure)) => {
-                return Err(handoff::runtime_failure(failure));
+                return Err(handoff::runtime_failure(failure).into());
             }
             Err(_) => return Ok(()),
         };
@@ -107,7 +142,7 @@ impl PreparationContext {
                     | crate::cas_projection::ProjectionSessionAdmissionError::Initialization { .. }
                     | crate::cas_projection::ProjectionSessionAdmissionError::ReleaseAdmission { .. }) {
                     return match interest.invalidate_configuration(ready) {
-                        Some(failure) => Err(handoff::runtime_failure(failure)),
+                        Some(failure) => Err(handoff::runtime_failure(failure).into()),
                         None => Ok(()),
                     };
                 }
@@ -117,7 +152,7 @@ impl PreparationContext {
         let session = match interest.publish_session(ready, session) {
             Ok(session) => session,
             Err(crate::cas_projection::RuntimeSessionAdmissionError::RuntimeFailed(failure)) => {
-                return Err(handoff::runtime_failure(failure));
+                return Err(handoff::runtime_failure(failure).into());
             }
             Err(_) => return Ok(()),
         };
@@ -139,10 +174,11 @@ impl PreparationContext {
         &self,
         admission: &ScheduledOrdinaryAdmission,
         expected: &ManagedBackendLaunchSpec,
-    ) -> Result<bool, DiscussionPreparationFailure> {
+    ) -> Result<bool, PreparationError> {
         match self.launch_spec(admission) {
             Ok(actual) => Ok(&actual == expected),
-            Err(target::TargetError::Unavailable(failure)) => Err(failure),
+            Err(target::TargetError::Unavailable(failure)) => Err(failure.into()),
+            Err(target::TargetError::HomeAdvanced) => Err(PreparationError::HomeAdvanced),
             Err(_) => Ok(false),
         }
     }

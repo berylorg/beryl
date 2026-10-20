@@ -67,6 +67,13 @@ impl SyndicComposerHost {
         if active.unavailable || active.session_disposed {
             return Err(ComposerHostError::PublicationUnavailable);
         }
+        let selector = self.storage.qualify_draft_editor_candidate_selector(
+            store,
+            active.storage_candidate,
+            active.durable_selector,
+        )?;
+        self.active.as_mut().unwrap().durable_selector = selector;
+        let active = self.active.as_ref().unwrap();
         if !self.is_dirty() {
             if !self.storage.draft_editor_candidate_is_saved(
                 store,

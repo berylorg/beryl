@@ -8,6 +8,60 @@ type Owner = Rc<RefCell<RunningProcessOwner>>;
 pub(super) type RuntimeFixtureConfiguration =
     Box<dyn FnOnce(&crate::app_services::ProcessServiceOwner, Instant) + Send>;
 
+pub(super) fn run_mounted_prepared_runtime_home_retained(
+    prepare: impl FnOnce(&std::path::Path),
+    scenario: impl for<'a> FnOnce(
+        Owner,
+        FaultController,
+        &'a mut AsyncApp,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>
+    + 'static,
+) {
+    run_mounted_prepared_runtime_home(prepare, scenario, true);
+}
+
+pub(super) fn run_mounted_prepared_runtime_home_unavailable(
+    prepare: impl FnOnce(&std::path::Path),
+    scenario: impl for<'a> FnOnce(
+        Owner,
+        FaultController,
+        &'a mut AsyncApp,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>
+    + 'static,
+) {
+    run_mounted_prepared_runtime_home(prepare, scenario, false);
+}
+
+fn run_mounted_prepared_runtime_home(
+    prepare: impl FnOnce(&std::path::Path),
+    scenario: impl for<'a> FnOnce(
+        Owner,
+        FaultController,
+        &'a mut AsyncApp,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>
+    + 'static,
+    expect_shutdown: bool,
+) {
+    let directory = support::native_home();
+    prepare(directory.path());
+    assert!(
+        run_mounted_case_with_home(
+            2,
+            0,
+            None,
+            None,
+            scenario,
+            expect_shutdown,
+            None,
+            Some(10),
+            Duration::from_secs(60),
+            None,
+            Some(directory),
+        )
+        .is_none()
+    );
+}
+
 pub(super) fn run_mounted_with_runtime_configuration(
     count: u8,
     chunks: usize,
@@ -309,7 +363,43 @@ fn run_mounted_case_with_workers(
     completion_deadline: Duration,
     runtime_configuration: Option<RuntimeFixtureConfiguration>,
 ) -> Option<MinimalSessionBootstrap> {
-    let directory = if count == 0 {
+    run_mounted_case_with_home(
+        count,
+        chunks,
+        prepare,
+        final_selection,
+        scenario,
+        expect_shutdown,
+        restored_count,
+        projection_workers,
+        completion_deadline,
+        runtime_configuration,
+        None,
+    )
+}
+
+fn run_mounted_case_with_home(
+    count: u8,
+    chunks: usize,
+    prepare: Option<Box<dyn FnOnce(&std::path::Path)>>,
+    final_selection: Option<Box<dyn FnOnce() -> Vec<(WindowId, beryl_model::SyndicThreadId)>>>,
+    scenario: impl for<'a> FnOnce(
+        Owner,
+        FaultController,
+        &'a mut AsyncApp,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>
+    + 'static,
+    expect_shutdown: bool,
+    restored_count: Option<usize>,
+    projection_workers: Option<u64>,
+    completion_deadline: Duration,
+    runtime_configuration: Option<RuntimeFixtureConfiguration>,
+    prepared_home: Option<tempfile::TempDir>,
+) -> Option<MinimalSessionBootstrap> {
+    let managed_home = prepared_home.is_some();
+    let directory = if let Some(directory) = prepared_home {
+        directory
+    } else if count == 0 {
         support::native_home()
     } else {
         resident_fixture::selected_home_with_draft(count, chunks)
@@ -369,6 +459,33 @@ fn run_mounted_case_with_workers(
             crate::cas_projection::MinimumTurnCaptureReserve::try_new(1).unwrap(),
         )
         .unwrap();
+    }
+    if managed_home {
+        let token_path = std::fs::canonicalize(directory.path().join("runtime-tokens")).unwrap();
+        let token_path = token_path.to_str().unwrap().trim_start_matches(r"\\?\");
+        input.services.token_directory =
+            crate::cas_projection::RuntimeTokenDirectory::from_admitted(
+                beryl_model::AdmittedHostPath::from_admitted(
+                    beryl_model::PathFlavor::Windows,
+                    token_path,
+                )
+                .unwrap(),
+            );
+        input.services.runtime_interest = crate::cas_projection::RuntimeInterestConfig::new(
+            NonZeroUsize::new(1).unwrap(),
+            NonZeroUsize::new(8).unwrap(),
+            Duration::from_secs(10),
+        )
+        .unwrap();
+        input.services.session_policy = crate::cas_projection::ScheduledOrdinaryRequestPolicy::new(
+            beryl_backend::ThreadStartOptions::persistent(),
+            Some(128_000),
+            Duration::from_secs(10),
+            crate::cas_projection::OrdinaryTurnExecutionRequest::new(
+                beryl_backend::TurnStartOptions::default(),
+                Duration::from_secs(10),
+            ),
+        );
     }
     if count == 0 {
         input.windows.configurator_source =

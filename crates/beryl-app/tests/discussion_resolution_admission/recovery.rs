@@ -76,6 +76,14 @@ fn fresh_candidate_inspects_both_sides_of_admission_without_creating_an_attempt(
         let mut candidate = store.recover_same_home().unwrap();
         let fresh_state = BerylState::reacquire_candidate(&candidate).unwrap();
         let fresh_syndic = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+        operations
+            .qualify_recovered_originals(&mut candidate, &fresh_state, &fresh_syndic)
+            .unwrap();
+        assert!(
+            operations
+                .retained_audit(JobId::from_bytes([210; 16]))
+                .is_none()
+        );
         let access = candidate.recovery_access().unwrap();
         assert!(audit.reconcile_candidate(&access, &syndic, &state).is_err());
         let before = access.home_revision().unwrap();

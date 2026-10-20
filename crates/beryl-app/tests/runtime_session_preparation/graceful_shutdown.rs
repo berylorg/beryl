@@ -104,6 +104,7 @@ fn shutdown_keeps_predecessor_completion_separate_from_a_winning_pending_success
             fixture.service.take().unwrap().close().unwrap(),
             ProjectionConnectionServiceCloseOutcome::Closed
         ));
+        assert!(fixture.root(1).join("execution-unsubscribed-0").exists());
     }
 }
 

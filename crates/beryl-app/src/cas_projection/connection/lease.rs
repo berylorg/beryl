@@ -9,6 +9,8 @@ use super::{
 };
 use crate::cas_projection::ProjectionCoordinatorError;
 
+mod idle_projection;
+pub(in crate::cas_projection) use idle_projection::ShutdownProjectionReleaseIdentity;
 mod terminal_disposition;
 
 pub(in crate::cas_projection) use terminal_disposition::{

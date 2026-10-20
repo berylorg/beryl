@@ -34,6 +34,7 @@ pub(super) struct PreparedProjectionInjection {
 }
 
 mod completion;
+mod source_drift;
 
 #[derive(Clone, Copy)]
 struct ProjectionInjectionBinding {
@@ -223,7 +224,16 @@ impl CasProjectionCoordinator {
         let mut cursor = match storage.open_recovery_cursor(home, projection) {
             Ok(cursor) => cursor,
             Err(error) => {
-                return Err(self.abandon_projection_target(
+                let primary = self.source_failure_before_injection(
+                    home,
+                    storage,
+                    session,
+                    projection,
+                    attachment,
+                    cancellation,
+                    error,
+                );
+                let failure = self.abandon_projection_target(
                     home,
                     storage,
                     session,
@@ -232,8 +242,15 @@ impl CasProjectionCoordinator {
                     cas_thread_id,
                     StaleObservation::unknown(Some(generation)),
                     "recovery source could not be reconfirmed for the fresh target",
-                    ProjectionExecutionError::from(error),
+                    primary,
                     Some(lease),
+                );
+                return Err(self.source_failure_after_abandonment(
+                    home,
+                    session,
+                    attachment,
+                    cancellation,
+                    failure,
                 ));
             }
         };
@@ -353,7 +370,16 @@ impl CasProjectionCoordinator {
                     thread_id: thread_id.clone(),
                     source: error,
                 };
-                Err(self.abandon_projection_target(
+                let primary = self.source_failure_without_dispatch(
+                    home,
+                    storage,
+                    session,
+                    projection,
+                    attachment,
+                    cancellation,
+                    primary,
+                );
+                let failure = self.abandon_projection_target(
                     home,
                     storage,
                     session,
@@ -364,6 +390,13 @@ impl CasProjectionCoordinator {
                     "recovery injection was proven not dispatched",
                     primary,
                     Some(lease),
+                );
+                Err(self.source_failure_after_abandonment(
+                    home,
+                    session,
+                    attachment,
+                    cancellation,
+                    failure,
                 ))
             }
             ThreadInjectionOutcome::TransportLost { thread_id, error } => {

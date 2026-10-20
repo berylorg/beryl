@@ -1,4 +1,5 @@
 use super::*;
+use std::io;
 
 const THREAD: &str = "managed-execution-thread";
 
@@ -14,28 +15,34 @@ pub(super) fn serve(socket: &mut WebSocket<TcpStream>, mode: &str) {
     let successor = queued_successor || compaction;
     let first_ordinal =
         u32::from(successor && std::path::Path::new("execution-started-0.json").exists());
+    let mut retained_request = None;
     for ordinal in first_ordinal..if successor { 2 } else { 1 } {
-        let Some(projection) = read_projection(socket) else {
+        let Some(first) = retained_request.take().or_else(|| read_projection(socket)) else {
             return;
         };
-        fs::write(
-            format!("execution-projection-{ordinal}.json"),
-            serde_json::to_vec(&projection).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(
-            projection["method"],
-            if ordinal == 0 {
-                "thread/start"
-            } else {
-                "thread/resume"
+        let request = if first["method"] == "turn/start" {
+            assert_ne!(ordinal, 0, "the first execution needs a real loaded target");
+            first
+        } else {
+            fs::write(
+                format!("execution-projection-{ordinal}.json"),
+                serde_json::to_vec(&first).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(
+                first["method"],
+                if ordinal == 0 {
+                    "thread/start"
+                } else {
+                    "thread/resume"
+                }
+            );
+            if ordinal != 0 {
+                assert_eq!(first["params"]["threadId"], THREAD);
             }
-        );
-        if ordinal != 0 {
-            assert_eq!(projection["params"]["threadId"], THREAD);
-        }
-        project(socket, &projection, ordinal != 0);
-        let request = read_json(socket);
+            project(socket, &first, ordinal != 0);
+            read_json(socket)
+        };
         fs::write(
             format!("execution-request-{ordinal}.json"),
             serde_json::to_vec(&request).unwrap(),
@@ -72,16 +79,6 @@ pub(super) fn serve(socket: &mut WebSocket<TcpStream>, mode: &str) {
             .unwrap(),
         )
         .unwrap();
-        if queued_successor && ordinal == 0 {
-            let steer = read_json(socket);
-            assert_eq!(steer["method"], "turn/steer");
-            assert_eq!(steer["params"]["threadId"], THREAD);
-            let id = steer["id"].as_u64().unwrap();
-            socket.send(Message::Text(format!(
-                r#"{{"error":{{"code":-32600,"data":{{"message":"steering denied","codexErrorInfo":{{"activeTurnNotSteerable":{{"turnKind":"review"}}}},"additionalDetails":null}},"message":"outer steering diagnostic"}},"id":{id}}}"#,
-            ).into())).unwrap();
-            fs::write("execution-steering-denied", "ready").unwrap();
-        }
         let release = format!("execution-release-{ordinal}");
         if mode == "execution-shutdown" {
             let interrupt = read_json(socket);
@@ -92,13 +89,27 @@ pub(super) fn serve(socket: &mut WebSocket<TcpStream>, mode: &str) {
             fs::write("execution-interrupted", "once").unwrap();
         }
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let original_timeout = socket.get_mut().read_timeout().unwrap();
+        if queued_successor && ordinal == 0 {
+            socket
+                .get_mut()
+                .set_read_timeout(Some(Duration::from_millis(10)))
+                .unwrap();
+        }
         while !std::path::Path::new(&release).exists() {
             assert!(
                 std::time::Instant::now() < deadline,
                 "execution release timed out"
             );
-            std::thread::sleep(Duration::from_millis(2));
+            if queued_successor && ordinal == 0 {
+                if !poll_optional_steer(socket) {
+                    return;
+                }
+            } else {
+                std::thread::sleep(Duration::from_millis(2));
+            }
         }
+        socket.get_mut().set_read_timeout(original_timeout).unwrap();
         send_json(
             socket,
             json!({"method":"turn/completed","params":{
@@ -119,14 +130,28 @@ pub(super) fn serve(socket: &mut WebSocket<TcpStream>, mode: &str) {
             }
             return;
         }
-        let unsubscribe = read_json(socket);
-        assert_eq!(unsubscribe["method"], "thread/unsubscribe");
-        assert_eq!(unsubscribe["params"]["threadId"], THREAD);
-        send_json(
-            socket,
-            json!({"id":unsubscribe["id"],"result":{"status":"unsubscribed"}}),
-        );
-        fs::write(format!("execution-unsubscribed-{ordinal}"), "ready").unwrap();
+        let Some(next) = read_projection(socket) else {
+            return;
+        };
+        if next["method"] == "thread/unsubscribe" {
+            assert_eq!(next["params"]["threadId"], THREAD);
+            send_json(
+                socket,
+                json!({"id":next["id"],"result":{"status":"unsubscribed"}}),
+            );
+            fs::write(format!("execution-unsubscribed-{ordinal}"), "ready").unwrap();
+        } else {
+            assert!(
+                successor && ordinal == 0,
+                "final execution must settle original unsubscribe cleanup"
+            );
+            assert!(matches!(
+                next["method"].as_str(),
+                Some("thread/resume" | "turn/start")
+            ));
+            assert_eq!(next["params"]["threadId"], THREAD);
+            retained_request = Some(next);
+        }
     }
     while let Ok(message) = socket.read() {
         if message.is_close() {
@@ -136,6 +161,39 @@ pub(super) fn serve(socket: &mut WebSocket<TcpStream>, mode: &str) {
             !message.is_text(),
             "unexpected execution after final terminal capture"
         );
+    }
+}
+
+fn poll_optional_steer(socket: &mut WebSocket<TcpStream>) -> bool {
+    match socket.read() {
+        Ok(Message::Text(text)) => {
+            let steer: Value = serde_json::from_str(text.as_str()).unwrap();
+            assert_eq!(steer["method"], "turn/steer");
+            assert_eq!(steer["params"]["threadId"], THREAD);
+            assert_eq!(steer["params"]["expectedTurnId"], "managed-turn-0");
+            assert!(!std::path::Path::new("execution-steering-denied").exists());
+            let id = steer["id"].as_u64().unwrap();
+            socket.send(Message::Text(format!(
+                r#"{{"error":{{"code":-32600,"data":{{"message":"steering denied","codexErrorInfo":{{"activeTurnNotSteerable":{{"turnKind":"review"}}}},"additionalDetails":null}},"message":"outer steering diagnostic"}},"id":{id}}}"#,
+            ).into())).unwrap();
+            fs::write("execution-steering-denied", "ready").unwrap();
+            true
+        }
+        Ok(Message::Ping(payload)) => {
+            socket.send(Message::Pong(payload)).unwrap();
+            true
+        }
+        Ok(Message::Pong(_) | Message::Frame(_)) => true,
+        Ok(Message::Close(_)) => false,
+        Err(tungstenite::Error::Io(error))
+            if matches!(
+                error.kind(),
+                io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+            ) =>
+        {
+            true
+        }
+        other => panic!("unexpected active execution control: {other:?}"),
     }
 }
 

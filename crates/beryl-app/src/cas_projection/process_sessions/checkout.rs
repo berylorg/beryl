@@ -7,6 +7,10 @@ use crate::cas_projection::{
 
 struct SessionCheckout {
     session: Option<AdmittedProjectionSession>,
+    projection: Option<super::super::LoadedCasProjection>,
+    home_id: BerylHomeId,
+    home_generation: HomeGeneration,
+    binding: ExecutionBinding,
     returned: Arc<CheckoutReturn>,
 }
 
@@ -20,6 +24,7 @@ struct CheckoutReturn {
     registration: ScheduledSessionRegistration,
     session: Mutex<Option<AdmittedProjectionSession>>,
     tools: Mutex<Option<Box<dyn OrdinaryDynamicToolAuthority>>>,
+    projection: Mutex<Option<super::super::LoadedCasProjection>>,
 }
 
 impl ScheduledOrdinaryExecutionProvider for ProcessScheduledExecutionProvider {
@@ -52,7 +57,7 @@ impl ScheduledOrdinaryExecutionProvider for ProcessScheduledExecutionProvider {
         admission: ScheduledOrdinaryAdmission,
     ) -> Result<ScheduledOrdinaryAdmissionResult, ScheduledOrdinaryAdmissionError> {
         self.sessions.reap();
-        let (registration, mut resources, policy, assets) = {
+        let (registration, resources, policy, assets) = {
             let mut state = self.sessions.lock();
             let Some(context) = state.context.as_ref() else {
                 return Ok(
@@ -100,29 +105,19 @@ impl ScheduledOrdinaryExecutionProvider for ProcessScheduledExecutionProvider {
             Some(pending) => policy.with_pending_model_choice(pending),
             None => policy,
         };
-        if let Some(projection) = resources.projection.take()
-            && let Err(error) = projection.release()
-        {
-            self.sessions.settle_return(registration, resources);
-            return match error {
-                crate::cas_projection::LoadedProjectionReleaseError::Registry(
-                    error @ (crate::cas_projection::ProjectionCoordinatorError::HomeNotHealthy { .. }
-                    | crate::cas_projection::ProjectionCoordinatorError::HomeGenerationMismatch { .. }
-                    | crate::cas_projection::ProjectionCoordinatorError::LiveCommandPersistentHomeFailure { .. }),
-                ) => Err(ScheduledOrdinaryAdmissionError::Authority(error)),
-                _ => Ok(
-                    admission.decline(ScheduledOrdinaryExecutionUnavailable::RuntimeNotReady)
-                ),
-            };
-        }
         let returned = Arc::new(CheckoutReturn {
             owner: self.sessions.clone(),
             registration,
             session: Mutex::new(None),
             tools: Mutex::new(None),
+            projection: Mutex::new(None),
         });
         let session = SessionCheckout {
             session: Some(resources.session),
+            projection: resources.projection,
+            home_id: admission.home_id(),
+            home_generation: admission.home_generation(),
+            binding: admission.execution_binding().clone(),
             returned: Arc::clone(&returned),
         };
         let tools = ToolCheckout {
@@ -167,6 +162,28 @@ impl ScheduledProjectionSessionAuthority for SessionCheckout {
     fn session(&mut self) -> &mut AdmittedProjectionSession {
         self.session.as_mut().expect("checkout retains its session")
     }
+
+    fn take_projection(&mut self) -> Option<super::super::LoadedCasProjection> {
+        self.projection.take()
+    }
+
+    fn return_projection(
+        &mut self,
+        projection: super::super::LoadedCasProjection,
+    ) -> Result<(), super::super::LoadedCasProjection> {
+        if self.projection.is_some()
+            || projection.home_id() != self.home_id
+            || projection.home_generation() != self.home_generation
+            || projection.syndic_thread_id() != self.returned.registration.thread_id
+            || projection.execution_binding() != &self.binding
+            || !projection.belongs_to_session(self.session())
+            || !projection.is_live().unwrap_or(false)
+        {
+            return Err(projection);
+        }
+        self.projection = Some(projection);
+        Ok(())
+    }
 }
 
 impl Drop for SessionCheckout {
@@ -176,6 +193,11 @@ impl Drop for SessionCheckout {
             .session
             .lock()
             .unwrap_or_else(|poison| poison.into_inner()) = self.session.take();
+        *self
+            .returned
+            .projection
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner()) = self.projection.take();
     }
 }
 
@@ -217,7 +239,11 @@ impl Drop for CheckoutReturn {
             SessionResources {
                 session,
                 tools,
-                projection: None,
+                projection: self
+                    .projection
+                    .get_mut()
+                    .unwrap_or_else(|poison| poison.into_inner())
+                    .take(),
             },
         );
     }

@@ -14,6 +14,10 @@ use beryl_model::{
 use crate::cas_projection::{ProjectionCoordinatorError, ProjectionRegistryKind};
 
 mod context;
+mod idle_projection;
+pub(in crate::cas_projection) use idle_projection::{
+    owns_only_loaded_lease, try_connection_has_authority, try_owns_only_loaded_lease,
+};
 mod manual_compaction;
 pub(in crate::cas_projection) use manual_compaction::{
     ManualProjectionStamp, read_manual_projection,

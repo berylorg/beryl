@@ -1,10 +1,19 @@
 use super::*;
 use crate::discussion_settlement::DiscussionPreparationFailure;
 
+#[cfg(all(test, feature = "test-faults"))]
+mod advance_tests {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/preparation_source_advance.rs"
+    ));
+}
+
 pub(in crate::cas_projection::process_sessions) enum TargetError {
     Closed,
     Read,
     Changed,
+    HomeAdvanced,
     Configuration,
     Unavailable(DiscussionPreparationFailure),
 }
@@ -30,13 +39,23 @@ impl PreparationContext {
         thread_id: SyndicThreadId,
         binding: &ExecutionBinding,
     ) -> Result<ManagedBackendLaunchSpec, TargetError> {
+        self.launch_spec_for_after_read(thread_id, binding, || {})
+    }
+
+    fn launch_spec_for_after_read(
+        &self,
+        thread_id: SyndicThreadId,
+        binding: &ExecutionBinding,
+        after_read: impl FnOnce(),
+    ) -> Result<ManagedBackendLaunchSpec, TargetError> {
         if !self.commands.is_open() {
             return Err(TargetError::Closed);
         }
         let before = self.home.home_revision().map_err(|_| TargetError::Read)?;
         let result = self.read_launch_spec(thread_id, binding);
+        after_read();
         if self.home.home_revision().map_err(|_| TargetError::Read)? != before {
-            return Err(TargetError::Changed);
+            return Err(TargetError::HomeAdvanced);
         }
         if !self.commands.is_open() {
             return Err(TargetError::Closed);

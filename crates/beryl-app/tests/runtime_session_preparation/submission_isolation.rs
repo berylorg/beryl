@@ -86,11 +86,10 @@ fn unrelated_managed_runtime_failure_preserves_selected_submission_authority() {
     }
     let selected = thread_id(1);
     let worker = fixture.service().exact_stop_worker();
-    assert_eq!(worker.selected_submission_availability(selected), Ok(()));
-    assert_eq!(
-        worker.selected_submission_availability(other_thread),
-        Ok(())
-    );
+    wait_until(|| {
+        worker.selected_submission_availability(selected) == Ok(())
+            && worker.selected_submission_availability(other_thread) == Ok(())
+    });
     let limit = SyndicPointReadLimit::new(1_000_000).unwrap();
     let before = {
         let home = &fixture.home_reference;
@@ -135,7 +134,7 @@ fn unrelated_managed_runtime_failure_preserves_selected_submission_authority() {
         worker.selected_submission_availability(other_thread),
         Err(SubmissionUnavailable::RuntimeUnavailable)
     );
-    assert_eq!(worker.selected_submission_availability(selected), Ok(()));
+    wait_until(|| worker.selected_submission_availability(selected) == Ok(()));
     assert_eq!(
         worker
             .runtime_failure_reader()

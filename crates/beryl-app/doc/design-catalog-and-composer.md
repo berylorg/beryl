@@ -241,6 +241,17 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - One selected host opens one exact editor-candidate session from the durable selector and exposes
   revision-bound bounded text and zero-width-marker pages to the app-neutral widget. It never
   reconstructs or retains the complete draft.
+- Before lifecycle capture's saved-checkpoint check or publication-source capture, the host may consume
+  Syndic's bounded authentication of the same draft checkpoint under a newer enclosing thread
+  revision. It updates only its durable selector, retaining the exact editor binding, live session,
+  candidate root/history and dirty state. No publication or live operation may be pending. A
+  changed checkpoint remains refused. Ordinary source capture, writer validation and cancellation
+  remain exact; no stale selector is reused and no failed effect is retried. Convergence first
+  authenticates its original immutable publication outcome, then may qualify only that exact
+  successor checkpoint after an enclosing thread advance. This preserves an untouched parent draft
+  across generated handoff admission and later ordinary save or Exit without replacing its editor.
+  Revalidation of an already issued immutable save capability remains exact and cannot retarget
+  that capability after a later enclosing revision advance.
 - Positive concurrent-runtime fixtures may explicitly select a feature-only host activation entry
   that executes Syndic's sealed current opening command. It uses the same once-prepared exact
   selector/session/operation, cancellation, reconciliation and host finalization, without retry or

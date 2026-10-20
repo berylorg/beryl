@@ -381,14 +381,7 @@ impl DiscussionSettlementOperations {
                     .audits
                     .lock()
                     .map_err(|_| DiscussionSettlementError::CustodyUnavailable)?;
-                retained
-                    .values()
-                    .find_map(|audit| match audit.original_allows_release() {
-                        Ok(false) => Some(Ok(audit.clone())),
-                        Ok(true) => None,
-                        Err(error) => Some(Err(error)),
-                    })
-                    .transpose()?
+                retained.values().next().cloned()
             };
             let Some(audit) = audit else {
                 return Ok(());
@@ -398,9 +391,13 @@ impl DiscussionSettlementOperations {
                 .retry_original
                 .lock()
                 .map_err(|_| DiscussionSettlementError::CustodyUnavailable)?
-                .clone()
-                .ok_or(DiscussionSettlementError::CustodyUnavailable)?;
-            if !original.origin.recovered_by(candidate) {
+                .clone();
+            let held_original = !audit.original_allows_release()?;
+            if held_original
+                && original
+                    .as_ref()
+                    .is_none_or(|original| !original.origin.recovered_by(candidate))
+            {
                 return Err(DiscussionSettlementError::CustodyUnavailable);
             }
             let access = candidate
@@ -408,13 +405,16 @@ impl DiscussionSettlementOperations {
                 .map_err(|_| DiscussionSettlementError::CustodyUnavailable)?;
             match audit.reconcile_candidate(&access, syndic, state)? {
                 DiscussionSettlementAuditOutcome::Settled(_) => {}
+                DiscussionSettlementAuditOutcome::NotCommitted if !held_original => {}
                 _ => return Err(DiscussionSettlementError::CustodyUnavailable),
             }
-            audit.mutate(|| {
-                original
-                    .recovered
-                    .store(true, std::sync::atomic::Ordering::Release)
-            });
+            if let Some(original) = original {
+                audit.mutate(|| {
+                    original
+                        .recovered
+                        .store(true, std::sync::atomic::Ordering::Release)
+                });
+            }
             audit.0._flight.release_retained();
         }
         let remaining = self
@@ -422,10 +422,8 @@ impl DiscussionSettlementOperations {
             .audits
             .lock()
             .map_err(|_| DiscussionSettlementError::CustodyUnavailable)?;
-        for audit in remaining.values() {
-            if !audit.original_allows_release()? {
-                return Err(DiscussionSettlementError::CustodyUnavailable);
-            }
+        if !remaining.is_empty() {
+            return Err(DiscussionSettlementError::CustodyUnavailable);
         }
         Ok(())
     }

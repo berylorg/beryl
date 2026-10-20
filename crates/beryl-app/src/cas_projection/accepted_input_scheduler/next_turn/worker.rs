@@ -285,6 +285,12 @@ fn execute_candidate(
             WorkerDisposition::PersistentHomeFailure
         }
         PendingTurnExecutionDisposition::ProjectionRefused => WorkerDisposition::Fatal,
+        PendingTurnExecutionDisposition::RetainedProjectionUnavailable => {
+            WorkerDisposition::NextUnavailable
+        }
+        PendingTurnExecutionDisposition::SourceAdvanced => {
+            WorkerDisposition::ExecutionSourceAdvanced
+        }
         PendingTurnExecutionDisposition::NativeLineageCapacityBlocked => {
             WorkerDisposition::NextContinue
         }

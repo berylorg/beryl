@@ -115,6 +115,11 @@ and the existing [admission/settlement adapters](design-feature-adapters.md#disc
   retained attempt. Borrowed generic candidate access, which also supports initial opening, may
   classify the outcome but cannot alone authorize this release. The original recovery graph runs
   this bounded qualification over existing retained slots before handing off its recovery prefix.
+- That prefix also reconciles retained ordinary admission and settlement audits, including an
+  admission whose job is not yet durably visible, before live-job convergence acquires their
+  slots. It uses one original audit at a time within the configured reconciliation-slot bound;
+  exact noncommit or settlement releases ordinary custody. Pending or Collision evidence remains
+  retained and blocks the dependent recovery prefix rather than being discarded to free a slot.
 - Proven retry commitment wakes the existing coordinator through its ordinary route. Proven
   noncommit leaves current durable authority intact and reports the bounded command failure.
   Uncertainty remains pending; Collision remains terminally Unavailable. Neither causes duplicate

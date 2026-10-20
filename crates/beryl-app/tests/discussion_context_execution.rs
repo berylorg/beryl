@@ -6,6 +6,10 @@ mod command;
 mod server;
 #[path = "discussion_context_execution/settlement.rs"]
 mod settlement;
+#[path = "discussion_context_execution/source_drift.rs"]
+mod source_drift;
+#[path = "discussion_context_execution/submission.rs"]
+mod submission;
 #[path = "discussion_context_execution/support.rs"]
 mod support;
 #[path = "projection/syndic.rs"]

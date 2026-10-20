@@ -25,6 +25,8 @@ use super::{
     support::{point_limit, thread_load_options},
 };
 
+mod context_seed;
+
 impl CasProjectionCoordinator {
     pub(super) fn publish_existing_loaded(
         &self,
@@ -212,11 +214,13 @@ impl CasProjectionCoordinator {
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         let lineage = CasLineageProof::native(NativeCasLineage::Fork, basis.represented_prefix())?;
         let seed = if basis.context().is_some_and(|context| context.needs_seed()) {
-            let projection = storage.prepare_native_context_seed_cancellable(
+            let projection = self.prepare_native_context_seed_after_basis(
                 home,
+                storage,
                 basis,
                 request.model_context_window_tokens(),
-                &|| cancellation.is_cancelled(),
+                cancellation,
+                || {},
             )?;
             Some(self.prepare_projection_injection(session, projection)?)
         } else {

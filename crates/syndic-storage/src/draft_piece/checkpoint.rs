@@ -10,6 +10,7 @@ mod historical;
 mod imported;
 mod reader;
 mod saved;
+mod selector;
 mod transition;
 
 use reader::{CheckpointReader, StoreCheckpointReader};

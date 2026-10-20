@@ -312,6 +312,7 @@ pub(super) fn run_pass(runtime: &mut SchedulerRuntime) -> Result<PassOutcome, Sc
     let admission = runtime.context.issue_scheduled_ordinary_execution(
         source.thread_id(),
         execution.execution().clone(),
+        Some(source),
         worker,
         flight,
     );
@@ -447,6 +448,12 @@ fn execute_source(
         }
         super::next_turn::PendingTurnExecutionDisposition::ProjectionRefused => {
             WorkerDisposition::Fatal
+        }
+        super::next_turn::PendingTurnExecutionDisposition::SourceAdvanced => {
+            WorkerDisposition::ExecutionSourceAdvanced
+        }
+        super::next_turn::PendingTurnExecutionDisposition::RetainedProjectionUnavailable => {
+            WorkerDisposition::RecoveredPendingUnavailable
         }
         super::next_turn::PendingTurnExecutionDisposition::NativeLineageCapacityBlocked => {
             WorkerDisposition::RecoveredPendingContinue

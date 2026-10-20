@@ -13,16 +13,14 @@ pub(super) fn reserve(
     service: Option<&DiscussionSettlementService>,
 ) -> Result<Option<DiscussionParentDispatchReservation>, DiscussionSettlementError> {
     let limit = crate::cas_projection::input_replay::point_limit();
-    let Some(pending) =
+    let Some(pending) = pending_for_handoff(admission.pending_source(), || {
         context
             .storage
-            .pending_dispatch_evidence(&context.home, admission.thread_id(), limit)?
+            .pending_dispatch_evidence(&context.home, admission.thread_id(), limit)
+    })?
     else {
         return Ok(None);
     };
-    if pending.turn_kind() != TurnKind::BerylDiscussionHandoff {
-        return Ok(None);
-    }
     let item = context
         .storage
         .canonical_item(&context.home, pending.item_id(), limit)?
@@ -48,6 +46,26 @@ pub(super) fn reserve(
         return Err(DiscussionSettlementError::IdentityMismatch);
     }
     Ok(reservation)
+}
+
+fn pending_for_handoff(
+    original: Option<syndic_storage::RecoveredPendingSource>,
+    read: impl FnOnce() -> Result<
+        Option<syndic_storage::PendingDispatchEvidence>,
+        syndic_storage::SyndicReadError,
+    >,
+) -> Result<Option<syndic_storage::PendingDispatchEvidence>, syndic_storage::SyndicReadError> {
+    if original.is_some_and(|source| {
+        matches!(
+            source.pending_dispatch_evidence().turn_kind(),
+            TurnKind::OrdinaryUser | TurnKind::BerylLifecycleContinuation
+        )
+    }) {
+        return Ok(None);
+    }
+    read().map(|pending| {
+        pending.filter(|pending| pending.turn_kind() == TurnKind::BerylDiscussionHandoff)
+    })
 }
 
 pub(super) fn settle(
@@ -93,4 +111,12 @@ pub(super) fn runtime_failure(
         | RuntimeFailure::ProcessExited => DiscussionPreparationFailure::Cas,
         _ => DiscussionPreparationFailure::Runtime,
     }
+}
+
+#[cfg(all(test, feature = "test-faults"))]
+mod provenance_tests {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/managed_preparation_provenance.rs"
+    ));
 }

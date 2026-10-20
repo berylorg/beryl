@@ -99,6 +99,7 @@ impl AcceptedInputSchedulerContext {
         &self,
         thread_id: SyndicThreadId,
         execution_binding: beryl_model::ExecutionBinding,
+        pending_source: Option<syndic_storage::RecoveredPendingSource>,
         worker: crate::cas_projection::service_config::ProjectionWorkerPermit,
         flight: crate::cas_projection::service::ProjectionFlight,
     ) -> Result<ScheduledOrdinaryAdmissionResult, ScheduledOrdinaryAdmissionError> {
@@ -117,10 +118,11 @@ impl AcceptedInputSchedulerContext {
             self.command_gate.service_generation(),
             thread_id,
             execution_binding,
+            pending_source,
             worker,
             self.terminal_disposer.clone(),
             flight,
-        );
+        )?;
         let mut result = self
             .scheduled_ordinary_provider
             .lock()

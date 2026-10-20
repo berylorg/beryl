@@ -25,6 +25,22 @@ fn generated_input_dispatches_correlates_and_settles_without_losing_provenance()
         .unwrap()
         .unwrap();
     assert_eq!(pending.turn_kind(), TurnKind::BerylDiscussionHandoff);
+    let sources = storage
+        .recovered_pending_page(
+            &store,
+            storage.revision(&store).unwrap(),
+            None,
+            beryl_home_store::CursorReadLimits::new(16, DELIVERY_RECOVERY_GATE_PAGE_MAX_BYTES)
+                .unwrap(),
+            limit,
+        )
+        .unwrap();
+    let source = sources
+        .records()
+        .iter()
+        .find(|source| source.thread_id() == thread)
+        .unwrap();
+    assert_eq!(source.pending_dispatch_evidence(), pending);
     assert_eq!(pending.item_id(), item_id);
     assert_eq!(pending.input(), input.content());
     assert_eq!(pending.asset_reference_set(), None);

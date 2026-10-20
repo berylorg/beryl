@@ -151,6 +151,19 @@ fn recovered_pending_page_proves_safe_work_and_fences_cursor_revision() {
     assert_eq!(source.turn_id(), turns[0]);
     assert_eq!(source.source_revision(), revision);
     assert_eq!(source.minimum_timestamp(), crate::support::timestamp(10));
+    let original = source.pending_dispatch_evidence();
+    assert_eq!(original.home_id(), store.home_id());
+    assert_eq!(
+        original.home_generation(),
+        store.health().generation().unwrap()
+    );
+    assert_eq!(original.turn_kind(), syndic_storage::TurnKind::OrdinaryUser);
+    assert_eq!(
+        Some(original),
+        storage
+            .pending_dispatch_evidence(&store, source.thread_id(), point_limit())
+            .unwrap()
+    );
     let cursor = first.next_cursor().expect("second pending row remains");
 
     replace_gate_state(
@@ -159,6 +172,7 @@ fn recovered_pending_page_proves_safe_work_and_fences_cursor_revision() {
         ordered_id(11),
         InputGateState::PendingTurn(turns[0]),
     );
+    assert_eq!(source.pending_dispatch_evidence(), original);
     assert!(matches!(
         storage.recovered_pending_page(&store, revision, Some(cursor), limits(1), point_limit(),),
         Err(SyndicReadError::StaleRecoveredPendingScan)
@@ -242,6 +256,11 @@ fn recovered_pending_and_classification_survive_reopen() {
     let path = recovery.home.path().to_path_buf();
     let expected_thread = recovery.thread;
     let expected_turn = recovery.turn;
+    let original = recovery
+        .storage
+        .pending_dispatch_evidence(&recovery.store, expected_thread, point_limit())
+        .unwrap()
+        .unwrap();
     recovery.store.close().unwrap();
 
     let mut reopened_candidate = open(&path);
@@ -272,4 +291,91 @@ fn recovered_pending_and_classification_survive_reopen() {
         .unwrap();
     assert_eq!(pending.records().len(), 1);
     assert_eq!(pending.records()[0].turn_id(), expected_turn);
+    let recovered = pending.records()[0].pending_dispatch_evidence();
+    assert_eq!(recovered.home_id(), original.home_id());
+    assert_eq!(
+        recovered.home_generation(),
+        reopened.health().generation().unwrap()
+    );
+    assert_eq!(recovered.turn_kind(), original.turn_kind());
+    assert_eq!(recovered.turn_id(), original.turn_id());
+    assert_eq!(recovered.item_id(), original.item_id());
+    assert_eq!(recovered.input(), original.input());
+    assert_eq!(
+        recovered.dispatch_provenance(),
+        original.dispatch_provenance()
+    );
+}
+
+#[test]
+fn recovered_pending_provenance_advances_only_at_the_same_home_recovery_boundary() {
+    let fixture = pending_home("pending-in-place-recovery", 330);
+    fixture.store.close().unwrap();
+    let faults = beryl_home_store::test_faults::FaultController::new();
+    let mut opening = beryl_home_store::HomeOpenCandidate::open_with_faults(
+        beryl_home_store::HomeOpenOptions::new(
+            fixture.home.path(),
+            beryl_home_store::HomeSchemaVersion::CURRENT,
+        ),
+        faults.clone(),
+    )
+    .unwrap();
+    let storage = SyndicStorage::register(&mut opening).unwrap();
+    let store = opening
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
+    let original = storage
+        .recovered_pending_page(
+            &store,
+            storage.revision(&store).unwrap(),
+            None,
+            limits(16),
+            point_limit(),
+        )
+        .unwrap()
+        .records()[0]
+        .pending_dispatch_evidence();
+    faults.fail_next(beryl_home_store::test_faults::FaultPoint::BeforeReadConfirmation);
+    assert!(
+        storage
+            .thread(&store, fixture.thread, point_limit())
+            .is_err()
+    );
+    let candidate = store.recover_same_home().unwrap();
+    let fresh = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+    let store = candidate.publish().unwrap();
+    let recovered = fresh
+        .recovered_pending_page(
+            &store,
+            fresh.revision(&store).unwrap(),
+            None,
+            limits(16),
+            point_limit(),
+        )
+        .unwrap()
+        .records()[0]
+        .pending_dispatch_evidence();
+    assert_eq!(recovered.home_id(), original.home_id());
+    assert_ne!(recovered.home_generation(), original.home_generation());
+    assert_eq!(
+        recovered.home_generation(),
+        store.health().generation().unwrap()
+    );
+    assert_eq!(recovered.thread_id(), original.thread_id());
+    assert_eq!(recovered.turn_id(), original.turn_id());
+    assert_eq!(recovered.turn_kind(), original.turn_kind());
+    assert_eq!(recovered.item_id(), original.item_id());
+    assert_eq!(recovered.input(), original.input());
+    assert_eq!(
+        recovered.dispatch_provenance(),
+        original.dispatch_provenance()
+    );
+    assert!(
+        storage
+            .pending_dispatch_evidence(&store, fixture.thread, point_limit())
+            .is_err()
+    );
+    store.close().unwrap();
 }

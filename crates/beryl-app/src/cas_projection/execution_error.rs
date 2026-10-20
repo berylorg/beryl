@@ -69,6 +69,8 @@ pub enum ProjectionExecutionError {
     LoadedProjectionConnectionMismatch { thread_id: CasThreadId },
     #[error("a loaded-projection lease could not be released cleanly")]
     LeaseRelease(#[source] Box<LoadedProjectionReleaseError>),
+    #[error("the retained projection could not be released before acquiring its replacement")]
+    RetainedProjectionReleaseBeforeAcquisition(#[source] Box<LoadedProjectionReleaseError>),
     #[error("live-event target {thread_id} closed while a CAS request completed: {reason:?}")]
     LiveEventRouting {
         thread_id: CasThreadId,
@@ -103,6 +105,20 @@ pub enum ProjectionExecutionError {
     #[error("CAS projection basis changed concurrently for {thread_id}")]
     ProjectionBasisChanged {
         thread_id: beryl_model::SyndicThreadId,
+    },
+    #[error("native context seed source advanced before fork for {thread_id}")]
+    NativeContextSeedSourceAdvanced {
+        thread_id: beryl_model::SyndicThreadId,
+        expected: beryl_model::DomainRevision,
+        actual: beryl_model::DomainRevision,
+    },
+    #[error(
+        "projection source advanced before injection into a subsequently abandoned target for {thread_id}"
+    )]
+    ProjectionSourceAdvancedBeforeInjection {
+        thread_id: beryl_model::SyndicThreadId,
+        expected: beryl_model::DomainRevision,
+        actual: beryl_model::DomainRevision,
     },
     #[error(transparent)]
     NativePlanning(NativeProjectionError),

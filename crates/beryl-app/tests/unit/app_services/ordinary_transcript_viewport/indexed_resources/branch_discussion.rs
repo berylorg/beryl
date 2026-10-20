@@ -21,6 +21,16 @@ mod code_multiline;
 mod eligibility;
 #[path = "branch_discussion/fixture.rs"]
 pub(super) mod fixture;
+#[path = "branch_discussion/flow.rs"]
+mod flow;
+#[path = "branch_discussion/flow_ambiguity.rs"]
+mod flow_ambiguity;
+#[path = "branch_discussion/flow_collision.rs"]
+mod flow_collision;
+#[path = "branch_discussion/flow_recovery.rs"]
+mod flow_recovery;
+#[path = "branch_discussion/flow_support.rs"]
+mod flow_support;
 #[path = "branch_discussion/late_retry.rs"]
 mod late_retry;
 #[path = "branch_discussion/lifecycle.rs"]

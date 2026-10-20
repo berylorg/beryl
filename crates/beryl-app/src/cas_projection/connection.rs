@@ -70,6 +70,7 @@ pub(in crate::cas_projection) use driver_outcome::{
 };
 use forwarding_hub::{ForwardingAttachmentEndpoint, ForwardingHub};
 use lease::RawLoadedLeaseSeed;
+pub(in crate::cas_projection) use lease::ShutdownProjectionReleaseIdentity;
 pub(super) use lease::{
     ExistingLease, LoadedProjectionLease, LocalLoadedRegistryDispositionOwner,
     TerminalLoadedLeaseDispositionOwner, ThreadRetirement,

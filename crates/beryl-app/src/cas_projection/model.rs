@@ -22,6 +22,8 @@ use super::{
     service::CasProjectionCoordinator,
 };
 
+mod retained_projection;
+
 /// Exact caller-owned inputs for obtaining one pending turn's CAS projection.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CasProjectionRequest {

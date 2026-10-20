@@ -12,6 +12,8 @@ mod execution_lifetime;
 mod graceful_shutdown;
 #[path = "runtime_session_preparation/idle_maintenance.rs"]
 mod idle_maintenance;
+#[path = "runtime_session_preparation/idle_projection.rs"]
+mod idle_projection;
 #[path = "runtime_session_preparation/notice_shell.rs"]
 mod notice_shell;
 #[path = "runtime_session_preparation/recovery.rs"]

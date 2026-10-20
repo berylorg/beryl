@@ -82,6 +82,16 @@ impl Fixture {
     }
 
     fn with_worker_capacity(pending: bool, worker_capacity: u64) -> Self {
+        Self::with_provider(pending, worker_capacity, |provider| Box::new(provider))
+    }
+
+    fn with_provider(
+        pending: bool,
+        worker_capacity: u64,
+        wrap: impl FnOnce(
+            ProcessScheduledExecutionProvider,
+        ) -> Box<dyn crate::cas_projection::ScheduledOrdinaryExecutionProvider>,
+    ) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let faults = beryl_home_store::test_faults::FaultController::new();
         let mut home = beryl_home_store::HomeOpenCandidate::open_with_faults(
@@ -155,7 +165,7 @@ impl Fixture {
                 MinimumTurnCaptureReserve::try_new(1).unwrap(),
             )
             .unwrap(),
-            Box::new(provider),
+            wrap(provider),
         )
         .unwrap();
         Self {

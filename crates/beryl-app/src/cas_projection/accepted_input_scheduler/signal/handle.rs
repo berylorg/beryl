@@ -184,6 +184,20 @@ impl AcceptedInputSchedulerSignal {
         self.inner.state.lock().unwrap().pending & reason.bit() != 0
     }
 
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(in crate::cas_projection) fn assert_execution_lanes_for_test(&self, expected: bool) {
+        assert_eq!(
+            self.wake_pending_for_test(AcceptedInputWakeReason::ExecutionReady),
+            expected,
+        );
+        self.wake(AcceptedInputWakeReason::IdleRecheck);
+        let batch = self.wait();
+        assert_eq!(batch.execution_ready(), expected);
+        assert_eq!(batch.restarts_recovered_pending_pass(), expected);
+        assert_eq!(batch.opens_next_pass(), expected);
+        assert!(!batch.opens_retry_pass());
+    }
+
     pub(in super::super) fn update_diagnostics(
         &self,
         update: impl FnOnce(&mut AcceptedInputSchedulerDiagnostics),

@@ -112,7 +112,8 @@ impl ExactStopRead {
                             )
                         })
                         .ok_or(Denial::BindingUnavailable)
-                } else if record.committed_tail().is_none()
+                } else if (record.committed_tail().is_none()
+                    || self.initial_context_draft(home, &record, limit))
                     && binding.as_ref().is_none_or(|binding| {
                         matches!(
                             binding.binding().state(),
@@ -135,6 +136,27 @@ impl ExactStopRead {
             Some(availability)
         };
         read().unwrap_or(Err(Denial::AuthorityUnavailable))
+    }
+
+    fn initial_context_draft(
+        &self,
+        home: &beryl_home_store::HomeStore,
+        record: &syndic_storage::ThreadRecord,
+        limit: SyndicPointReadLimit,
+    ) -> bool {
+        let owner = beryl_model::DiscussionContextOwnerId::Draft(record.current_draft_id());
+        if record.context_owner_id() != Some(owner) {
+            return false;
+        }
+        self.storage
+            .current_draft(home, record.id(), limit)
+            .ok()
+            .flatten()
+            .is_some_and(|current| {
+                current.thread() == record
+                    && current.draft().submission_intent()
+                        == syndic_storage::DraftSubmissionIntent::DiscussionContext(owner)
+            })
     }
 }
 

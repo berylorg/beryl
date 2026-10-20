@@ -141,7 +141,9 @@ fn execute_work(
                 PendingTurnExecutionDisposition::ExpectedInterruption => {
                     return WorkerDisposition::NextContinue;
                 }
-                PendingTurnExecutionDisposition::ProjectionRefused => {}
+                PendingTurnExecutionDisposition::ProjectionRefused
+                | PendingTurnExecutionDisposition::RetainedProjectionUnavailable
+                | PendingTurnExecutionDisposition::SourceAdvanced => {}
                 PendingTurnExecutionDisposition::Settled
                 | PendingTurnExecutionDisposition::NativeLineageCapacityBlocked
                 | PendingTurnExecutionDisposition::ParkNativeLineage { .. } => {
@@ -173,6 +175,8 @@ fn execute_work(
                         WorkerDisposition::NextContinue
                     }
                     PendingTurnExecutionDisposition::Settled
+                    | PendingTurnExecutionDisposition::RetainedProjectionUnavailable
+                    | PendingTurnExecutionDisposition::SourceAdvanced
                     | PendingTurnExecutionDisposition::NativeLineageCapacityBlocked
                     | PendingTurnExecutionDisposition::ParkNativeLineage { .. } => {
                         WorkerDisposition::Fatal
@@ -212,7 +216,11 @@ fn execute_work(
                 )
             })
         });
-    match settle_ordinary_outcome(validator, outcome) {
+    let (settlement, returned) = settle_ordinary_outcome(validator, outcome);
+    if let Some(projection) = returned {
+        lease.return_projection(*projection);
+    }
+    match settlement {
         OrdinaryTurnSettlement::Settled => WorkerDisposition::NextContinue,
         OrdinaryTurnSettlement::PersistentHomeFailure => WorkerDisposition::PersistentHomeFailure,
     }

@@ -107,6 +107,7 @@ impl ProjectionConnectionService {
     pub(super) fn poll_shutdown_cleanup(
         &self,
         sessions: &ScheduledExecutionSessions,
+        fence: &crate::process_admission::ProcessAdmissionFence,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<bool, StepError> {
         let source = sessions.work_revision().map_err(ProcessWorkError::from)?;
@@ -117,7 +118,7 @@ impl ProjectionConnectionService {
             return Err(ShutdownFailure::SourceUnavailable.into());
         }
         sessions
-            .retire_idle_for_shutdown()
+            .retire_idle_for_shutdown(fence)
             .map_err(|_| ShutdownFailure::CleanupFailed)?;
         self.poll_shutdown_connection_cleanup(cancellation)
             .map_err(|error| match error {

@@ -304,6 +304,14 @@ impl ProcessAdmissionFence {
         &self,
         gate: &ProcessAdmissionGate,
     ) -> Result<(), ProcessAdmissionError> {
+        self.with_settled_for(gate, || ())
+    }
+
+    pub(crate) fn with_settled_for<T>(
+        &self,
+        gate: &ProcessAdmissionGate,
+        publish: impl FnOnce() -> T,
+    ) -> Result<T, ProcessAdmissionError> {
         if !Arc::ptr_eq(&self.gate.inner, &gate.inner) {
             return Err(ProcessAdmissionError::Stale);
         }
@@ -318,7 +326,7 @@ impl ProcessAdmissionFence {
         if state.admissions != 0 {
             return Err(ProcessAdmissionError::Unsettled);
         }
-        Ok(())
+        Ok(publish())
     }
 
     fn prepare_reopening(&self) -> Result<ProcessAdmissionReopening<'_>, ProcessAdmissionError> {

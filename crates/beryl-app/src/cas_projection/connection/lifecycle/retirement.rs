@@ -1,6 +1,90 @@
 use super::*;
 
 impl ProjectionConnection {
+    pub(in crate::cas_projection) fn begin_shutdown_cleanup_change(
+        &self,
+    ) -> crate::cas_projection::connection_work::ConnectionWorkMutation {
+        self.authority.work_boundary.begin_change()
+    }
+
+    pub(in crate::cas_projection) fn settle_shutdown_authority_error(
+        &self,
+        error: &ProjectionCoordinatorError,
+    ) {
+        if matches!(
+            error,
+            ProjectionCoordinatorError::RegistryPoisoned {
+                registry: crate::cas_projection::ProjectionRegistryKind::ProjectionConnection
+            }
+        ) {
+            drop(self.authority.lock());
+        }
+    }
+
+    pub(in crate::cas_projection) fn elect_shutdown_projection_release<T>(
+        &self,
+        command: &crate::cas_projection::LiveCommandPermit,
+        owns_only_lease: impl FnOnce() -> Result<bool, ProjectionCoordinatorError>,
+        publish: impl FnOnce() -> T,
+    ) -> Result<Option<T>, ProjectionCoordinatorError> {
+        let Some(hub) = self.forwarding_hub.try_lock_attachment()? else {
+            return Ok(None);
+        };
+        let Some(attachment) = hub.attachment().cloned() else {
+            return Ok(None);
+        };
+        drop(hub);
+        if attachment.identity.service_generation() != command.service_generation() {
+            return Ok(None);
+        }
+        self.authority
+            .try_elect_shutdown_projection_release(owns_only_lease, publish)
+    }
+
+    pub(in crate::cas_projection) fn elect_shutdown_session_retirement(
+        &self,
+        command: &crate::cas_projection::LiveCommandPermit,
+    ) -> Result<bool, ProjectionCoordinatorError> {
+        let Some(hub) = self.forwarding_hub.try_lock_attachment()? else {
+            return Ok(false);
+        };
+        let Some(attachment) = hub.attachment().cloned() else {
+            return Ok(false);
+        };
+        drop(hub);
+        if attachment.identity.service_generation() != command.service_generation() {
+            return Ok(false);
+        }
+        self.authority.try_retire_shutdown_session_owner(|| {
+            attachment
+                .persistent_failure
+                .elect_ordinary_retirement(None)
+        })
+    }
+
+    pub(in crate::cas_projection) fn elect_idle_projection_release(
+        &self,
+        owner: &crate::cas_projection::runtime_interest::RuntimeInterestOwner,
+        binding: &beryl_model::ExecutionBinding,
+        observation: &beryl_home_store::HomeMutationObservation,
+        owns_only_lease: impl FnOnce() -> Result<bool, ProjectionCoordinatorError>,
+    ) -> Result<bool, ProjectionCoordinatorError> {
+        let attachment = self.current_attachment()?;
+        let Ok(command) = attachment.commands.authorize() else {
+            return Ok(false);
+        };
+        self.authority
+            .elect_idle_projection_release(owns_only_lease, || {
+                owner
+                    .with_no_view_interest(binding, self.process_generation(), || {
+                        command
+                            .commit_if_current(|| observation.try_elect(|| true).unwrap_or(false))
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(false)
+            })
+    }
+
     pub(in crate::cas_projection) fn settlement_cleanup_complete(
         &self,
         thread_id: SyndicThreadId,

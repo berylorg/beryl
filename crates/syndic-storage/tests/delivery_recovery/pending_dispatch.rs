@@ -24,6 +24,22 @@ fn proof(fixture: &RecoveryHome) -> PendingDispatchEvidence {
 fn exact_pending_identity_survives_cancellation_retirement_and_reopen() {
     let fixture = pending_home("pending-dispatch-preservation", 710);
     let untouched = proof(&fixture);
+    let original_source = fixture
+        .storage
+        .recovered_pending_page(
+            &fixture.store,
+            fixture.storage.revision(&fixture.store).unwrap(),
+            None,
+            beryl_home_store::CursorReadLimits::new(
+                16,
+                syndic_storage::DELIVERY_RECOVERY_GATE_PAGE_MAX_BYTES,
+            )
+            .unwrap(),
+            point_limit(),
+        )
+        .unwrap()
+        .records()[0];
+    assert_eq!(original_source.pending_dispatch_evidence(), untouched);
     assert_eq!(
         untouched.dispatch_provenance(),
         TurnDispatchProvenance::Unattempted
@@ -62,6 +78,7 @@ fn exact_pending_identity_survives_cancellation_retirement_and_reopen() {
     assert_ne!(cancelled.state_revision(), untouched.state_revision());
     publish_stale_valid(&fixture.store, fixture.storage.clone(), fixture.thread);
     let retired = proof(&fixture);
+    assert_eq!(original_source.pending_dispatch_evidence(), untouched);
     for evidence in [cancelled, retired] {
         assert_eq!(evidence.turn_id(), untouched.turn_id());
         assert_eq!(evidence.item_id(), untouched.item_id());
@@ -91,6 +108,21 @@ fn exact_pending_identity_survives_cancellation_retirement_and_reopen() {
         retired.dispatch_provenance()
     );
     assert_eq!(recovered.input(), untouched.input());
+    let refreshed_source = storage
+        .recovered_pending_page(
+            &reopened,
+            storage.revision(&reopened).unwrap(),
+            None,
+            beryl_home_store::CursorReadLimits::new(
+                16,
+                syndic_storage::DELIVERY_RECOVERY_GATE_PAGE_MAX_BYTES,
+            )
+            .unwrap(),
+            point_limit(),
+        )
+        .unwrap()
+        .records()[0];
+    assert_eq!(refreshed_source.pending_dispatch_evidence(), recovered);
     reopened.close().unwrap();
 }
 

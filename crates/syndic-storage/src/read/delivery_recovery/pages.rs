@@ -190,14 +190,7 @@ impl SyndicStorage {
                 "recovered-pending source is not safe undispatched work",
             ));
         }
-        Ok(RecoveredPendingSource {
-            source_revision,
-            thread_id: gate.thread_id(),
-            turn_id,
-            gate_revision: gate.revision(),
-            state_revision: pending.state_revision(),
-            minimum_timestamp: pending.minimum_timestamp(),
-        })
+        Ok(RecoveredPendingSource { pending })
     }
 
     fn pending_error_or_stale<T>(

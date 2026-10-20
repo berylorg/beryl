@@ -225,24 +225,9 @@ impl ScheduledExecutionSessions {
         let worker = thread::Builder::new()
             .name("beryl-session-preparation".to_owned())
             .spawn(move || {
-                context.run(&sessions, &admission, handoff.as_ref());
+                let outcome = context.run(&sessions, &admission, handoff.as_ref());
                 drop(context);
-                let mut state = sessions.lock();
-                drop(admission);
-                if let Some(worker) = state.preparing.get_mut(&thread_id) {
-                    worker.complete = true;
-                    state.work_changed();
-                }
-                let ready = state.context.as_ref().map(|context| context.ready.clone());
-                let has_session = state.slots.contains_key(&thread_id);
-                drop(state);
-                if let Some(ready) = ready {
-                    if has_session {
-                        ready.notify();
-                    } else {
-                        ready.signal.wake(AcceptedInputWakeReason::IdleRecheck);
-                    }
-                }
+                sessions.complete_preparation(admission, outcome);
             });
         if let Ok(worker) = worker {
             state.preparing.insert(
@@ -258,6 +243,30 @@ impl ScheduledExecutionSessions {
         ScheduledOrdinaryAdmissionResult::Unavailable(
             ScheduledOrdinaryExecutionUnavailable::RuntimeNotReady,
         )
+    }
+
+    fn complete_preparation(
+        &self,
+        admission: ScheduledOrdinaryAdmission,
+        outcome: run::PreparationOutcome,
+    ) {
+        let thread_id = admission.thread_id();
+        let mut state = self.lock();
+        drop(admission);
+        if let Some(worker) = state.preparing.get_mut(&thread_id) {
+            worker.complete = true;
+            state.work_changed();
+        }
+        let ready = state.context.as_ref().map(|context| context.ready.clone());
+        let has_session = state.slots.contains_key(&thread_id);
+        drop(state);
+        if let Some(ready) = ready {
+            if has_session || outcome == run::PreparationOutcome::HomeAdvanced {
+                ready.notify();
+            } else {
+                ready.signal.wake(AcceptedInputWakeReason::IdleRecheck);
+            }
+        }
     }
 
     pub(super) fn reap_preparation(&self) {

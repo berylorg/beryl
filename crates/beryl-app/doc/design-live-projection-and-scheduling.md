@@ -106,6 +106,13 @@ topology and typed execution surfaces.
 
 ## Managed Session Preparation Outcomes
 
+- Recovered pending work preserves its original authenticated turn kind together with its exact
+  source provenance through the private service-issued preparation admission. Known ordinary user
+  and Beryl lifecycle-continuation sources do not repeat discussion-only pending evidence reads.
+  Generated or unknown sources retain fresh exact handoff reservation and outcome custody.
+  This classification supplies no dispatch authority: original home/service, worker, flight,
+  binding and selected-turn validation remain required before outbound effects. A later pending
+  turn cannot inherit the earlier source's classification.
 - Managed preparation retains typed target lookup outcomes. Confirmed missing runtime/root
   records are distinguished from changing sources, read failure, missing service configuration
   and binding mismatch. Only exact stable target absence or an existing runtime owner's confirmed
@@ -214,6 +221,35 @@ topology and typed execution surfaces.
   registry retains the actual admitted loaded-session lease or transfers it exclusively into an
   execution checkout; removing the selected view drops only its observation subscription.
   Retaining an `Arc` after the authority-owning lease is dropped is not execution ownership.
+- Healthy ordinary terminal settlement returns its usable projection to the same exact process
+  session registration. Retained not-started and preactivation outcomes return that same custody
+  when still current. Persistent-Home failure keeps the original failure owner instead. The
+  available session owns at most one real projection; checkout moves it exclusively with the
+  session, rather than releasing it merely to issue the next execution lease. Ordinary execution
+  reuses it only after its normal exact source, binding, connection, generation and operation
+  checks; an unusable projection follows original cleanup before fresh planning. Return cannot
+  revive a retired registration, overwrite another projection or cross a Home/service generation.
+  Canonical input admission or promotion publishes its ordinary Unbound binding. The old retained
+  lease is not authority for that new binding: a fresh native Resume plan keeps its existing
+  source-owned resume/publication requirements. Retention guarantees original idle custody, not
+  omission of a required native operation after accepted input changes the binding.
+  Failure to dispose that old retained projection before any new projection request is a distinct
+  scoped unavailable outcome. It preserves original cleanup and pending-input custody and does
+  not close unrelated healthy runtime execution. Persistent-Home cuts retain priority; arbitrary
+  lease-release failures or uncertain projection effects do not gain this classification or retry.
+- The existing idle-maintenance owner also settles its own retained idle projection. Under its
+  original revision-checked required-work and view-interest election, it may extract only that
+  available registration's owned projection. Release and backend cleanup run outside ownership
+  gates, followed by fresh exact work/view/registration validation before session retirement.
+  External loaded leases, checkout, promotion, unknown work and cleanup custody retain their
+  existing exclusion. A racing view or required-work acquisition prevents retirement through the
+  existing gates; no independent cache, lease registry, polling or retry owner is introduced.
+- The already-admitted shutdown drain also settles available owner-retained projections through
+  its existing cleanup stage and admission fence. It extracts only the exact owned lease under
+  the same registration, checkout, external-lease, promotion and cleanup exclusions, releases
+  outside ownership gates, then revalidates retirement under the original drain. Captured pending
+  input remains unchanged and unstarted; its presence cannot turn a completed predecessor's idle
+  projection into active execution. Ordinary idle work/view gates remain unchanged.
 - The process session-checkout provider accepts already-admitted sessions scoped to its exact
   healthy home/service generation, Syndic thread, and full runtime/root execution binding before
   projection establishment. Managed-process, connection, loaded-session, projection-binding, and
@@ -463,6 +499,38 @@ topology and typed execution surfaces.
 - Completion opens another pass only through typed continuation or a fresh durable, execution,
   recovery, flight, cancellation, or relevant external-capacity wake. No timer retry, per-input
   retry set, payload waiter, or self-wake loop exists.
+  A read-only managed launch lookup that successfully observes different before/after Home
+  revisions rejects that interval and retains the witnessed durable advance through preparation
+  completion. After admission/flight custody is released and completion is recorded, that advance
+  may notify the existing generation-fenced execution-ready path. Every repeated refusal needs a
+  newly witnessed committed advance; stable target mismatches, missing records and read failures
+  do not reopen dispatch lanes. This wake grants no dispatch, generated retry or handoff authority.
+  First-discussion native context seed preparation may likewise retain a witnessed source advance
+  before acquiring a source lease or issuing fork/injection requests. Only a healthy uncancelled
+  attempt whose current Syndic revision differs from its authenticated planning basis produces
+  that stage-specific outcome. After joining the original worker and releasing its execution and
+  flight custody, restart the existing recovered-pending scan and next lane through their normal
+  generation gate. Each new attempt authenticates a fresh basis. Bare concurrency errors, stable
+  non-seeding bases and failures after possible remote effects supply no such continuation proof.
+  Explicit native-lineage recovery keeps its original decision/attempt revalidation and parking
+  path on this refusal; ordinary lane continuation does not authorize another recovery attempt.
+  If opening a frozen replay cursor rejects a witnessed source revision advance after target
+  creation but before any injection invocation, retain that advance before abandonment writes.
+  Only successful original lease release and exact stale-target publication, followed by healthy
+  current Home and cancellation checks, permit fresh ordinary projection acquisition through the
+  same joined-worker lanes. Keep the original body/source identity throughout the abandoned
+  attempt; never renew its cursor on the existing target. Failed or uncertain abandonment and
+  any possibly dispatched injection remain outside this continuation. Abandonment's own revision
+  advance cannot supply its progress evidence.
+  Frozen replay-source validation can also reject revision drift inside the SDK's injection
+  invocation. Only its exact typed revision-drift failure with cumulative ProvenNotDispatched
+  evidence for the complete request qualifies the same pre-transport boundary: no header,
+  payload or earlier frame may have been written. Obtain the unequal successful Syndic revision
+  witness before abandonment, preserve the frozen source throughout that attempt, and require
+  the same successful original release/stale publication and fresh Home/attachment/cancellation
+  checks before joined-worker ordinary continuation. Generic nondispatch errors, missing revision
+  evidence, any written bytes and uncertain cleanup retain their original outcomes. Explicit
+  native-lineage recovery still reparks through its original decision authority.
 
 ## Fresh-Service Establishment
 

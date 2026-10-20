@@ -39,7 +39,7 @@ fn selected_retry_retains_a_usable_projection_without_input_and_fences_later_mut
         )
         .unwrap();
     assert!(worker.eligible(&session, window, claim, &execution, failure));
-    let proof = recovery::recover_with_idle_election_paused(
+    let (proof, _view) = recovery::recover_with_idle_election_paused(
         &fixture, &sessions, window, claim, failure, &execution,
     );
     let fence = fixture.process_admission.test_fence().unwrap();

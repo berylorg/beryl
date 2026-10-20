@@ -13,6 +13,8 @@ use tungstenite::{
 
 #[path = "managed_runtime_fixture/context_proxy.rs"]
 mod context_proxy;
+#[path = "managed_runtime_fixture/discussion.rs"]
+mod discussion;
 #[path = "managed_runtime_fixture/execution.rs"]
 mod execution;
 #[path = "managed_runtime_fixture/paused_handoff.rs"]
@@ -66,9 +68,15 @@ fn main() {
     }
     let listener = TcpListener::bind(address).unwrap();
     listener.set_nonblocking(true).unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    let discussion_flow =
+        fs::read_to_string("fixture-mode").unwrap_or_default() == "discussion-flow";
+    let lifetime = if discussion_flow { 60 } else { 15 };
+    let deadline = std::time::Instant::now() + Duration::from_secs(lifetime);
     let mut connections: Vec<std::thread::JoinHandle<()>> = Vec::new();
-    while connections.len() < 8 && connections.first().is_none_or(|first| !first.is_finished()) {
+    let connection_limit = if discussion_flow { 128 } else { 8 };
+    while connections.len() < connection_limit
+        && connections.first().is_none_or(|first| !first.is_finished())
+    {
         assert!(
             std::time::Instant::now() < deadline,
             "fixture lifetime exceeded"
@@ -78,7 +86,11 @@ fn main() {
                 let authorization = authorization.clone();
                 let index = connections.len();
                 connections.push(std::thread::spawn(move || {
-                    serve_connection(stream, &authorization, index);
+                    if discussion_flow {
+                        discussion::serve_connection(stream, &authorization, index);
+                    } else {
+                        serve_connection(stream, &authorization, index);
+                    }
                 }));
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
@@ -118,11 +130,20 @@ fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
         initialize["params"]["capabilities"]["experimentalApi"],
         true
     );
-    assert!(
-        initialize["params"]["capabilities"]
-            .get("optOutNotificationMethods")
-            .is_none()
-    );
+    let request_only = initialize["params"]["capabilities"].get("optOutNotificationMethods");
+    if let Some(methods) = request_only {
+        assert_eq!(
+            fs::read_to_string("fixture-mode").unwrap(),
+            "discussion-flow"
+        );
+        let methods = methods.as_array().unwrap();
+        assert!(!methods.is_empty() && methods.len() <= 64);
+        assert!(
+            methods
+                .iter()
+                .all(|method| method.as_str().is_some_and(|method| method.len() <= 128))
+        );
+    }
     send_json(
         &mut socket,
         json!({
@@ -134,6 +155,10 @@ fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
         }),
     );
     assert_eq!(read_json(&mut socket)["method"], "initialized");
+    if request_only.is_some() {
+        discussion::serve_queries(&mut socket, index);
+        return;
+    }
     let config = read_json(&mut socket);
     assert_eq!(config["method"], "config/read");
     assert_eq!(
@@ -193,6 +218,10 @@ fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
     );
     if mode == "paused-handoff" && index > 0 {
         paused_handoff::serve(&mut socket);
+        return;
+    }
+    if mode == "discussion-flow" && index > 0 {
+        discussion::serve(&mut socket, index);
         return;
     }
     if matches!(

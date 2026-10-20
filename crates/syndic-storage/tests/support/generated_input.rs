@@ -4,7 +4,38 @@ use beryl_model::*;
 use syndic_storage::*;
 
 pub fn seed_pending(store: &HomeStore, storage: &SyndicStorage) -> DiscussionParentRequest {
-    seed_parent_history(store, storage);
+    seed_pending_observing_parent(store, storage, |_, _, _| ()).0
+}
+
+pub fn seed_pending_with_original_parent(
+    store: &HomeStore,
+    storage: &SyndicStorage,
+) -> (DiscussionParentRequest, RecoveredPendingSource) {
+    seed_pending_observing_parent(store, storage, |store, storage, thread| {
+        storage
+            .recovered_pending_page(
+                store,
+                storage.revision(store).unwrap(),
+                None,
+                beryl_home_store::CursorReadLimits::new(16, DELIVERY_RECOVERY_GATE_PAGE_MAX_BYTES)
+                    .unwrap(),
+                SyndicPointReadLimit::new(400_000).unwrap(),
+            )
+            .unwrap()
+            .records()
+            .iter()
+            .find(|source| source.thread_id() == thread)
+            .copied()
+            .unwrap()
+    })
+}
+
+fn seed_pending_observing_parent<T>(
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    observe: impl FnOnce(&HomeStore, &SyndicStorage, SyndicThreadId) -> T,
+) -> (DiscussionParentRequest, T) {
+    let original = seed_parent_history(store, storage, observe);
     support::discussion_creation::create_child(store, storage, support::id(30), 36, 37);
     let request = support::discussion_handoff::active_request(
         store,
@@ -17,12 +48,13 @@ pub fn seed_pending(store: &HomeStore, storage: &SyndicStorage) -> DiscussionPar
         .unwrap();
     let child_gate = admission.intent().new_gate();
     support::discussion_input::committed(store, admission.contribution());
-    DiscussionParentRequest {
+    let request = DiscussionParentRequest {
         child_gate,
         parent_thread_id: request.parent.thread_id,
         context_owner: request.context_owner,
         context_digest: request.context_digest,
-    }
+    };
+    (request, original)
 }
 
 pub fn seed(
@@ -72,7 +104,11 @@ pub fn seed(
     };
     (input, receipt, source.child_gate)
 }
-fn seed_parent_history(store: &HomeStore, storage: &SyndicStorage) {
+fn seed_parent_history<T>(
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    observe: impl FnOnce(&HomeStore, &SyndicStorage, SyndicThreadId) -> T,
+) -> T {
     use support::{draft_id, exact_cas, id, timestamp};
     let thread = id(30);
     support::seed_canonical_empty_thread(store, storage.clone(), thread, draft_id(32));
@@ -86,6 +122,7 @@ fn seed_parent_history(store: &HomeStore, storage: &SyndicStorage) {
         "Discuss this",
         timestamp(2),
     );
+    let original = observe(store, storage, thread);
     let source = exact_cas::establish_turn(store, storage.clone(), thread, turn, timestamp(2));
     exact_cas::admit_event(
         store,
@@ -133,4 +170,5 @@ fn seed_parent_history(store: &HomeStore, storage: &SyndicStorage) {
         timestamp(4),
     );
     support::converge_and_release_terminal_history(store, storage.clone(), thread, turn);
+    original
 }

@@ -122,6 +122,32 @@ impl SchedulerRuntime {
                 self.next_capacity_waiting || self.next_active_worker_waiting,
             ),
             WorkerDisposition::NextContinue => (self.recovered_pending_capacity_waiting, true),
+            WorkerDisposition::RecoveredPendingUnavailable => {
+                self.context.signal.update_diagnostics(|diagnostics| {
+                    diagnostics.recovered_pending_execution_unavailable = diagnostics
+                        .recovered_pending_execution_unavailable
+                        .saturating_add(1);
+                });
+                (
+                    true,
+                    self.next_capacity_waiting || self.next_active_worker_waiting,
+                )
+            }
+            WorkerDisposition::NextUnavailable => {
+                self.context.signal.update_diagnostics(|diagnostics| {
+                    diagnostics.next_execution_unavailable =
+                        diagnostics.next_execution_unavailable.saturating_add(1);
+                });
+                (false, false)
+            }
+            WorkerDisposition::ExecutionSourceAdvanced => {
+                self.recovered_pending_pass_active = true;
+                self.recovered_pending_scan = Some(Default::default());
+                self.context.signal.update_diagnostics(|diagnostics| {
+                    diagnostics.recovered_pending_retained_source_cursor = false;
+                });
+                (true, true)
+            }
             WorkerDisposition::NextParked => (false, false),
             WorkerDisposition::PersistentHomeFailure => {
                 self.fail_closed(SchedulerFailure::PersistentHomeFailure);

@@ -259,7 +259,7 @@ impl ShutdownAttempt {
         self.execution.refresh(service, cancellation)?;
         self.progress_executions(service)?;
         self.progress_generic(service, sessions, cancellation)?;
-        let cleanup_ready = service.poll_shutdown_cleanup(sessions, cancellation)?;
+        let cleanup_ready = service.poll_shutdown_cleanup(sessions, &self.fence, cancellation)?;
         match service
             .command_authorizer
             .validate_process_settlement_fence(&self.fence)

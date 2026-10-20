@@ -121,6 +121,23 @@ fork nor makes later adopted candidates durable. Callers retain the live candida
 durable checkpoint separately, and stale selector or candidate authority cannot authorize use of
 another checkpoint.
 
+A bounded read may requalify that same durable checkpoint after only its enclosing thread revision
+advances. Syndic authenticates one confirmed read interval containing the exact current thread,
+draft and reverse index, original live editor session, candidate generation/root/live history and
+its published checkpoint. The prior and current selectors must name the same thread, draft, draft
+revision, durable root and durable history; only the enclosing thread revision may increase.
+Disposed, staged, foreign or changed candidate/checkpoint authority is refused. The read performs
+no write, publication, session replacement or saved-state claim. A dirty authenticated candidate
+remains dirty. Any subsequent mutation still validates the freshly qualified exact selector and
+the original candidate/session at its normal source and writer boundaries; intervening changes
+are refused without an automatic effect retry.
+
+Original committed-publication receipts retain their immutable historical meaning. Convergence
+authenticates the original outcome before applying the same checkpoint qualification to its exact
+successor candidate and selector. An enclosing thread advance alone cannot turn that committed
+outcome into a checkpoint collision; a changed successor checkpoint, uncertain outcome or genuine
+collision retains its original custody and refusal behavior.
+
 Ordinary final disposal may normalize an authenticated unchanged opening's newest history to its
 published history in the same atomic command as the exact disposal receipt. It requires current
 durable correspondence and no operation custody, preserves the current draft and its selector, and

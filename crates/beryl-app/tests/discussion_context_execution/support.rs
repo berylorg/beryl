@@ -22,6 +22,13 @@ pub fn create_discussion(fixture: &mut Fixture, passage: &str) -> SyndicThreadId
     create_from_source(fixture, passage, passage, 0, child_seed)
 }
 
+pub fn create_unsubmitted_discussion(fixture: &mut Fixture, passage: &str) -> SyndicThreadId {
+    let child_seed = fixture.thread.as_bytes()[0] ^ 0x20;
+    let submitted = fixture.submit_text("source question");
+    fixture.complete_with_assistant(submitted, passage);
+    prepare_unsubmitted_from_completed(fixture, submitted, passage, 0, child_seed)
+}
+
 pub fn create_discussion_from_completed(
     fixture: &mut Fixture,
     submitted: crate::syndic::SubmittedTurn,
@@ -55,6 +62,18 @@ fn create_from_source(
 }
 
 fn create_from_completed(
+    fixture: &mut Fixture,
+    submitted: crate::syndic::SubmittedTurn,
+    passage: &str,
+    start: u64,
+    child_seed: u8,
+) -> SyndicThreadId {
+    let child = prepare_unsubmitted_from_completed(fixture, submitted, passage, start, child_seed);
+    fixture.submit_text_on(child, " unchanged local input");
+    child
+}
+
+fn prepare_unsubmitted_from_completed(
     fixture: &mut Fixture,
     submitted: crate::syndic::SubmittedTurn,
     passage: &str,
@@ -134,7 +153,6 @@ fn create_from_completed(
         .unwrap();
     command::execute_fixture_contribution(&home, prepared.contribution());
     drop(home);
-    fixture.submit_text_on(child, " unchanged local input");
     child
 }
 

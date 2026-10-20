@@ -132,6 +132,10 @@ The package exposes grouped typed operations rather than raw record mechanics:
   home-store candidate recovery access. It preserves exact gate/source, binding, canonical-input
   and cancellation-provenance checks and grants no ordinary execution or cleanup authority before
   complete service publication.
+- `RecoveredPendingSource` retains that original authenticated pending evidence, including immutable
+  turn kind, home/generation, domain revision, thread/turn, gate and state. Bounded delivery pages
+  expose the original evidence without reclassifying it from later current records. This snapshot
+  is descriptive; consumers still validate their original source and live authority before dispatch.
 - `terminal_history_evidence` binds the exact selected terminal turn to its home, generation and
   revision after the idle gate and the same bounded fixed point used by terminal-history release
   are established. Complete and authority-loss incomplete history remain distinct lifecycle

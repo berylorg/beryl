@@ -45,37 +45,38 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn execute_retained_proj
 pub(in crate::cas_projection::accepted_input_scheduler) fn settle_ordinary_outcome(
     validator: &LeaseValidationAuthority,
     outcome: Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionFailure>,
-) -> OrdinaryTurnSettlement {
+) -> (OrdinaryTurnSettlement, Option<Box<LoadedCasProjection>>) {
     let cut_correlated = ordinary_outcome_cut_correlated(&outcome, validator.home_generation());
-    match outcome {
+    let mut returned = match outcome {
         Ok(OrdinaryTurnExecutionOutcome::NotStarted {
             projection: OrdinaryNotStartedProjection::Retained(projection),
             ..
-        }) => {
-            release_or_retain_projection(validator, projection);
-        }
+        }) => return_or_retain_projection(validator, projection),
         Ok(OrdinaryTurnExecutionOutcome::NotStarted {
             projection: OrdinaryNotStartedProjection::Unavailable { .. },
             ..
-        }) => {}
+        }) => None,
         Ok(OrdinaryTurnExecutionOutcome::Terminal { projection, .. }) => {
-            release_or_retain_projection(validator, projection);
+            return_or_retain_projection(validator, projection)
         }
-        Ok(OrdinaryTurnExecutionOutcome::LifecycleContinuationScheduled { .. }) => {}
-        Ok(OrdinaryTurnExecutionOutcome::Incomplete { .. }) => {}
+        Ok(OrdinaryTurnExecutionOutcome::LifecycleContinuationScheduled { .. }) => None,
+        Ok(OrdinaryTurnExecutionOutcome::Incomplete { .. }) => None,
         Err(OrdinaryTurnExecutionFailure::PreActivation { projection, .. }) => {
-            release_or_retain_projection(validator, projection);
+            return_or_retain_projection(validator, projection)
         }
         Err(
             OrdinaryTurnExecutionFailure::Activation { .. }
             | OrdinaryTurnExecutionFailure::AfterActivation { .. },
-        ) => {}
-    }
+        ) => None,
+    };
     let settlement = ordinary_typed_settlement(cut_correlated);
     if settlement == OrdinaryTurnSettlement::PersistentHomeFailure {
         let _ = validator.observe_persistent_failure();
+        if let Some(projection) = returned.take() {
+            validator.retain_failed_projection(*projection);
+        }
     }
-    settlement
+    (settlement, returned)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -187,14 +188,15 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn ordinary_error_cut_co
     }
 }
 
-fn release_or_retain_projection(
+pub(in crate::cas_projection::accepted_input_scheduler) fn return_or_retain_projection(
     validator: &LeaseValidationAuthority,
     projection: Box<crate::cas_projection::LoadedCasProjection>,
-) {
+) -> Option<Box<LoadedCasProjection>> {
     if validator.observe_persistent_failure() {
         validator.retain_failed_projection(*projection);
+        None
     } else {
-        let _ = projection.release();
+        Some(projection)
     }
 }
 

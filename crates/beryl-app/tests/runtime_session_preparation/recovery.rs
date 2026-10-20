@@ -51,7 +51,7 @@ fn ordinary_and_same_home_recovery_preserve_both_explicit_launch_forms() {
             .unwrap();
         fs::remove_file(fixture.root(1).join("runtime-launch-form.json")).unwrap();
         fs::write(fixture.root(1).join("fixture-mode"), "projection-lifetime").unwrap();
-        let proof = recover_with_idle_election_paused(
+        let (proof, _proof_view) = recover_with_idle_election_paused(
             &fixture,
             &sessions,
             window,
@@ -97,9 +97,23 @@ pub(super) fn recover_with_idle_election_paused(
     claim: beryl_state::WindowClaimSelection,
     failure: RuntimeFailureSnapshot,
     execution: &ExecutionBinding,
-) -> beryl_app::cas_projection::SelectedRuntimeUsability {
+) -> (
+    beryl_app::cas_projection::SelectedRuntimeUsability,
+    beryl_app::cas_projection::RuntimeInterest,
+) {
     let (proof, pause) =
         recover_before_idle_election(fixture, sessions, window, claim, failure, execution);
+    let view = fixture
+        .service()
+        .acquire_runtime_interest(
+            sessions
+                .test_launch_spec_for(claim.thread_id(), execution)
+                .unwrap(),
+            execution.clone(),
+            RuntimeInterestKind::View,
+        )
+        .unwrap();
+    support::ready(&view);
     let idle_passes = fixture
         .service()
         .accepted_input_scheduler_diagnostics()
@@ -120,7 +134,7 @@ pub(super) fn recover_with_idle_election_paused(
     let worker = fixture.service().selected_runtime_retry_worker(sessions);
     let session = fixture.state.session();
     wait_until(|| worker.usability_current(&session, &proof));
-    proof
+    (proof, view)
 }
 
 fn recover_before_idle_election(
@@ -218,7 +232,7 @@ fn separate_selected_bindings_recover_on_one_retried_runtime_with_their_own_proj
     let failure = failed_idle(&fixture, &sessions, "projection-multiple-bindings");
     let worker = fixture.service().selected_runtime_retry_worker(&sessions);
     let session = fixture.state.session();
-    let first = recover_with_idle_election_paused(
+    let (first, _first_view) = recover_with_idle_election_paused(
         &fixture,
         &sessions,
         first_window,
@@ -228,7 +242,7 @@ fn separate_selected_bindings_recover_on_one_retried_runtime_with_their_own_proj
     );
     wait_until(|| worker.usability_current(&session, &first));
     let first_pid = fixture.evidence(1)["pid"].as_u64().unwrap();
-    let second = recover_with_idle_election_paused(
+    let (second, _second_view) = recover_with_idle_election_paused(
         &fixture,
         &sessions,
         second_window,
@@ -240,7 +254,7 @@ fn separate_selected_bindings_recover_on_one_retried_runtime_with_their_own_proj
     assert_eq!(fixture.evidence(1)["pid"].as_u64().unwrap(), first_pid);
     assert!(!fixture.root(2).join("runtime-evidence.json").exists());
     assert_eq!(sessions.diagnostics().available, 2);
-    let refreshed_first = recover_with_idle_election_paused(
+    let (refreshed_first, _refreshed_first_view) = recover_with_idle_election_paused(
         &fixture,
         &sessions,
         first_window,
@@ -358,17 +372,17 @@ fn pending_selected_retry_refuses_duplicates_and_keeps_preparation_custody_until
 }
 
 #[test]
-fn repeated_selected_retry_reuses_the_retained_projection_and_checkout_revokes_its_proof() {
+fn repeated_selected_retry_fences_checkout_and_restores_the_unchanged_projection_on_return() {
     let (mut fixture, sessions, _attention) = fixture(8);
     let (window, claim) = runtime_notice::select(&fixture);
     let failure = failed_idle(&fixture, &sessions, "projection-lifetime");
     let worker = fixture.service().selected_runtime_retry_worker(&sessions);
     let session = fixture.state.session();
     let execution = binding(&fixture, 1);
-    let first =
+    let (first, _first_view) =
         recover_with_idle_election_paused(&fixture, &sessions, window, claim, failure, &execution);
     wait_until(|| worker.usability_current(&session, &first));
-    let second =
+    let (second, _second_view) =
         recover_with_idle_election_paused(&fixture, &sessions, window, claim, failure, &execution);
     wait_until(|| worker.usability_current(&session, &first));
     wait_until(|| worker.usability_current(&session, &second));
@@ -376,7 +390,7 @@ fn repeated_selected_retry_reuses_the_retained_projection_and_checkout_revokes_i
     let checked_out = checkout(&fixture, 1);
     assert!(!worker.usability_current(&session, &second));
     drop(checked_out);
-    assert!(!worker.usability_current(&session, &first));
+    assert!(worker.usability_current(&session, &first));
     close(&mut fixture, &sessions);
 }
 
@@ -668,7 +682,7 @@ fn runtime_loss_before_selected_usability_publication_revokes_the_original_proje
     let failure = failed_idle(&fixture, &sessions, "projection-lifetime");
     let worker = fixture.service().selected_runtime_retry_worker(&sessions);
     let session = fixture.state.session();
-    let proof = recover_with_idle_election_paused(
+    let (proof, _proof_view) = recover_with_idle_election_paused(
         &fixture,
         &sessions,
         window,
@@ -706,7 +720,7 @@ fn failed_home_revokes_selected_runtime_usability_without_crossing_to_a_replacem
     let failure = failed_idle(&fixture, &sessions, "projection-lifetime");
     let worker = fixture.service().selected_runtime_retry_worker(&sessions);
     let session = fixture.state.session();
-    let proof = recover_with_idle_election_paused(
+    let (proof, _proof_view) = recover_with_idle_election_paused(
         &fixture,
         &sessions,
         window,

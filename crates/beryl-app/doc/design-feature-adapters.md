@@ -442,6 +442,15 @@ tooltip text/typography use `tooltip.text`. Activity-specific roles remain direc
   the audit must join that scope and honor pending or collision outcomes before reporting creation.
   GUI busy state, selection presentation and activation retry remain feature-owned.
 
+## Discussion First Submission
+
+- The exact current draft that still owns an unsubmitted discussion context uses initial runtime
+  preparation despite its inherited selected tail. Qualification joins its current draft identity,
+  context owner and discussion submission intent under the existing source revision fence.
+  It retains the ordinary Unbound, idle-input and runtime/readiness requirements; it grants no
+  loaded projection and starts no CAS request before ordinary input admission. After first
+  submission moves context ownership to the submitted turn, ordinary execution authority applies.
+
 ## Discussion Resolution Admission
 
 - The non-GUI admission boundary consumes the broker's exact discussion, resolving turn and CAS

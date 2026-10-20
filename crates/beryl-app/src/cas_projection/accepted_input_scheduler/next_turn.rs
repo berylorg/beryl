@@ -320,6 +320,7 @@ pub(super) fn run_pass(runtime: &mut SchedulerRuntime) -> Result<(), SchedulerFa
                 let admission = runtime.context.issue_scheduled_ordinary_execution(
                     candidate.thread_id(),
                     execution.execution().clone(),
+                    None,
                     worker,
                     flight,
                 );

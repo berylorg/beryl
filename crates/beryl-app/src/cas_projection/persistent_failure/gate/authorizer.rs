@@ -1,6 +1,8 @@
 use super::*;
 impl LiveCommandAuthorizer {
-    pub(crate) fn applied_settings(&self) -> Option<crate::settings_service::AppliedSettingsReader> {
+    pub(crate) fn applied_settings(
+        &self,
+    ) -> Option<crate::settings_service::AppliedSettingsReader> {
         self.inner.applied_settings.try_lock().ok()?.clone()
     }
 
@@ -8,9 +10,15 @@ impl LiveCommandAuthorizer {
         &self,
         reader: crate::settings_service::AppliedSettingsReader,
     ) -> Result<(), crate::cas_projection::LiveCommandAdmissionError> {
-        let mut current = self.inner.applied_settings.lock()
+        let mut current = self
+            .inner
+            .applied_settings
+            .lock()
             .map_err(|_| crate::cas_projection::LiveCommandAdmissionError::Closed)?;
-        if current.as_ref().is_some_and(|old| !old.same_source(&reader)) {
+        if current
+            .as_ref()
+            .is_some_and(|old| !old.same_source(&reader))
+        {
             return Err(crate::cas_projection::LiveCommandAdmissionError::Closed);
         }
         *current = Some(reader);
@@ -68,6 +76,14 @@ impl LiveCommandAuthorizer {
         fence: &crate::process_admission::ProcessAdmissionFence,
     ) -> Result<(), crate::process_admission::ProcessAdmissionError> {
         fence.validate_settled_for(&self.process)
+    }
+
+    pub(in crate::cas_projection) fn with_process_settlement_fence<T>(
+        &self,
+        fence: &crate::process_admission::ProcessAdmissionFence,
+        publish: impl FnOnce() -> T,
+    ) -> Result<T, crate::process_admission::ProcessAdmissionError> {
+        fence.with_settled_for(&self.process, publish)
     }
 
     pub(crate) fn execution_candidate(

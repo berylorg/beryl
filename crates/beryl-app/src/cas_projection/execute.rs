@@ -20,6 +20,7 @@ mod injection;
 mod native;
 pub(super) mod native_retry;
 mod recovery;
+mod retained;
 pub(super) mod support;
 
 use support::{point_limit, recovered_process_matches};
@@ -96,6 +97,7 @@ impl CasProjectionCoordinator {
             tool_profile,
             &flight,
             None,
+            &mut None,
         )
     }
 
@@ -108,6 +110,7 @@ impl CasProjectionCoordinator {
         cancellation: &ProjectionCancellationToken,
         flight: &ProjectionFlight,
         native_lineage_recovery: &NativeLineageRecoveryControl,
+        retained: &mut Option<LoadedCasProjection>,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         let (request, tool_profile) =
             self.prepare_projection_request(home, session, request, cancellation)?;
@@ -120,6 +123,7 @@ impl CasProjectionCoordinator {
             tool_profile,
             flight,
             Some(native_lineage_recovery),
+            retained,
         )
     }
 
@@ -169,6 +173,7 @@ impl CasProjectionCoordinator {
         tool_profile: beryl_model::CasConversationToolProfile,
         flight: &ProjectionFlight,
         native_lineage_recovery: Option<&NativeLineageRecoveryControl>,
+        retained: &mut Option<LoadedCasProjection>,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         self.ensure_projection_flight(flight, request.thread_id())?;
         let acquisition =
@@ -201,6 +206,12 @@ impl CasProjectionCoordinator {
         self.ensure_home(home)?;
         if cancellation.is_cancelled() {
             return Err(ProjectionExecutionError::Cancelled);
+        }
+
+        if let Some(projection) =
+            self.take_current_projection(home, session, request, &native, retained)?
+        {
+            return Ok(projection);
         }
 
         self.execute_plan(

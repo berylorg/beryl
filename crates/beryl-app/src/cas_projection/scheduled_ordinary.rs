@@ -7,8 +7,8 @@ use beryl_state::AssetState;
 use thiserror::Error;
 
 use super::{
-    AdmittedProjectionSession, OrdinaryDynamicToolHandlers, OrdinaryTurnExecutionRequest,
-    connection::ProjectionConnection, service::ProjectionFlight,
+    AdmittedProjectionSession, LoadedCasProjection, OrdinaryDynamicToolHandlers,
+    OrdinaryTurnExecutionRequest, connection::ProjectionConnection, service::ProjectionFlight,
     service_config::ProjectionWorkerPermit,
 };
 
@@ -59,7 +59,10 @@ impl ScheduledOrdinaryRequestPolicy {
         }
     }
 
-    pub fn with_applied_settings(mut self, settings: crate::settings_service::AppliedSettingsReader) -> Self {
+    pub fn with_applied_settings(
+        mut self,
+        settings: crate::settings_service::AppliedSettingsReader,
+    ) -> Self {
         self.turn = self.turn.with_applied_settings(settings);
         self
     }
@@ -93,6 +96,17 @@ impl ScheduledOrdinaryRequestPolicy {
 pub trait ScheduledProjectionSessionAuthority: Send + 'static {
     /// Borrows the exact compatibility-admitted session selected for this execution.
     fn session(&mut self) -> &mut AdmittedProjectionSession;
+
+    fn take_projection(&mut self) -> Option<LoadedCasProjection> {
+        None
+    }
+
+    fn return_projection(
+        &mut self,
+        projection: LoadedCasProjection,
+    ) -> Result<(), LoadedCasProjection> {
+        Err(projection)
+    }
 }
 
 /// Owned feature authority that lends narrowed dynamic-tool handlers inside the worker.
@@ -143,6 +157,7 @@ pub struct ScheduledOrdinaryAdmission {
     service_generation: super::ProjectionServiceGeneration,
     thread_id: SyndicThreadId,
     execution_binding: ExecutionBinding,
+    pending_source: Option<syndic_storage::RecoveredPendingSource>,
     worker: ProjectionWorkerPermit,
     terminal_disposer: super::persistent_failure::PersistentFailureTerminalDisposer,
     flight: ProjectionFlight,
@@ -159,20 +174,34 @@ impl ScheduledOrdinaryAdmission {
         service_generation: super::ProjectionServiceGeneration,
         thread_id: SyndicThreadId,
         execution_binding: ExecutionBinding,
+        pending_source: Option<syndic_storage::RecoveredPendingSource>,
         worker: ProjectionWorkerPermit,
         terminal_disposer: super::persistent_failure::PersistentFailureTerminalDisposer,
         flight: ProjectionFlight,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, ScheduledOrdinaryAdmissionError> {
+        if pending_source.is_some_and(|source| {
+            let pending = source.pending_dispatch_evidence();
+            pending.home_id() != home_id
+                || pending.home_generation() != home_generation
+                || pending.thread_id() != thread_id
+        }) {
+            return Err(ScheduledOrdinaryAdmissionError::LeaseMismatch { thread_id });
+        }
+        Ok(Self {
             home_id,
             home_generation,
             service_generation,
             thread_id,
             execution_binding,
+            pending_source,
             worker,
             terminal_disposer,
             flight,
-        }
+        })
+    }
+
+    pub(super) const fn pending_source(&self) -> Option<syndic_storage::RecoveredPendingSource> {
+        self.pending_source
     }
 
     /// Returns the exact Beryl-home identity selected by the service.
@@ -400,6 +429,16 @@ impl ScheduledOrdinaryExecutionLease {
 
     pub(super) fn session(&mut self) -> &mut AdmittedProjectionSession {
         self.session.session()
+    }
+
+    pub(super) fn take_projection(&mut self) -> Option<LoadedCasProjection> {
+        self.session.take_projection()
+    }
+
+    pub(super) fn return_projection(&mut self, projection: LoadedCasProjection) {
+        if let Err(projection) = self.session.return_projection(projection) {
+            let _ = projection.release();
+        }
     }
 
     #[cfg(feature = "test-faults")]
