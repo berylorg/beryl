@@ -5,25 +5,52 @@ phases unless a major blocker requires Operator input. Preserve accepted shell, 
 transcript, composer, Settings, restoration and replacement editing. Preserve unrelated skills/memory.
 Commit and push accepted phases; no installation is authorized.
 
-# Phase 804: Qualify Complete Discussion And Resolution Flow (finished)
+# Phase 805: Establish Asset And Deferred Cleanup Readiness (finished)
 
-Accepted complete child conversation and exact parent handoff, archive/navigation, preserved draft
-Exit and original ambiguity/Collision recovery custody. Independent aggregate review accepted 363
-distinct passing cases, all four final native flows, the normal production check and 101 exact
-inputs; [qualification and evidence limits](audits/discussion-complete-flow-qualification.md).
-Checkpoint6 is closed. Unrelated skills and memory remain preserved.
+Independent readiness review accepted the source/evidence map and separated existing sidecar,
+reference, paste, label and runtime-projection foundations from missing shared renditions, original
+commands, generated finalization and title wiring; [readiness and evidence limits](audits/asset-processing-readiness.md).
+The next architecture phases resolve material ownership before implementation. Phase804 is
+committed/pushed as `46836654`; its test artifacts and 73 retained Homes are reclaimed.
 
-# Phase 805: Establish Asset And Deferred Cleanup Readiness (pending)
+# Phase 806: Establish Shared Image Processing Architecture (pending)
 
-Reconcile Checkpoint7 authority, existing implementation and accepted evidence; establish effective
-rigor and decompose any remaining implementation before starting it.
+Complete the owning image-system, App and GPUI contracts for one process media configuration,
+bounded original-source/decoder admission, shared renderer resource domain, admitted-pixel upload,
+window pins, cancellation and device generation before scheduling that implementation.
 
-# Phase 806: Qualify Assets And Deferred Cleanup (pending)
+# Phase 807: Deliver Bounded Image Renditions (pending)
+
+After Phase806 readiness, mount actual asset-backed Ready previews through the shared bounded
+source/decode/CPU/staging/GPU path, preserving identity and proving multi-window release and
+device-loss behavior. No whole-original decode or per-window cache bypass.
+
+# Phase 808: Deliver Original-Image Copy And Save (pending)
+
+Connect exact admitted original-image authority to checked clipboard and atomic native Save,
+independent of rendition readiness, with exact origin/fallback focus and effect/cancellation proof.
+
+# Phase 809: Establish Generated-Media Finalization Architecture (pending)
+
+Complete durable producer/resource/reference evidence, original Host/WSL source authority, atomic
+State/Syndic finalization and bounded service-owned replacement/convergence before implementation.
+
+# Phase 810: Deliver Generated-Media Finalization (pending)
+
+After Phase809 readiness, settle actual savedPath output through durable sidecar admission and
+atomic same-resource publication, preserving provider lifecycle and original uncertainty custody.
+
+# Phase 811: Complete Background Title Maintenance (pending)
+
+Complete the owning App maintenance lifecycle contract before wiring source-qualified background
+generation and one-way Syndic acceptance into coherent catalog/title refresh.
+
+# Phase 812: Qualify Assets And Deferred Cleanup (pending)
 
 Close Checkpoint7's composed asset/media limits, publication, ownership and deferred-cleanup gate
 after its ready prerequisite implementation. Readiness may insert necessary implementation phases.
 
-# Phase 807: Qualify And Close The Complete Rework (pending)
+# Phase 813: Qualify And Close The Complete Rework (pending)
 
 Close Checkpoint8 after its remaining integration and cleanup prerequisites: final composed
 functional/resource verification, obsolete-surface checks and independent architectural completion.

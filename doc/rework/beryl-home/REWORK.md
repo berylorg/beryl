@@ -221,13 +221,15 @@
 
 ## Checkpoint 7: Implement Assets And Deferred Cleanup Boundaries
 
+- [x] Reconciled existing asset foundations, missing media/title consumers and their separate architecture prerequisites; [readiness](../../audits/asset-processing-readiness.md).
+- [ ] Complete shared image-processing ownership and renderer integration contracts in the image system, App and owned GPUI design before media implementation.
+- [ ] Complete generated-output producer/resource/reference and atomic finalization contracts in the image system and owning State/Syndic/App designs before finalizer implementation.
 - [ ] Implement Beryl-home image admission for paste and generated output, content-addressed
   sidecars, labels, references, Host/WSL projection, and generated-output ownership.
 - [ ] Integrate bounded file reads, header parsing, on-demand thumbnails and tiles, decode workers,
   CPU surfaces, upload staging, shared media identity, GPU residency, eviction, and device-loss
   recovery.
-- [ ] Mount generated-title maintenance and successful branch-archive presentation through their
-  established Syndic authority and bounded Beryl projections.
+- [ ] Complete the App title-maintenance lifecycle contract and mount generated titles through Syndic authority and bounded Beryl projections.
 - [ ] Preserve unreachable turns and resources until a separately designed future garbage-
   collection operation.
 - [ ] Gate: confirm representative asset limits, hostile dimensions, atomic publication, owned-resource release and deferred cleanup before Checkpoint 8, verifying unavailable repair or eligible generated-image repair as applicable.
