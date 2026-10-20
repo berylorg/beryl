@@ -39,7 +39,15 @@ pub fn active_request_for(
         "Resolve this discussion",
         timestamp(10),
     );
-    let source = exact_cas::establish_turn(store, storage.clone(), child_id, turn, timestamp(11));
+    let source_profile = context_source_tool_profile(store, storage, child_id, limit);
+    let source = exact_cas::establish_turn_with_profile(
+        store,
+        storage.clone(),
+        child_id,
+        turn,
+        timestamp(11),
+        source_profile,
+    );
     let thread = storage.thread(store, child_id, limit).unwrap().unwrap();
     let gate = storage.input_gate(store, child_id, limit).unwrap().unwrap();
     let binding = storage
@@ -96,6 +104,45 @@ pub fn active_request_for(
     }
 }
 
+fn context_source_tool_profile(
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    child: beryl_model::SyndicThreadId,
+    limit: SyndicPointReadLimit,
+) -> beryl_model::CasConversationToolProfile {
+    let owner = storage
+        .thread(store, child, limit)
+        .unwrap()
+        .unwrap()
+        .context_owner_id()
+        .expect("handoff fixture has its own discussion context");
+    let context = storage
+        .context_envelope(store, owner, limit)
+        .unwrap()
+        .unwrap();
+    let source = context.envelope().descriptor().source();
+    let turn = storage
+        .turn(store, source.turn_id(), limit)
+        .unwrap()
+        .unwrap();
+    assert_eq!(turn.id(), source.turn_id());
+    let state = storage
+        .turn_state(store, source.turn_id(), limit)
+        .unwrap()
+        .unwrap();
+    let TurnDispatchProvenance::Activated(anchor) = state.dispatch_provenance() else {
+        panic!("handoff fixture discussion source must retain its actual activated snapshot");
+    };
+    let snapshot = storage
+        .execution_snapshot(store, anchor.snapshot_id(), limit)
+        .unwrap()
+        .unwrap();
+    assert_eq!(snapshot.thread_id(), turn.origin_thread_id());
+    assert_eq!(snapshot.active_turn_id(), source.turn_id());
+    assert_eq!(snapshot.binding_revision(), anchor.binding_revision());
+    snapshot.tool_profile()
+}
+
 pub fn admit(
     store: &HomeStore,
     storage: &SyndicStorage,
@@ -126,9 +173,34 @@ pub fn complete_resolving_turn(store: &HomeStore, storage: &SyndicStorage) {
 }
 
 pub fn finish_resolving_turn(store: &HomeStore, storage: &SyndicStorage, status: TurnEndStatus) {
+    finish_resolving_turn_for(
+        store,
+        storage,
+        id(36),
+        SyndicItemId::from_bytes([202; 16]),
+        status,
+    );
+}
+
+pub fn complete_resolving_turn_for(
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    child: beryl_model::SyndicThreadId,
+    user_item: SyndicItemId,
+) {
+    finish_resolving_turn_for(store, storage, child, user_item, TurnEndStatus::complete());
+}
+
+pub fn finish_resolving_turn_for(
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    child: beryl_model::SyndicThreadId,
+    user_item: SyndicItemId,
+    status: TurnEndStatus,
+) {
     let limit = SyndicPointReadLimit::new(400_000).unwrap();
     let current = storage
-        .current_binding(store, id(36), limit)
+        .current_binding(store, child, limit)
         .unwrap()
         .unwrap();
     let BindingState::Active(active) = current.binding().state() else {
@@ -141,7 +213,7 @@ pub fn finish_resolving_turn(store: &HomeStore, storage: &SyndicStorage, status:
         .unwrap();
     let source = CasTurnSource::new(route.cas_thread_id().clone(), route.cas_turn_id().clone());
     let at = storage
-        .current_draft(store, id(36), limit)
+        .current_draft(store, child, limit)
         .unwrap()
         .unwrap()
         .draft()
@@ -159,7 +231,7 @@ pub fn finish_resolving_turn(store: &HomeStore, storage: &SyndicStorage, status:
     exact_cas::admit_event(
         store,
         storage.clone(),
-        id(36),
+        child,
         turn,
         &source,
         SourceEventPayload::TurnActivated,
@@ -168,20 +240,20 @@ pub fn finish_resolving_turn(store: &HomeStore, storage: &SyndicStorage, status:
     exact_cas::correlate_user_item(
         store,
         storage.clone(),
-        id(36),
+        child,
         turn,
-        SyndicItemId::from_bytes([202; 16]),
+        user_item,
         &source,
         timestamp(at + 1),
     );
     exact_cas::admit_event(
         store,
         storage.clone(),
-        id(36),
+        child,
         turn,
         &source,
         SourceEventPayload::TurnEnded(status),
         timestamp(at + 2),
     );
-    exact_cas::converge_and_release_terminal_history(store, storage.clone(), id(36), turn);
+    exact_cas::converge_and_release_terminal_history(store, storage.clone(), child, turn);
 }

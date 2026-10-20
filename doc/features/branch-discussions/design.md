@@ -75,7 +75,11 @@ Keep discussion context, resolution intent, parent delivery, and archive state d
 - Its states are `Open`, `Resolution pending`, `Handing off`, `Handoff failed`, `Unavailable`, and
   `Archived`.
 - `Open` means discussion input remains allowed subject to ordinary composer gates. A deferred resolution tool call caused by queued input leaves the strip in `Open`.
-- `Resolution pending` begins when resolution intent is admitted and remains while the resolving turn or parent eligibility is pending. `Handing off` means the exact parent handoff turn is active.
+- `Resolution pending` begins when resolution intent is admitted and remains while the resolving
+  turn, parent eligibility, or durable settlement of a proven terminal parent outcome is pending.
+  It never claims archive before the exact archive publication succeeds. `Handing off` means the
+  exact accepted parent handoff turn is active, including when that acceptance is proven before
+  the handoff job's active checkpoint catches up.
 - `Handoff failed` distinguishes a retryable failure from a terminally failed attempt through the presence or absence of `Retry handoff`. `Archived` begins only after successful parent handoff and durable archive publication.
 - `Unavailable` is the terminal result when reconciliation of exact resolution admission, parent
   handoff, or archive publication proves neither success nor noncommit. It preserves the last

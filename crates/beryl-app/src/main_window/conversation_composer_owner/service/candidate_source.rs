@@ -32,7 +32,7 @@ impl MainWindowComposerCandidateSource {
         state: &beryl_state::BerylState,
         seed: RangeRestorationSeed,
     ) -> Result<Self, (MainWindowComposerRetiredClose, String)> {
-        Self::new_for_recovery(candidate, retired, storage, state, seed, None)
+        Self::new_for_recovery(candidate, retired, storage, state, seed, None, None)
     }
 
     pub(crate) fn new_for_recovery(
@@ -42,6 +42,7 @@ impl MainWindowComposerCandidateSource {
         state: &beryl_state::BerylState,
         seed: RangeRestorationSeed,
         recovered_window: Option<&beryl_state::SessionWindowRemovalEvidence>,
+        reader: Option<crate::discussion_presentation::DiscussionPresentationReader>,
     ) -> Result<Self, (MainWindowComposerRetiredClose, String)> {
         let binding = retired.host().binding();
         if seed.binding != binding.range_binding()
@@ -67,9 +68,24 @@ impl MainWindowComposerCandidateSource {
         if let Err(error) = validated {
             return Err((retired, error));
         }
+        let discussion = match reader
+            .as_ref()
+            .map(|reader| {
+                let access = candidate
+                    .recovery_access()
+                    .map_err(|error| error.to_string())?;
+                reader
+                    .observe_candidate(&access, retired.selection().claim().thread_id())
+                    .map_err(|error| error.to_string())
+            })
+            .transpose()
+        {
+            Ok(snapshot) => snapshot,
+            Err(error) => return Err((retired, error)),
+        };
         let predecessor = retired.close_ticket();
         let selector = retired.host().selector();
-        let (service, close, window) =
+        let (mut service, close, window) =
             MainWindowConversationComposerService::rebind_candidate_for_recovery(
                 candidate,
                 retired,
@@ -77,6 +93,7 @@ impl MainWindowComposerCandidateSource {
                 state,
                 recovered_window,
             )?;
+        service.install_recovered_discussion(reader, discussion);
         let selection = service
             .selected_identity()
             .expect("reconstructed service has selected host");

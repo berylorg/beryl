@@ -62,6 +62,36 @@ impl MainWindowShellRoot {
         })
     }
 
+    pub(crate) fn release_prepared_interrupted_exit_mount(
+        &mut self,
+        draft: &MainWindowShutdownDraft,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, String> {
+        let Some((mount, _, close)) = &draft.composer else {
+            return Ok(true);
+        };
+        let released = mount.update(cx, |mount, cx| {
+            mount.release_prepared_interrupted_exit_mount(*close, cx)
+        })?;
+        #[cfg(all(test, feature = "test-faults"))]
+        if released {
+            self.discussion_status.recovered_frame = self.test_discussion_presentation(cx);
+        }
+        Ok(released)
+    }
+
+    pub(crate) fn prepared_discussion_publication(
+        &self,
+        draft: &MainWindowShutdownDraft,
+        cx: &App,
+    ) -> Result<Option<crate::discussion_presentation::DiscussionPresentationSnapshot>, String>
+    {
+        let Some((mount, _, close)) = &draft.composer else {
+            return Ok(None);
+        };
+        mount.read(cx).prepared_discussion_publication(*close, cx)
+    }
+
     pub(crate) fn release_interrupted_exit_draft(
         &mut self,
         draft: &MainWindowShutdownDraft,

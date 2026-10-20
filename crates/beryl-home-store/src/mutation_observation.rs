@@ -141,6 +141,10 @@ impl Drop for ObserverOwner {
 }
 
 impl HomeMutationObservation {
+    pub fn same_interval(&self, other: &Self) -> bool {
+        self.registration.ptr_eq(&other.registration) && self.revision == other.revision
+    }
+
     pub(crate) fn try_elect_for<T>(
         &self,
         expected: &Arc<MutationBoundary>,

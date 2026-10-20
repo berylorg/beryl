@@ -87,6 +87,15 @@ disposed-head advance, or clean disposal with unequal published/newest checkpoin
 A fresh session forks only from the current draft's published authority; it never adopts unpublished
 state from an earlier process or session.
 
+Opening an exact candidate session is unpublished preparation for the selected editor, including
+an inert pending discussion or readonly archived discussion. It validates structural thread,
+archive and handoff-gate consistency and the same exact opening selector/root/history, identities,
+bounds and receipt custody. It may allocate only the session head, immutable opening receipt and
+private history fork; the published draft, selector and durable history remain unchanged. Opening
+grants no edit, history adoption, draft publication, input or steering authority: those commands
+independently revalidate their existing discussion mutation gates. Exact unchanged-session disposal
+remains available without publishing an edit. No separate readonly session kind is introduced.
+
 Candidate opening also exposes a sealed single-domain current command for the same prepared
 opening mutation. Following Home's current-command contract, serialized admission captures only
 physical Home/domain revisions; the original prepared selector, thread/draft revisions, root,

@@ -174,6 +174,7 @@ pub struct MainWindowInitialComposer {
 }
 
 pub(in crate::main_window) struct InitialComposerCandidate {
+    discussion_presentation: Option<crate::discussion_presentation::DiscussionPresentationReader>,
     store: Arc<HomeServiceReference>,
     storage: SyndicStorage,
     home_generation: HomeGeneration,
@@ -210,6 +211,12 @@ pub(in crate::main_window) struct InitialComposerCandidate {
 }
 
 impl MainWindowInitialComposer {
+    pub(in crate::main_window) fn bind_discussion_presentation(
+        &mut self,
+        reader: crate::discussion_presentation::DiscussionPresentationReader,
+    ) {
+        self.candidate.discussion_presentation = Some(reader);
+    }
     pub fn new(
         acquisition: RuntimeBackedWindowAcquisition,
         reservation: RuntimeBackedWindowMainWindowReservation,
@@ -331,6 +338,7 @@ impl InitialComposerCandidate {
         marker_authority: MainWindowComposerMarkerMetadataAuthority,
     ) -> Self {
         InitialComposerCandidate {
+            discussion_presentation: None,
             store,
             host: Some(SyndicComposerHost::new(storage.clone())),
             storage,

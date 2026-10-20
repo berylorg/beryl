@@ -2,15 +2,15 @@ use super::access::ReadAccess;
 use crate::codec::{
     CanonicalItemsFamily, HistorySummariesFamily, InputGatesFamily, ItemProjectionBuildsFamily,
     ItemProjectionHeadsFamily, ItemProjectionSetKey, ItemProjectionSetsFamily, ProjectionsFamily,
-    ResourcesFamily, ThreadTranscriptBuildKey, ThreadsFamily, TranscriptBuildsFamily,
-    TranscriptHeadsFamily, TurnStatesFamily, TurnsFamily,
+    ResourcesFamily, ThreadAttributesFamily, ThreadTranscriptBuildKey, ThreadsFamily,
+    TranscriptBuildsFamily, TranscriptHeadsFamily, TurnStatesFamily, TurnsFamily,
 };
 use crate::{
     CanonicalItemRecord, ContentManifestRecord, HistorySummaryRecord, InputGateRecord,
     ItemProjectionBuildRecord, ItemProjectionGeneration, ItemProjectionHeadRecord,
     ItemProjectionSetRecord, ProjectionRecord, ResourceMetadataRecord, SyndicPointReadLimit,
-    SyndicReadError, SyndicStorage, ThreadRecord, TranscriptBuildRecord, TranscriptGeneration,
-    TranscriptViewHeadRecord, TurnRecord, TurnStateRecord,
+    SyndicReadError, SyndicStorage, ThreadAttributesRecord, ThreadRecord, TranscriptBuildRecord,
+    TranscriptGeneration, TranscriptViewHeadRecord, TurnRecord, TurnStateRecord,
 };
 use beryl_home_store::HomeCandidateRecoveryAccess;
 use beryl_model::{
@@ -70,6 +70,15 @@ impl SyndicStorage {
         limit: SyndicPointReadLimit,
     ) -> Result<Option<ThreadRecord>, SyndicReadError> {
         self.point_with_access::<ThreadsFamily>(ReadAccess::Candidate(store), id, limit)
+    }
+
+    pub fn thread_attributes_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<ThreadAttributesRecord>, SyndicReadError> {
+        self.point_with_access::<ThreadAttributesFamily>(ReadAccess::Candidate(store), id, limit)
     }
 
     pub fn turn_candidate(

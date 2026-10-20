@@ -345,8 +345,10 @@ pub(super) fn prepare(
             syndic: syndic_intent,
             result,
             disposition: Mutex::new(Disposition::Prepared),
+            retry_original: Mutex::new(None),
             _flight: flight,
-        })),
+        }))
+        .register(),
     )))
 }
 

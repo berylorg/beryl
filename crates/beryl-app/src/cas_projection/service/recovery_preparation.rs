@@ -11,6 +11,17 @@ pub(crate) struct PreparedRecoveryCasServices {
     candidate: Option<HomeRecoveryCandidate>,
 }
 
+impl PreparedRecoveryCasServices {
+    pub(crate) fn discussion_presentation_reader(
+        &self,
+    ) -> crate::discussion_presentation::DiscussionPresentationReader {
+        self.service
+            .as_ref()
+            .expect("prepared recovery CAS custody")
+            .discussion_presentation_reader()
+    }
+}
+
 pub(crate) struct RecoveryCasPreparationFailure {
     error: CasPreparationError,
     home: Option<HomeStore>,

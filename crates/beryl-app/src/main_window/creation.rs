@@ -85,6 +85,8 @@ pub type MainWindowCreationConfiguratorSource =
     Arc<dyn Fn() -> MainWindowShellComposerConfigurator + Send + Sync>;
 
 pub struct MainWindowCreationServices {
+    pub discussion_presentation:
+        Option<crate::discussion_presentation::DiscussionPresentationReader>,
     pub acquisition: RuntimeBackedWindowAcquisitionService,
     pub store: Arc<HomeServiceReference>,
     pub state: BerylState,

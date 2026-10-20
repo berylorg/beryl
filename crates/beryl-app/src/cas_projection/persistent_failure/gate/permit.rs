@@ -29,6 +29,7 @@ impl LiveCommandPermit {
         })?
     }
 
+    #[cfg(test)]
     pub(crate) fn reopen_process_admission_with<R, E>(
         &self,
         fence: &crate::process_admission::ProcessAdmissionFence,
@@ -47,6 +48,34 @@ impl LiveCommandPermit {
                 apply(prepared);
                 reopening.reopen();
             })?;
+            Ok(Ok(()))
+        })?
+    }
+
+    pub(crate) fn reopen_process_admission_observed_with<R, E>(
+        &self,
+        fence: &crate::process_admission::ProcessAdmissionFence,
+        home: &HomeStore,
+        expected_generation: HomeGeneration,
+        observation: Option<&beryl_home_store::HomeMutationObservation>,
+        prepare: impl FnOnce() -> Result<R, E>,
+        apply: impl FnOnce(R),
+    ) -> Result<Result<(), E>, crate::process_admission::ProcessAdmissionReopenError> {
+        self.commit_if_current(|| {
+            let reopening = self.execution.prepare_reopening(fence)?;
+            let prepared = match prepare() {
+                Ok(prepared) => prepared,
+                Err(error) => return Ok(Err(error)),
+            };
+            let publish = || {
+                apply(prepared);
+                reopening.reopen();
+            };
+            if let Some(observation) = observation {
+                home.try_elect_observed_coherent(observation, expected_generation, publish)?;
+            } else {
+                home.try_elect_coherent(expected_generation, publish)?;
+            }
             Ok(Ok(()))
         })?
     }

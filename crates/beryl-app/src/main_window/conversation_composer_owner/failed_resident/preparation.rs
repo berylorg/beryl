@@ -415,6 +415,10 @@ impl<C: Send + 'static> MainWindowFailedResidentPreparation<C> {
         resident.selection = selection;
         resident.replacement_intent = service.selected_submission_intent(selection);
         resident.service = Some(service.clone());
+        resident.discussion = service.prepared_discussion_presentation(selection);
+        resident.discussion_reader = service.discussion_presentation_reader();
+        resident.discussion_fresh = resident.discussion_reader.is_none();
+        resident.submission_observation_epoch = Arc::new(());
         resident.clipboard_writer =
             Some(MainWindowConversationComposer::production_clipboard_writer());
         resident.private_clipboard_owner = service

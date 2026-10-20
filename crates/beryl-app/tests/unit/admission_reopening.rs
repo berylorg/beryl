@@ -158,6 +158,133 @@ fn home_failure_preserves_the_process_fence() {
 }
 
 #[test]
+fn observed_reopening_keeps_the_original_fence_until_one_exact_home_interval_applies() {
+    use beryl_home_store::{HomeMutationObservationError, HomeObservedCoherenceError};
+    let fixture = Fixture::idle();
+    let foreign = Fixture::idle();
+    let home = fixture.service.home.as_deref().unwrap();
+    let storage = &fixture.service.storage;
+    let observer = fixture.service.home_mutation_observer();
+    let original = observer.observe().unwrap();
+    let fence = fixture.gate.fence().unwrap();
+    let applied = std::cell::Cell::new(0);
+    let execution = storage
+        .thread_execution(home, fixture.thread, point_limit())
+        .unwrap()
+        .unwrap()
+        .execution()
+        .clone();
+    let mut command = HomeCommand::new(home.home_revision().unwrap());
+    command
+        .add(storage.create_thread(
+            storage.revision(home).unwrap(),
+            CreateThread::ordinary(
+                SyndicThreadId::from_bytes([222; 16]),
+                SyndicDraftId::from_bytes([223; 16]),
+                execution,
+                SyndicTimestamp::from_unix_millis(2),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+            ),
+        ))
+        .unwrap();
+    let pause = fixture.faults.block_next(FaultPoint::BeforeCommit);
+    let busy = std::thread::scope(|scope| {
+        let worker = scope.spawn(|| home.execute(command));
+        let reached = pause.wait_until_reached(std::time::Duration::from_secs(10));
+        let result = fixture.service.try_reopen_shutdown_admission_observed_with(
+            &fence,
+            Some(&original),
+            || Ok::<_, ()>(()),
+            |_| {
+                applied.set(applied.get() + 1);
+            },
+        );
+        pause.release();
+        let outcome = worker.join().unwrap();
+        assert!(
+            reached,
+            "original Home writer did not reach its bounded pause"
+        );
+        assert!(matches!(
+            outcome,
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+        ));
+        result
+    });
+    assert_eq!(
+        busy,
+        Err(ProcessAdmissionReopenError::ObservedHome(
+            HomeObservedCoherenceError::Observation(HomeMutationObservationError::Busy)
+        ))
+    );
+    assert_eq!(applied.get(), 0);
+    assert_fenced(&fixture);
+    assert_eq!(
+        fixture.service.try_reopen_shutdown_admission_observed_with(
+            &fence,
+            Some(&original),
+            || Ok::<_, ()>(()),
+            |_| {
+                applied.set(applied.get() + 1);
+            }
+        ),
+        Err(ProcessAdmissionReopenError::ObservedHome(
+            HomeObservedCoherenceError::Observation(HomeMutationObservationError::Stale)
+        ))
+    );
+    assert_eq!(applied.get(), 0);
+    assert_fenced(&fixture);
+    let wrong = foreign.service.home_mutation_observer().observe().unwrap();
+    assert_eq!(
+        fixture.service.try_reopen_shutdown_admission_observed_with(
+            &fence,
+            Some(&wrong),
+            || Ok::<_, ()>(()),
+            |_| {
+                applied.set(applied.get() + 1);
+            }
+        ),
+        Err(ProcessAdmissionReopenError::ObservedHome(
+            HomeObservedCoherenceError::ForeignObservation
+        ))
+    );
+    assert_eq!(applied.get(), 0);
+    assert_fenced(&fixture);
+    let current = observer.observe().unwrap();
+    fixture
+        .service
+        .try_reopen_shutdown_admission_observed_with(
+            &fence,
+            Some(&current),
+            || Ok::<_, ()>(()),
+            |_| {
+                applied.set(applied.get() + 1);
+            },
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(applied.get(), 1);
+    drop(fixture.gate.execution_permit().reserve().unwrap());
+    assert!(
+        fixture
+            .service
+            .try_reopen_shutdown_admission_observed_with(
+                &fence,
+                Some(&current),
+                || Ok::<_, ()>(()),
+                |_| {
+                    applied.set(applied.get() + 1);
+                }
+            )
+            .is_err()
+    );
+    assert_eq!(applied.get(), 1);
+}
+
+#[test]
 fn live_commands_and_home_election_share_master_then_process_lock_order() {
     let fixture = Fixture::idle();
     let fence = fixture.gate.fence().unwrap();
@@ -212,7 +339,13 @@ fn home_election_failure_retains_original_selection_exclusion_until_one_successf
     let registry = RuntimeBackedWindowProcessRegistry::new(gate.clone());
     let window = beryl_model::WindowId::from_bytes([207; 16]);
     let reservation = registry.reserve_main_window(window).unwrap();
-    let lease = Arc::new(registry.admit_selection(&[window], window).unwrap());
+    let other_window = beryl_model::WindowId::from_bytes([213; 16]);
+    let other_reservation = registry.reserve_main_window(other_window).unwrap();
+    let lease = Arc::new(
+        registry
+            .admit_selection(&[window, other_window], window)
+            .unwrap(),
+    );
     faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(home.home_revision().is_err());
     let retired = lease
@@ -271,9 +404,9 @@ fn home_election_failure_retains_original_selection_exclusion_until_one_successf
         let result = service.try_reopen_shutdown_admission_with(
             &fence,
             || {
-                let guard = retired.prepare_coherent_release()?;
+                let guard = retired.try_prepare_coherent_release()?;
                 prepared.set(prepared.get() + 1);
-                Ok::<_, String>(guard)
+                Ok::<_, crate::window_acquisition::RetiredSelectionReleaseError>(guard)
             },
             |guard| {
                 guard.apply();
@@ -303,21 +436,44 @@ fn home_election_failure_retains_original_selection_exclusion_until_one_successf
         gate.execution_permit().reserve(),
         Err(ProcessAdmissionError::Fenced)
     ));
-    service
-        .try_reopen_shutdown_admission_with(
-            &fence,
-            || {
-                let guard = retired.prepare_coherent_release()?;
-                prepared.set(prepared.get() + 1);
-                Ok::<_, String>(guard)
-            },
-            |guard| {
-                guard.apply();
-                applied.set(applied.get() + 1);
-            },
-        )
-        .unwrap()
-        .unwrap();
+    let observation = service.home_mutation_observer().observe().unwrap();
+    let (start, started) = std::sync::mpsc::sync_channel(0);
+    let (dropping, drop_started) = std::sync::mpsc::sync_channel(0);
+    let (done, dropped) = std::sync::mpsc::sync_channel(1);
+    std::thread::scope(|scope| {
+        let worker = scope.spawn(move || {
+            started.recv().unwrap();
+            dropping.send(()).unwrap();
+            drop(other_reservation);
+            done.send(()).unwrap();
+        });
+        service
+            .try_reopen_shutdown_admission_observed_with(
+                &fence,
+                Some(&observation),
+                || {
+                    start.send(()).unwrap();
+                    drop_started.recv().unwrap();
+                    assert!(matches!(
+                        dropped.recv_timeout(std::time::Duration::from_millis(100)),
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+                    ));
+                    let guard = retired.try_prepare_coherent_release()?;
+                    prepared.set(prepared.get() + 1);
+                    Ok::<_, crate::window_acquisition::RetiredSelectionReleaseError>(guard)
+                },
+                |guard| {
+                    guard.apply();
+                    applied.set(applied.get() + 1);
+                },
+            )
+            .unwrap()
+            .unwrap();
+        dropped
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
+        worker.join().unwrap();
+    });
     assert_eq!((prepared.get(), applied.get()), (2, 1));
     assert!(!registry.selection_pending());
     drop(gate.execution_permit().reserve().unwrap());
@@ -325,9 +481,9 @@ fn home_election_failure_retains_original_selection_exclusion_until_one_successf
         service.try_reopen_shutdown_admission_with(
             &fence,
             || {
-                let guard = retired.prepare_coherent_release()?;
+                let guard = retired.try_prepare_coherent_release()?;
                 prepared.set(prepared.get() + 1);
-                Ok::<_, String>(guard)
+                Ok::<_, crate::window_acquisition::RetiredSelectionReleaseError>(guard)
             },
             |guard| {
                 guard.apply();

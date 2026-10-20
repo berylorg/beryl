@@ -160,7 +160,10 @@ impl MainWindowRestoreSet {
     #[inline(never)]
     fn prepare_restored(&mut self) -> Result<PreparationStep, String> {
         let mut configurator = (self.services.configurator_source)();
-        let current = *self.current.take().unwrap();
+        let mut current = *self.current.take().unwrap();
+        if let Some(reader) = &self.services.discussion_presentation {
+            current.bind_discussion_presentation(reader.clone());
+        }
         let prepared = match current.prepare(&self.attempt, &mut configurator) {
             Ok(prepared) => prepared,
             Err(failure) => {

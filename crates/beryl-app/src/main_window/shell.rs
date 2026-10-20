@@ -87,6 +87,9 @@ pub struct MainWindowShellPrepared {
 }
 
 impl MainWindowShellPrepared {
+    pub(in crate::main_window) fn refresh_discussion_preparation(&mut self) -> Result<(), String> {
+        self.composer.refresh_discussion_preparation()
+    }
     pub(in crate::main_window) fn session_revision(&self) -> beryl_model::SessionRevision {
         self.composer.selection_identity().claim().generation()
     }

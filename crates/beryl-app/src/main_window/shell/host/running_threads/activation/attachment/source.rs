@@ -229,6 +229,13 @@ impl ActivationSource {
                 };
                 match revalidated {
                     Ok(prepared) => {
+                        let selection = self
+                            .publication
+                            .as_ref()
+                            .ok_or("Composer publication custody is missing")?
+                            .selection();
+                        self.service.prepare_discussion_presentation(selection)?;
+                        self.discussion = self.service.prepared_discussion_presentation(selection);
                         self.transcript = Some(prepared);
                         self.stage = Stage::Publish;
                     }

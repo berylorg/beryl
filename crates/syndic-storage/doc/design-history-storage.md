@@ -707,6 +707,11 @@ through fresh handles but cannot fill missing stages or authorize another histor
 
 ## Candidate History Metadata
 
+`thread_attributes_candidate` supplies the same bounded typed thread attributes, including archive
+facts, through explicit borrowed candidate recovery access. It shares the ordinary family, key,
+codec, caller byte limit, absence/error and fresh-handle checks. It grants no publication, archive,
+mutation or ordinary admission authority and does not stabilize a multi-record observation.
+
 Named candidate counterparts of `thread`, `turn`, `turn_state`, `input_gate`, `canonical_item`,
 `content_manifest`, `resource`, `item_projection_head`, `item_projection_set`,
 `item_projection_build`, `transcript_view_head` and `transcript_build` supply exact bounded

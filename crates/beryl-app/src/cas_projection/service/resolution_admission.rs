@@ -31,6 +31,17 @@ impl ScopedDiscussionResolutionOutcome<'_> {
 }
 
 impl ProjectionConnectionService {
+    pub fn discussion_presentation_reader(
+        &self,
+    ) -> crate::discussion_presentation::DiscussionPresentationReader {
+        crate::discussion_presentation::DiscussionPresentationReader::new(
+            self.resolution.clone(),
+            self.home_mutation_observer(),
+            self.home_id,
+            self.home_generation,
+            self.service_generation,
+        )
+    }
     pub(in crate::cas_projection) fn resolution_authority(
         &self,
     ) -> &Arc<super::super::process_tools::ResolutionAuthority> {

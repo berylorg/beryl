@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, sync::OnceLock};
 
 mod activity;
+mod segmented_status;
 mod theme_editor;
 
 use super::{
@@ -181,6 +182,9 @@ const NARRATIVE_BLOCK: &[ThemePropertyId] = &[
 ];
 
 fn supported_properties(id: &str) -> &'static [ThemePropertyId] {
+    if let Some(properties) = segmented_status::properties(id) {
+        return properties;
+    }
     if let Some(properties) = activity::properties(id) {
         return properties;
     }
@@ -433,6 +437,9 @@ const fn rgb(value: [u8; 3]) -> ThemeColor {
 }
 
 fn palette(id: &str) -> Palette {
+    if let Some(value) = segmented_status::palette(id) {
+        return value;
+    }
     if let Some(value) = activity::palette(id) {
         return value;
     }
@@ -705,6 +712,14 @@ fn notice_severity_palette(id: &str) -> Option<Palette> {
 }
 
 const ROLE_INVENTORY: &[(&str, Option<&str>)] = &[
+    ("segmented-status-bar", None),
+    ("segmented-status-bar.segment.hover", None),
+    ("segmented-status-bar.segment.pressed", None),
+    ("segmented-status-bar.segment.open", None),
+    ("segmented-status-bar.segment.disabled", None),
+    ("segmented-status-bar.divider", None),
+    ("segmented-status-bar.key", None),
+    ("segmented-status-bar.value", None),
     ("settings.window.text", Some("text")),
     ("theme-editor", Some("text")),
     ("theme-editor.navigator", Some("theme-editor")),

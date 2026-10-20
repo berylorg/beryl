@@ -213,6 +213,7 @@ pub mod conversation_tools;
 pub mod crash_reporting;
 pub mod discussion_creation;
 pub mod discussion_handoff_limits;
+pub mod discussion_presentation;
 pub mod discussion_settlement;
 mod dynamic_tool_namespace;
 mod exit_session;

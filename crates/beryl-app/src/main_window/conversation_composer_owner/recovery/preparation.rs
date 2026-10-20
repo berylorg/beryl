@@ -297,6 +297,10 @@ impl<C: Send + 'static> MainWindowComposerRecoveryPreparation<C> {
         let service = source.into_service();
         resident.selection = selection;
         resident.service = Some(service.clone());
+        resident.discussion = service.prepared_discussion_presentation(selection);
+        resident.discussion_reader = service.discussion_presentation_reader();
+        resident.discussion_fresh = resident.discussion_reader.is_none();
+        resident.submission_observation_epoch = Arc::new(());
         resident.clipboard_writer = Some(clipboard_writer);
         resident.private_clipboard_owner = service
             .private_clipboard_owner()

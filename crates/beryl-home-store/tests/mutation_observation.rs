@@ -71,6 +71,8 @@ fn commands_invalidate_old_reads_and_notify_after_election_becomes_available() {
         .unwrap();
     let (observer, wake) = observe(&store);
     let original = observer.observe().unwrap();
+    assert!(original.same_interval(&original.clone()));
+    assert!(original.same_interval(&observer.observe().unwrap()));
     let revision = store.home_revision().unwrap();
     assert_eq!(original.try_elect(|| 17), Ok(17));
     assert_eq!(store.home_revision().unwrap(), revision);
@@ -80,6 +82,7 @@ fn commands_invalidate_old_reads_and_notify_after_election_becomes_available() {
         alpha.current_command(PutBytes::<AlphaDomain>::new(1, b"current".to_vec())),
     ));
     assert_eq!(original.try_elect(|| ()), Err(ObservationError::Stale));
+    assert!(!original.same_interval(&observer.observe().unwrap()));
     assert_eq!(wake.outcomes(), vec![Ok(())]);
 
     let before_second = observer.observe().unwrap();
@@ -165,6 +168,7 @@ fn replacement_and_last_owner_drop_revoke_tokens_without_retaining_the_home() {
     assert_eq!(first_token.try_elect(|| ()), Err(ObservationError::Revoked));
     drop(first_clone);
     let second_token = second.observe().unwrap();
+    assert!(!first_token.same_interval(&second_token));
     drop(second);
     assert_eq!(
         second_token.try_elect(|| ()),
@@ -185,6 +189,7 @@ fn replacement_and_last_owner_drop_revoke_tokens_without_retaining_the_home() {
         .unwrap();
     assert_eq!(reopened.home_id(), home_id);
     let (fresh, _) = observe(&reopened);
+    assert!(!third_token.same_interval(&fresh.observe().unwrap()));
     assert_eq!(fresh.observe().unwrap().try_elect(|| ()), Ok(()));
     assert_eq!(third_token.try_elect(|| ()), Err(ObservationError::Closed));
 }

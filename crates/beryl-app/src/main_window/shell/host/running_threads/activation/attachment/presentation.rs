@@ -203,9 +203,14 @@ impl MainWindowShellRoot {
                     .transcript
                     .as_ref()
                     .ok_or("Prepared transcript is missing")?;
-                let allocation = self.transcript_attachment_allocation(
+                let discussion_present = source
+                    .discussion
+                    .as_ref()
+                    .is_some_and(|snapshot| snapshot.status().is_some());
+                let allocation = self.transcript_attachment_allocation_with_discussion(
                     Some(&operation.mount),
                     candidate.lineage_head().total_parent_count() != 0,
+                    discussion_present,
                     window,
                     cx,
                 );
@@ -221,12 +226,13 @@ impl MainWindowShellRoot {
                     .appearance
                     .generation
                     .clone();
-                let metrics = self.candidate_metrics(
+                let mut metrics = self.candidate_metrics(
                     &generation,
                     panel_minimum,
                     candidate.lineage_head().total_parent_count() != 0,
                     cx,
                 )?;
+                metrics.discussion = discussion_present;
                 if !self.ensure_minimum(metrics.clone(), window, cx)? {
                     return Ok(());
                 }
@@ -245,27 +251,58 @@ impl MainWindowShellRoot {
                 let title = prepared.resolved_title().clone();
                 let lineage = prepared.lineage_head().clone();
                 let mut prepared = Some(prepared);
-                let result = publication.try_elect_current(|| {
-                    provider.publish_if_current(
-                        prepared.take().unwrap(),
-                        &source.request,
-                        &source.transcript_cancel,
-                        |seed| {
-                            operation.mount.update(cx, |mount, mount_cx| {
-                                mount.promote_claim_publication(publication, window, mount_cx)
-                            })?;
-                            operation.panel.update(cx, |panel, panel_cx| {
-                                panel.publish_coherent_activation(seed);
-                                panel_cx.notify();
-                            });
-                            self.publish_running_selection(
-                                committed_window.clone(),
-                                publication.selection(),
-                                cx,
-                            )
-                        },
-                    )
-                });
+                let discussion = source.discussion.clone();
+                if discussion
+                    .as_ref()
+                    .is_some_and(|snapshot| !snapshot.current())
+                {
+                    source.transcript = prepared;
+                    source.stage = Stage::Revalidate;
+                    return Ok(());
+                }
+                let mut publish = || {
+                    publication.try_elect_current(|| {
+                        provider.publish_if_current(
+                            prepared.take().unwrap(),
+                            &source.request,
+                            &source.transcript_cancel,
+                            |seed| {
+                                operation.mount.update(cx, |mount, mount_cx| {
+                                    mount.promote_claim_publication(publication, window, mount_cx)
+                                })?;
+                                if let Some(snapshot) = discussion.clone() {
+                                    let composer = operation
+                                        .mount
+                                        .read(cx)
+                                        .contribution()
+                                        .ok_or("Discussion composer is missing")?;
+                                    composer.update(cx, |composer, composer_cx| {
+                                        composer
+                                            .apply_discussion_presentation(snapshot, composer_cx)
+                                    });
+                                }
+                                operation.panel.update(cx, |panel, panel_cx| {
+                                    panel.publish_coherent_activation(seed);
+                                    panel_cx.notify();
+                                });
+                                self.publish_running_selection(
+                                    committed_window.clone(),
+                                    publication.selection(),
+                                    cx,
+                                )
+                            },
+                        )
+                    })
+                };
+                let election = discussion.clone();
+                let result = if let Some(snapshot) = election {
+                    snapshot
+                        .try_elect_local(publish)
+                        .map_err(|error| error.to_string())
+                        .and_then(|result| result)
+                } else {
+                    publish()
+                };
                 match result {
                     Ok(Ok(Ok(()))) => {
                         self.commit_metrics(metrics, window, cx);

@@ -100,6 +100,26 @@ impl ResolutionAuthority {
     }
 }
 
+impl crate::discussion_presentation::DiscussionPresentationAccess for ResolutionAuthority {
+    fn service(&self) -> Option<DiscussionSettlementService> {
+        self.settlement.get().cloned()
+    }
+
+    fn current(&self) -> bool {
+        self.settlement.get().is_some_and(|service| {
+            let health = service.home().health();
+            health.generation() == Some(self.generation)
+                && matches!(
+                    health.state(),
+                    beryl_home_store::HomeHealthState::Healthy
+                        | beryl_home_store::HomeHealthState::Opening
+                        | beryl_home_store::HomeHealthState::Reopening
+                )
+                && self.commands.try_check_work_open().is_ok()
+        })
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct ProcessResolutionHandler {
     authority: Weak<ResolutionAuthority>,

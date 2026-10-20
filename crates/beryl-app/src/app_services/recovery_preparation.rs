@@ -95,7 +95,7 @@ impl PreparedRecoveryAppServices {
         crate::main_window::MainWindowComposerCandidateSource,
         (crate::main_window::MainWindowComposerRetiredClose, String),
     > {
-        let Some((candidate, _)) = self
+        let Some((candidate, cas)) = self
             .cas
             .as_mut()
             .expect("prepared recovery CAS custody")
@@ -110,6 +110,7 @@ impl PreparedRecoveryAppServices {
             state,
             seed,
             recovered_window,
+            Some(cas.discussion_presentation_reader()),
         )
     }
 

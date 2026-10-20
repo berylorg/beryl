@@ -55,7 +55,7 @@ impl PreparedRecoveryServiceGraph {
             .iter_mut()
             .find(|source| source.window == window && source.qualified && source.committed)
             .ok_or("authenticated original New Thread is unavailable")?;
-        let (candidate, _) = self
+        let (candidate, cas) = self
             .services
             .as_mut()
             .unwrap()
@@ -133,6 +133,7 @@ impl PreparedRecoveryServiceGraph {
                 draft,
                 MainWindowComposerMarkerMetadataAuthority::new(self.state.assets()),
             )?;
+            composer.bind_discussion_presentation(cas.discussion_presentation_reader())?;
             let title =
                 candidate_selected_title(candidate, &self.state, window, commit.selection())?;
             composer.set_qualified_selected_title(commit.selection(), title)?;

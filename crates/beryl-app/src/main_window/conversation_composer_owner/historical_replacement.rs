@@ -107,7 +107,10 @@ impl MainWindowConversationComposer {
         self.historical_replacement.is_some() || self.replacement_intent.is_none()
     }
 
-    pub(in crate::main_window) fn historical_edit_disabled_reason(&self, cx: &App) -> Option<&'static str> {
+    pub(in crate::main_window) fn historical_edit_disabled_reason(
+        &self,
+        cx: &App,
+    ) -> Option<&'static str> {
         if !self.is_live() || self.mutation_gated() || self.last_error.is_some() {
             return Some("The selected composer is unavailable.");
         }
@@ -118,12 +121,21 @@ impl MainWindowConversationComposer {
         if root.logical_utf8_bytes() != 0 || root.marker_count() != 0 {
             return Some("Empty the composer before editing a historical message.");
         }
-        if self.active_flight.is_some() || self.pending_dispatch.is_some() || self.mutation_evidence.is_some()
-            || self.quote_insertion.is_some() || !self.input.read(cx).is_quiescent()
-            || self.input.read(cx).surface().is_none_or(|surface| surface.composition().is_some()) {
+        if self.active_flight.is_some()
+            || self.pending_dispatch.is_some()
+            || self.mutation_evidence.is_some()
+            || self.quote_insertion.is_some()
+            || !self.input.read(cx).is_quiescent()
+            || self
+                .input
+                .read(cx)
+                .surface()
+                .is_none_or(|surface| surface.composition().is_some())
+        {
             return Some("Wait for the current composer work to finish.");
         }
-        self.historical_edit_unavailable().map(|reason| reason.reason())
+        self.historical_edit_unavailable()
+            .map(|reason| reason.reason())
     }
 
     pub(in crate::main_window) fn historical_replacement_feedback(&self) -> Option<&str> {
@@ -280,10 +292,6 @@ impl MainWindowConversationComposer {
                 if matches!(&replacement.state, State::Realizing { completed, .. } if completed.acknowledged)
                 {
                     self.sync_mutation_gate(cx);
-                    if self.is_live() {
-                        self.input
-                            .update(cx, |input, cx| input.set_enabled(true, cx));
-                    }
                     cx.notify();
                     false
                 } else {

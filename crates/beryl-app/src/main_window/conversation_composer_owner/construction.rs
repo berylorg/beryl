@@ -33,7 +33,8 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::construct(
+        let discussion = prepared.discussion;
+        let mut composer = Self::construct(
             prepared.config,
             prepared.service,
             clipboard_writer,
@@ -44,7 +45,10 @@ impl MainWindowConversationComposer {
             None,
             window,
             cx,
-        )
+        );
+        composer.discussion = discussion;
+        composer.sync_mutation_gate(cx);
+        composer
     }
 
     pub(in crate::main_window) fn prepare_pending_activation(
@@ -215,6 +219,9 @@ impl MainWindowConversationComposer {
                 .expect("exact initial composer history frontier");
         }
         let mut this = Self {
+            discussion: service.prepared_discussion_presentation(selection),
+            discussion_reader: service.discussion_presentation_reader(),
+            discussion_fresh: true,
             accepted_input_browse: None,
             accepted_input_recall: None,
             accepted_input_history_feedback: None,

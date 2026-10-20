@@ -26,6 +26,7 @@ mod activity;
 #[cfg(feature = "test-faults")]
 pub use activity::metadata::ActivityMetadataSchedulingHarness;
 mod branch_discussion;
+mod discussion_status;
 mod historical_replacement;
 mod model_controls;
 mod quote;
@@ -278,6 +279,7 @@ impl GpuiMainWindowShellHost<'_> {
             &prepared.appearance.generation,
             prepared.composer.panel_minimum_size(),
             false,
+            prepared.composer.discussion_visible(),
             false,
             self.app,
         ) {
@@ -700,6 +702,7 @@ impl MainWindowShell {
 }
 
 pub struct MainWindowShellRoot {
+    discussion_status: discussion_status::DiscussionStatusControls,
     activity: activity::Contribution,
     thread_switcher: thread_switcher::ThreadSwitcherContribution,
     thread_navigation: thread_navigation::ThreadNavigationControls,

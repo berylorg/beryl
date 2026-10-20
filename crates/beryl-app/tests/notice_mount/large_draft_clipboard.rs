@@ -165,6 +165,7 @@ fn large_draft_cut_storage_refused_paste_retains_cached_editor_history_and_relea
 }
 
 fn exercise(cx: &mut gpui::TestAppContext, seed: u8, kind: MainWindowComposerMutationFeedbackKind) {
+    let started = std::time::Instant::now();
     assert!(DRAFT_BYTES > CLIPBOARD_BYTES as u64);
     assert!(DRAFT_BYTES > MUTATION_PAGE_BYTES as u64);
     let (mounted, service) = configured_large_clipboard_mount(
@@ -174,8 +175,18 @@ fn exercise(cx: &mut gpui::TestAppContext, seed: u8, kind: MainWindowComposerMut
         CLIPBOARD_BYTES,
         MUTATION_PAGE_BYTES,
     );
+    eprintln!("large clipboard: mounted at {:?}", started.elapsed());
     let composer = composer(&mounted, cx);
+    eprintln!(
+        "large clipboard: mounted flags (enabled, surface, quiescent, error) {:?}",
+        support::editor_flags(&composer, cx)
+    );
     prepare_editor(&mounted, &composer, cx);
+    eprintln!("large clipboard: editor ready at {:?}", started.elapsed());
+    eprintln!(
+        "large clipboard: ready flags (enabled, surface, quiescent, error) {:?}",
+        support::editor_flags(&composer, cx)
+    );
     let input = composer.read_with(cx, |composer, _| composer.gpui_input());
     interactive(&input, cx);
     let asset = asset(&mounted, cx);
@@ -190,6 +201,10 @@ fn exercise(cx: &mut gpui::TestAppContext, seed: u8, kind: MainWindowComposerMut
             .marker_count()
             == 1
     });
+    eprintln!(
+        "large clipboard: origin marker committed at {:?}",
+        started.elapsed()
+    );
     interactive(&input, cx);
     cx.simulate_keystrokes(mounted.window.into(), "ctrl-end");
     drive_until(cx, |cx| {
@@ -211,6 +226,10 @@ fn exercise(cx: &mut gpui::TestAppContext, seed: u8, kind: MainWindowComposerMut
             .marker_count()
             == 2
     });
+    eprintln!(
+        "large clipboard: EOF marker committed at {:?}",
+        started.elapsed()
+    );
     interactive(&input, cx);
     cx.simulate_keystrokes(mounted.window.into(), "shift-left");
     drive_until(cx, |cx| {
@@ -266,6 +285,7 @@ fn exercise(cx: &mut gpui::TestAppContext, seed: u8, kind: MainWindowComposerMut
     });
     interactive(&input, cx);
     let cut = cached_editor(&composer, cx);
+    eprintln!("large clipboard: cut settled at {:?}", started.elapsed());
     assert_eq!(cut.root.summary().logical_utf8_bytes(), DRAFT_BYTES);
     assert_eq!(cut.root.summary().marker_count(), 1);
     assert_ne!(cut.durable_history, before_cut.durable_history);
@@ -412,15 +432,21 @@ fn exercise(cx: &mut gpui::TestAppContext, seed: u8, kind: MainWindowComposerMut
         if kind != MainWindowComposerMutationFeedbackKind::Storage {
             assert_eq!(owner.descriptor(&token), Some(descriptor));
         }
+        eprintln!(
+            "large clipboard: refusal {attempt} complete at {:?}",
+            started.elapsed()
+        );
     }
 
     if kind != MainWindowComposerMutationFeedbackKind::Storage {
+        eprintln!("large clipboard: undo requested at {:?}", started.elapsed());
         cx.simulate_keystrokes(mounted.window.into(), "ctrl-z");
         drive_until(cx, |_| {
             service.selected_identity().unwrap().binding().root() == before_cut.root
         });
         interactive(&input, cx);
         let undone = cached_editor(&composer, cx);
+        eprintln!("large clipboard: undo settled at {:?}", started.elapsed());
         assert_eq!(undone.root, before_cut.root);
         assert_eq!(undone.selection, before_cut.selection);
         assert_eq!(undone.caret, before_cut.caret);
@@ -482,4 +508,8 @@ fn exercise(cx: &mut gpui::TestAppContext, seed: u8, kind: MainWindowComposerMut
     assert!(weak_composer.upgrade().is_none());
     assert!(weak_input.upgrade().is_none());
     assert!(weak_service.upgrade().is_none());
+    eprintln!(
+        "large clipboard: custody released at {:?}",
+        started.elapsed()
+    );
 }

@@ -104,11 +104,23 @@ impl MainWindowFailedResidentCandidateSource {
 
     pub fn new(
         candidate: &mut HomeRecoveryCandidate,
+        retired: MainWindowFailedComposerRetirement,
+        storage: syndic_storage::SyndicStorage,
+        state: &beryl_state::BerylState,
+        seed: RangeRestorationSeed,
+        restored: Option<&beryl_state::SessionWindowRemovalEvidence>,
+    ) -> Result<Self, (MainWindowFailedComposerRetirement, String)> {
+        Self::new_for_recovery(candidate, retired, storage, state, seed, restored, None)
+    }
+
+    pub(crate) fn new_for_recovery(
+        candidate: &mut HomeRecoveryCandidate,
         mut retired: MainWindowFailedComposerRetirement,
         storage: syndic_storage::SyndicStorage,
         state: &beryl_state::BerylState,
         seed: RangeRestorationSeed,
         restored: Option<&beryl_state::SessionWindowRemovalEvidence>,
+        reader: Option<crate::discussion_presentation::DiscussionPresentationReader>,
     ) -> Result<Self, (MainWindowFailedComposerRetirement, String)> {
         let current_binding = retired.selection().binding();
         let binding = retired
@@ -163,12 +175,29 @@ impl MainWindowFailedResidentCandidateSource {
             Ok(positions) => positions,
             Err(error) => return Err((retired, error)),
         };
+        let discussion = match reader
+            .as_ref()
+            .map(|reader| {
+                let access = candidate
+                    .recovery_access()
+                    .map_err(|error| error.to_string())?;
+                reader
+                    .observe_candidate(&access, retired.selection().claim().thread_id())
+                    .map_err(|error| error.to_string())
+            })
+            .transpose()
+        {
+            Ok(snapshot) => snapshot,
+            Err(error) => return Err((retired, error)),
+        };
         let (slot, window, retired) =
             retired.reconstruct(candidate, storage.clone(), state, restored)?;
-        let service = Arc::new(MainWindowConversationComposerService::from_boxed_slot(
+        let mut service = MainWindowConversationComposerService::from_boxed_slot(
             candidate.service_reference(),
             slot,
-        ));
+        );
+        service.install_recovered_discussion(reader, discussion);
+        let service = Arc::new(service);
         let selection = service.selected_identity().unwrap();
         let selector = retired.saved_selector().unwrap();
         let predecessor = seed;

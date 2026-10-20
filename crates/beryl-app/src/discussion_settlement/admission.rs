@@ -40,7 +40,10 @@ impl DiscussionSettlementService {
     ) -> Result<DiscussionResolutionAdmission, DiscussionSettlementError> {
         let permit = self.operations.permit();
         let job_id = branch_handoff_job_id(intent_id);
-        let flight = permit.commit(|| self.operations.acquire(job_id))??;
+        let flight = permit.commit(|| {
+            self.operations
+                .acquire_selected(job_id, Some(context.ordinary().thread_id()))
+        })??;
         if cancellation.is_cancelled() {
             return Err(DiscussionSettlementError::Cancelled);
         }
@@ -257,8 +260,10 @@ impl DiscussionSettlementService {
                     syndic: Some(SyndicSettlementIntent::Gate(intent)),
                     result: DiscussionSettlementResult::ResolutionAdmitted(job_id),
                     disposition: Mutex::new(Disposition::Prepared),
+                    retry_original: Mutex::new(None),
                     _flight: Arc::new(flight),
-                })),
+                }))
+                .register(),
             },
         ))
     }

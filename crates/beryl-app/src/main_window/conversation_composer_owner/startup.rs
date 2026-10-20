@@ -97,9 +97,13 @@ impl MainWindowConversationComposer {
         {
             return Err("startup composer is not ready for interaction".to_owned());
         }
+        let enabled = self.discussion.as_ref().is_none_or(|snapshot| {
+            snapshot.composer()
+                != crate::discussion_presentation::DiscussionComposerContribution::Inert
+        });
         self.input.update(cx, |input, input_cx| {
-            input.set_enabled(true, input_cx);
-            if input.is_enabled() {
+            input.set_enabled(enabled, input_cx);
+            if input.is_enabled() == enabled {
                 Ok(())
             } else {
                 Err("startup composer could not enable input".to_owned())

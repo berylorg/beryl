@@ -86,6 +86,24 @@ impl MainWindowShellRoot {
         window: &Window,
         cx: &App,
     ) -> gpui::Size<gpui::Pixels> {
+        self.transcript_attachment_allocation_with_discussion(
+            mount,
+            lineage_present,
+            self.selected_discussion_snapshot(cx)
+                .is_some_and(|snapshot| snapshot.status().is_some()),
+            window,
+            cx,
+        )
+    }
+
+    pub(super) fn transcript_attachment_allocation_with_discussion(
+        &self,
+        mount: Option<&Entity<MainWindowConversationComposerMount>>,
+        lineage_present: bool,
+        discussion_present: bool,
+        window: &Window,
+        cx: &App,
+    ) -> gpui::Size<gpui::Pixels> {
         let viewport = window.viewport_size();
         let mut metrics = self
             .controller
@@ -94,6 +112,7 @@ impl MainWindowShellRoot {
             .metrics
             .clone();
         metrics.lineage = lineage_present;
+        metrics.discussion = discussion_present;
         if let Some(panel) = mount.and_then(|mount| mount.read(cx).panel_minimum_size(cx)) {
             metrics.panel = panel;
         }
@@ -118,6 +137,11 @@ impl MainWindowShellRoot {
             (viewport.height
                 - px(self.notice_chrome_height())
                 - px(status_controls::STATUS_STRIP_HEIGHT_PX)
+                - px(if discussion_present {
+                    discussion_status::HEIGHT
+                } else {
+                    0.0
+                })
                 - input_height
                 - self.activity_allocation(&metrics, input_height, viewport.height)
                 - lineage_height)
@@ -139,6 +163,7 @@ impl MainWindowShellRoot {
         let notices =
             notices::MainWindowShellNotices::new(&controller, publication, shell_focus.clone(), cx);
         let mut root = Self {
+            discussion_status: Default::default(),
             activity: activity::Contribution::new(),
             thread_switcher: thread_switcher::ThreadSwitcherContribution::new(cx),
             thread_navigation: thread_navigation::ThreadNavigationControls::new(cx),
@@ -172,6 +197,10 @@ impl MainWindowShellRoot {
             transcript_image_preview: None,
             branch_discussion: branch_discussion::BranchDiscussionContribution::default(),
         };
+        #[cfg(all(test, feature = "test-faults"))]
+        {
+            root.discussion_status.first_frame = root.selected_discussion_snapshot(cx);
+        }
         root.subscribe_notices(window, cx);
         cx.observe_global::<crate::settings_command::SettingsCommandRoute>(|_, cx| cx.notify())
             .detach();
@@ -414,6 +443,7 @@ impl Render for MainWindowShellRoot {
         let forward = thread_navigation::render(self, true, cx);
         let switcher_picker = thread_switcher::render_picker(self, window);
         let status = status_controls::render_strip(self, cx);
+        let discussion_status = discussion_status::render(self, cx);
         let stop_menu = status_controls::render_menu(self, window, cx);
         let model_menu = model_controls::render_menu(self, window, cx);
         let input_panel = composer.map(|composer| {
@@ -484,6 +514,7 @@ impl Render for MainWindowShellRoot {
                             .child(self.running_threads.transcript.clone()),
                     )
                     .children(activity)
+                    .children(discussion_status)
                     .children(input_panel),
             )
             .child(status)

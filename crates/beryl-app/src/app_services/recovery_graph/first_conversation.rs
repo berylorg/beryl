@@ -11,7 +11,7 @@ impl PreparedRecoveryServiceGraph {
         facts: &FirstConversationFacts,
         cancellation: &CommandCancellation,
     ) -> Result<bool, String> {
-        let (candidate, _) = self
+        let (candidate, cas) = self
             .services
             .as_mut()
             .expect("prepared services")
@@ -45,6 +45,10 @@ impl PreparedRecoveryServiceGraph {
                 facts.draft_id(),
                 MainWindowComposerMarkerMetadataAuthority::new(self.state.assets()),
             )?));
+            self.first_composer
+                .as_mut()
+                .unwrap()
+                .bind_discussion_presentation(cas.discussion_presentation_reader())?;
         }
         Ok(matches!(
             self.first_composer

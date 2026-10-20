@@ -209,6 +209,9 @@ pub(in crate::main_window) struct MainWindowConversationComposerPendingRealizerT
 }
 
 pub struct MainWindowConversationComposer {
+    discussion: Option<crate::discussion_presentation::DiscussionPresentationSnapshot>,
+    discussion_reader: Option<crate::discussion_presentation::DiscussionPresentationReader>,
+    discussion_fresh: bool,
     accepted_input_browse: Option<accepted_input_history::BrowseBookmark>,
     accepted_input_recall: Option<accepted_input_history::MountedAcceptedInputRecall>,
     accepted_input_history_feedback: Option<String>,

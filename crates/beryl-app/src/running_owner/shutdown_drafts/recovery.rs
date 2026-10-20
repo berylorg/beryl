@@ -9,6 +9,66 @@ pub(super) struct NoncommittedClaimProvenance {
     ticket: crate::main_window::MainWindowFailedResidentTicket,
 }
 
+pub(in crate::running_owner) struct PreparedRecoveredMountPublication<'a> {
+    drafts: &'a RunningShutdownDrafts,
+    snapshot: Option<crate::discussion_presentation::DiscussionPresentationSnapshot>,
+}
+
+impl PreparedRecoveredMountPublication<'_> {
+    pub(in crate::running_owner) fn snapshot(
+        &self,
+    ) -> Option<&crate::discussion_presentation::DiscussionPresentationSnapshot> {
+        self.snapshot.as_ref()
+    }
+
+    #[cfg(test)]
+    pub(in crate::running_owner) fn elect(
+        self,
+        app: &mut App,
+        settle: impl FnOnce(
+            Option<&beryl_home_store::HomeMutationObservation>,
+            Self,
+            &mut App,
+        ) -> Result<bool, String>,
+    ) -> Result<bool, String> {
+        let snapshot = self.snapshot.clone();
+        let observation = snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.home_observation());
+        if let Some(snapshot) = snapshot {
+            match snapshot.try_elect_local(|| settle(observation.as_ref(), self, app)) {
+                Ok(result) => result,
+                Err(
+                    crate::discussion_presentation::DiscussionPresentationError::Changed
+                    | crate::discussion_presentation::DiscussionPresentationError::Retired
+                    | crate::discussion_presentation::DiscussionPresentationError::Settlement(
+                        crate::discussion_settlement::DiscussionSettlementError::ConcurrentChange,
+                    ),
+                ) => Ok(false),
+                Err(error) => Err(error.to_string()),
+            }
+        } else {
+            settle(None, self, app)
+        }
+    }
+
+    pub(in crate::running_owner) fn apply(self, app: &mut App) {
+        for (window, draft) in &self.drafts.windows {
+            let draft = draft.as_ref().expect("validated recovered draft");
+            let released = window
+                .update(app, |root, _, cx| {
+                    root.release_prepared_interrupted_exit_mount(draft, cx)
+                })
+                .expect("prepared recovery window remains live during synchronous release")
+                .expect("prepared recovery binding remains ready during synchronous release");
+            assert!(
+                released,
+                "prepared recovered mount remains ready during release"
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 impl RunningProcessOwner {
     pub(crate) fn test_replace_recovery_drafts(
@@ -311,6 +371,7 @@ impl RunningShutdownDrafts {
         Ok(adopted)
     }
 
+    #[cfg(test)]
     pub(crate) fn release_recovered_mounts(
         &self,
         published: &crate::main_window::PublishedMainWindowRestoreSet,
@@ -320,6 +381,7 @@ impl RunningShutdownDrafts {
         self.release_recovered_mounts_after(published, appearance, app, || Ok(()))
     }
 
+    #[cfg(test)]
     pub(crate) fn release_recovered_mounts_after(
         &self,
         published: &crate::main_window::PublishedMainWindowRestoreSet,
@@ -327,19 +389,36 @@ impl RunningShutdownDrafts {
         app: &mut App,
         settle: impl FnOnce() -> Result<(), String>,
     ) -> Result<bool, String> {
-        if !self.release_recovered_drafts(published, appearance, app)? {
+        let Some(prepared) =
+            self.prepare_recovered_mount_publication(published, appearance, app)?
+        else {
             return Ok(false);
-        }
-        let target = appearance.read(app).target();
-        self.release_prepared_recovered_mounts_after(&target, app, settle)
+        };
+        prepared.elect(app, |_, publication, app| {
+            settle()?;
+            publication.apply(app);
+            Ok(true)
+        })
     }
 
-    fn release_prepared_recovered_mounts_after(
-        &self,
+    pub(in crate::running_owner) fn prepare_recovered_mount_publication<'a>(
+        &'a self,
+        published: &crate::main_window::PublishedMainWindowRestoreSet,
+        appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+        app: &mut App,
+    ) -> Result<Option<PreparedRecoveredMountPublication<'a>>, String> {
+        if !self.release_recovered_drafts(published, appearance, app)? {
+            return Ok(None);
+        }
+        let target = appearance.read(app).target();
+        self.prepare_recovered_mount_publication_for_target(&target, app)
+    }
+
+    fn prepare_recovered_mount_publication_for_target<'a>(
+        &'a self,
         target: &Arc<crate::theme_runtime::GpuiAppearancePublicationTarget>,
         app: &mut App,
-        settle: impl FnOnce() -> Result<(), String>,
-    ) -> Result<bool, String> {
+    ) -> Result<Option<PreparedRecoveredMountPublication<'a>>, String> {
         for (window, draft) in &self.windows {
             let draft = draft.as_ref().map_err(Clone::clone)?;
             if !window
@@ -348,25 +427,41 @@ impl RunningShutdownDrafts {
                 })
                 .map_err(|error| error.to_string())??
             {
-                return Ok(false);
+                return Ok(None);
             }
         }
-        // Settlement cannot reenter GUI state or invalidate the prepared bindings.
-        settle()?;
+        let mut snapshot = None;
         for (window, draft) in &self.windows {
             let draft = draft.as_ref().expect("validated recovered draft");
-            let released = window
-                .update(app, |root, _, cx| {
-                    root.release_interrupted_exit_mount(draft, target, cx)
-                })
-                .expect("prepared recovery window remains live during synchronous release")
-                .expect("prepared recovery binding remains current during synchronous release");
-            assert!(
-                released,
-                "prepared recovered mount remains ready during release"
-            );
+            let selected = window
+                .read(app)
+                .map_err(|error| error.to_string())?
+                .prepared_discussion_publication(draft, app)?;
+            if let Some(selected) = selected {
+                if !selected.current()
+                    || snapshot.as_ref().is_some_and(
+                        |prior: &crate::discussion_presentation::DiscussionPresentationSnapshot| {
+                            !prior.same_fence(&selected)
+                        },
+                    )
+                {
+                    return Ok(None);
+                }
+                if snapshot.is_none() {
+                    snapshot = Some(selected);
+                }
+            }
         }
-        Ok(true)
+        if snapshot
+            .as_ref()
+            .is_some_and(|snapshot| !snapshot.current())
+        {
+            return Ok(None);
+        }
+        Ok(Some(PreparedRecoveredMountPublication {
+            drafts: self,
+            snapshot,
+        }))
     }
 
     #[cfg(test)]
@@ -376,7 +471,15 @@ impl RunningShutdownDrafts {
         app: &mut App,
         settle: impl FnOnce() -> Result<(), String>,
     ) -> Result<bool, String> {
-        self.release_prepared_recovered_mounts_after(target, app, settle)
+        let Some(prepared) = self.prepare_recovered_mount_publication_for_target(target, app)?
+        else {
+            return Ok(false);
+        };
+        prepared.elect(app, |_, publication, app| {
+            settle()?;
+            publication.apply(app);
+            Ok(true)
+        })
     }
 
     pub(in crate::running_owner) fn release_recovered_drafts(

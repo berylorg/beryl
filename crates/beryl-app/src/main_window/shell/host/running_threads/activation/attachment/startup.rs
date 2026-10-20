@@ -160,6 +160,7 @@ impl MainWindowShellRoot {
                 marker_seals,
                 provider,
                 transcript: None,
+                discussion: None,
                 request,
                 transcript_cancel: AtomicBool::new(false),
                 cancellation: self.running_threads.activation_cancel.clone(),

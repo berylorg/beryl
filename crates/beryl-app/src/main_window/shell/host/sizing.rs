@@ -25,6 +25,7 @@ pub(in crate::main_window) struct ShellMetrics {
     pub settings_width: gpui::Pixels,
     pub turn_width: gpui::Pixels,
     pub lineage: bool,
+    pub discussion: bool,
     pub activity: bool,
     pub activity_width: gpui::Pixels,
     pub new_window: bool,
@@ -35,6 +36,7 @@ impl ShellMetrics {
         generation: &AppearanceGeneration,
         panel: gpui::Size<gpui::Pixels>,
         lineage: bool,
+        discussion: bool,
         new_window: bool,
         app: &App,
     ) -> Result<Self, String> {
@@ -77,6 +79,7 @@ impl ShellMetrics {
             settings_width: button("Settings")?,
             turn_width: width("M", "status.line.value", 12., 400.)? + px(20.),
             lineage,
+            discussion,
             activity: false,
             activity_width: px(0.),
             new_window,
@@ -89,6 +92,11 @@ impl ShellMetrics {
 
     pub(in crate::main_window) fn pinned_height(&self) -> gpui::Pixels {
         px(TOOLBAR_HEIGHT + status_controls::STATUS_STRIP_HEIGHT_PX)
+            + if self.discussion {
+                px(discussion_status::HEIGHT)
+            } else {
+                px(0.)
+            }
             + if self.lineage {
                 px(crate::thread_lineage::THREAD_LINEAGE_HEIGHT_PX)
             } else {
@@ -279,6 +287,8 @@ impl MainWindowShellRoot {
             generation,
             panel,
             lineage,
+            self.selected_discussion_snapshot(app)
+                .is_some_and(|snapshot| snapshot.status().is_some()),
             self.creation.is_some() || self.controller.as_ref().is_some_and(|c| c.is_threadless()),
             app,
         )?;

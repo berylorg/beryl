@@ -211,6 +211,7 @@ impl MainWindowConversationComposerService {
             crate::main_window::MainWindowConversationComposer::prepare_pending_activation(
                 self, receipt,
             )?;
+        self.prepare_discussion_presentation(selection)?;
         Ok(MainWindowComposerClaimPreparedPresentation {
             service: Arc::clone(self),
             receipt,

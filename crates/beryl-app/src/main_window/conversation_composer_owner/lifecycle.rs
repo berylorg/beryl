@@ -332,7 +332,7 @@ impl MainWindowConversationComposer {
         self.route = MainWindowConversationComposerRoute::Selected;
         self.sync_mutation_gate(cx);
         self.input.update(cx, |input, input_cx| {
-            input.set_enabled(!self.startup_interaction_gated, input_cx);
+            input.set_enabled(!self.startup_interaction_gated && self.discussion.as_ref().is_none_or(|snapshot| snapshot.composer() != crate::discussion_presentation::DiscussionComposerContribution::Inert), input_cx);
         });
         self.install_input_event_subscription(window, cx);
         self.schedule_pump(window, cx);
@@ -709,9 +709,7 @@ impl MainWindowConversationComposer {
         }
         self.phase = MainWindowConversationComposerPhase::Live;
         self.release_fence_requires_restoration = false;
-        self.input.update(cx, |input, input_cx| {
-            input.set_enabled(!self.startup_interaction_gated, input_cx)
-        });
+        self.sync_mutation_gate(cx);
         self.schedule_pump(window, cx);
         Ok(())
     }

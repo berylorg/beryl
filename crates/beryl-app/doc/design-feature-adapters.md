@@ -20,6 +20,9 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   durable-job commands, and structured tool outcomes. Workers receive no GPUI, store, repository,
   or window handles, and the adapter invents no resolve, archive, parent, retry, or replacement
   authority.
+- Selected discussion status/composer observation and the explicit retry presentation adapter
+  are owned by [Discussion presentation](design-discussion-presentation.md); the admission and
+  settlement boundaries below remain its command and original-outcome authorities.
 - Image adapters bind bounded GPUI atoms and preparation results to exact draft, marker, asset, and
   presentation revisions. They do not become byte, sidecar, reference, label, decode, or recovery
   authority. Visible behavior is in the

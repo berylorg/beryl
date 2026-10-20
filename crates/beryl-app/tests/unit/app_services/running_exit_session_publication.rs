@@ -825,6 +825,7 @@ fn run_with_windows(
                     let invoking = running.windows.window_ids()[0];
                     let window = running.windows.shells()[0].window();
                     let owner = RunningProcessOwner::test_start_unmounted(running, app);
+                    RunningProcessOwner::test_mount_selected_status_observation(&owner, app).unwrap();
                     let automatic_snapshot = if let RecoveryPublicationDelivery::Automatic(scenario) = publication_delivery {
                         Some((automatic_recovery::capture(&owner, app), scenario))
                     } else {

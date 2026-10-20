@@ -55,6 +55,7 @@ impl RunningProcessOwner {
             .release_recovered_drafts(&self.process.windows, appearance, app)
     }
 
+    #[cfg(test)]
     pub(crate) fn release_interrupted_exit_mounts(
         &self,
         request: &impl RecoveryIdentity,

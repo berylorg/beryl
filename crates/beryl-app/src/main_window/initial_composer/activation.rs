@@ -313,6 +313,14 @@ impl InitialComposerCandidate {
         }
         self.preparation_started = true;
         let service = self.prepare_selection_service(window_id)?;
+        if let Some(reader) = &self.discussion_presentation {
+            service.bind_discussion_presentation(reader.clone())?;
+            service.prepare_discussion_presentation(
+                service
+                    .selected_identity()
+                    .ok_or("discussion selection is missing")?,
+            )?;
+        }
         let prepared =
             MainWindowConversationComposerMount::prepare_selected(service, configurator)?;
         validate_source()?;

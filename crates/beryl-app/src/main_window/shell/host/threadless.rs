@@ -97,6 +97,7 @@ impl GpuiMainWindowShellHost<'_> {
             &prepared.appearance.generation,
             gpui::size(px(0.), px(0.)),
             false,
+            false,
             true,
             self.app,
         ) {

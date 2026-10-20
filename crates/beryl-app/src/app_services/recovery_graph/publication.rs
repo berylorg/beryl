@@ -105,10 +105,24 @@ impl ProcessServiceOwner {
         Ok(start)
     }
 
+    #[cfg(test)]
     pub(crate) fn reopen_recovery_admission(
         &mut self,
         generation: HomeGeneration,
     ) -> Result<(), String> {
+        if self.reopen_recovery_admission_observed(generation, None, || ())? {
+            Ok(())
+        } else {
+            Err("Recovery publication observation is busy or stale".into())
+        }
+    }
+
+    pub(crate) fn reopen_recovery_admission_observed(
+        &mut self,
+        generation: HomeGeneration,
+        snapshot: Option<&crate::discussion_presentation::DiscussionPresentationSnapshot>,
+        apply: impl FnOnce(),
+    ) -> Result<bool, String> {
         let InitialServiceAttemptState::Published(Some(fence)) = &self.attempt else {
             return Err("Published recovery admission fence is unavailable".into());
         };
@@ -119,8 +133,13 @@ impl ProcessServiceOwner {
         if graph.home().health().generation() != Some(generation) {
             return Err("Published recovery generation changed".into());
         }
-        for source in &self.failed_claims {
-            source.operation.exclusion()?.validate_owner()?;
+        let exclusions = self
+            .failed_claims
+            .iter()
+            .map(|source| source.operation.exclusion())
+            .collect::<Result<Vec<_>, String>>()?;
+        for (source, exclusion) in self.failed_claims.iter().zip(&exclusions) {
+            exclusion.validate_owner()?;
             if source.committed {
                 source
                     .retirement
@@ -129,32 +148,57 @@ impl ProcessServiceOwner {
                     .validate_complete_retirement()?;
             }
         }
-        if self.failed_claims.is_empty() {
-            graph
-                .cas()
-                .try_reopen_shutdown_admission(fence)
-                .map_err(|error| error.to_string())?;
+        let observation = snapshot.map(|snapshot| snapshot.home_observation());
+        let publish = || {
+            graph.cas().try_reopen_shutdown_admission_observed_with(
+                fence,
+                observation.as_ref(),
+                || {
+                    exclusions
+                        .iter()
+                        .map(|exclusion| exclusion.try_prepare_coherent_release())
+                        .collect::<Result<Vec<_>, _>>()
+                },
+                |releases| {
+                    for release in releases {
+                        release.apply();
+                    }
+                    apply();
+                },
+            )
+        };
+        let result = if let Some(snapshot) = snapshot {
+            match snapshot.try_elect_local(publish) {
+                Ok(result) => result,
+                Err(
+                    crate::discussion_presentation::DiscussionPresentationError::Changed
+                    | crate::discussion_presentation::DiscussionPresentationError::Retired
+                    | crate::discussion_presentation::DiscussionPresentationError::Settlement(
+                        crate::discussion_settlement::DiscussionSettlementError::ConcurrentChange,
+                    ),
+                ) => return Ok(false),
+                Err(error) => return Err(error.to_string()),
+            }
         } else {
-            graph
-                .cas()
-                .try_reopen_shutdown_admission_with(
-                    fence,
-                    || {
-                        self.failed_claims
-                            .iter()
-                            .map(|source| source.operation.exclusion()?.prepare_coherent_release())
-                            .collect::<Result<Vec<_>, String>>()
-                    },
-                    |releases| {
-                        for release in releases {
-                            release.apply();
-                        }
-                    },
-                )
-                .map_err(|error| error.to_string())??;
+            publish()
+        };
+        match result {
+            Ok(Ok(())) => {}
+            Ok(Err(
+                crate::window_acquisition::RetiredSelectionReleaseError::Busy
+                | crate::window_acquisition::RetiredSelectionReleaseError::Changed,
+            )) => return Ok(false),
+            Ok(Err(error)) => return Err(error.to_string()),
+            Err(error) => {
+                if error.is_waiting() {
+                    return Ok(false);
+                }
+                return Err(error.to_string());
+            }
         }
+        drop(exclusions);
         self.attempt = InitialServiceAttemptState::Published(None);
         self.failed_claims.clear();
-        Ok(())
+        Ok(true)
     }
 }

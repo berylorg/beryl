@@ -213,7 +213,10 @@ impl MainWindowRestoreSet {
             match self.prepare_step() {
                 Ok(PreparationStep::Continue) => {}
                 Ok(PreparationStep::Pending) => return self.pending(),
-                Ok(PreparationStep::Complete) => match self.revalidate_complete() {
+                Ok(PreparationStep::Complete) => match self
+                    .refresh_discussion_preparations()
+                    .and_then(|()| self.revalidate_complete())
+                {
                     Ok(()) => {
                         return MainWindowRestoreSetOutcome::Prepared(
                             PreparedMainWindowRestoreSet { owner: self },
@@ -232,6 +235,21 @@ impl MainWindowRestoreSet {
         self.disposing = true;
         self.cancellation.cancel();
         self.remaining.clear();
+    }
+
+    fn refresh_discussion_preparations(&mut self) -> Result<(), String> {
+        for member in &mut self.members {
+            match member {
+                PreparedRestoreSetMember::Restored(prepared) => {
+                    prepared.refresh_discussion_preparation()?
+                }
+                PreparedRestoreSetMember::Replacement(prepared) => {
+                    prepared.refresh_discussion_preparation()?
+                }
+                PreparedRestoreSetMember::Threadless(_) => {}
+            }
+        }
+        Ok(())
     }
 
     fn revalidate_complete(&self) -> Result<(), String> {

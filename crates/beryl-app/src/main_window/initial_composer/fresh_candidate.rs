@@ -33,6 +33,16 @@ enum FreshComposerKind {
 }
 
 impl MainWindowFreshComposerPreparation {
+    pub fn bind_discussion_presentation(
+        &mut self,
+        reader: crate::discussion_presentation::DiscussionPresentationReader,
+    ) -> Result<(), String> {
+        if self.candidate.preparation_started {
+            return Err("fresh discussion preparation already started".into());
+        }
+        self.candidate.discussion_presentation = Some(reader);
+        Ok(())
+    }
     pub fn new(
         candidate: &mut HomeRecoveryCandidate,
         state: &BerylState,
@@ -182,6 +192,16 @@ impl MainWindowFreshComposerPreparation {
         {
             return Err("fresh recovery editor is not ready for graph publication".into());
         }
+        let service = self.candidate.service.as_ref().unwrap();
+        let access = candidate
+            .recovery_access()
+            .map_err(|error| error.to_string())?;
+        service.prepare_discussion_presentation_candidate(
+            &access,
+            service
+                .selected_identity()
+                .ok_or("fresh discussion selection is missing")?,
+        )?;
         Ok(())
     }
 
@@ -374,7 +394,20 @@ impl MainWindowFreshComposerPreparation {
         Ok(MainWindowInitialComposerProgress::Activated)
     }
 
-    fn build_service(&mut self, candidate: &HomeRecoveryCandidate) -> Result<(), String> {
+    fn build_service(&mut self, candidate: &mut HomeRecoveryCandidate) -> Result<(), String> {
+        let discussion = self
+            .candidate
+            .discussion_presentation
+            .as_ref()
+            .map(|reader| {
+                let access = candidate
+                    .recovery_access()
+                    .map_err(|error| error.to_string())?;
+                reader
+                    .observe_candidate(&access, self.candidate.claim.thread_id())
+                    .map_err(|error| error.to_string())
+            })
+            .transpose()?;
         let owner = &mut self.candidate;
         let slot = match MainWindowComposerSlot::new_fresh_candidate(
             self.window.window_id(),
@@ -390,10 +423,10 @@ impl MainWindowFreshComposerPreparation {
                 return Err(error);
             }
         };
-        owner.service = Some(Arc::new(MainWindowConversationComposerService::new(
-            candidate.service_reference(),
-            slot,
-        )));
+        let mut service =
+            MainWindowConversationComposerService::new(candidate.service_reference(), slot);
+        service.install_recovered_discussion(owner.discussion_presentation.clone(), discussion);
+        owner.service = Some(Arc::new(service));
         Ok(())
     }
 

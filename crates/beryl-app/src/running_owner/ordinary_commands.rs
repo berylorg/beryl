@@ -114,6 +114,37 @@ impl RunningProcessOwner {
             .map(|owner| owner.0.clone())
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_mount_selected_status_observation(
+        owner: &Rc<RefCell<Self>>,
+        app: &mut App,
+    ) -> Result<(), String> {
+        let (worker, windows) = {
+            let retained = owner.borrow();
+            (
+                retained
+                    .status_stop_worker()
+                    .ok_or("selected status worker is unavailable")?,
+                retained
+                    .process
+                    .windows
+                    .shells()
+                    .iter()
+                    .map(|shell| shell.window())
+                    .collect::<Vec<_>>(),
+            )
+        };
+        app.set_global(MountedRunningOwner(Rc::downgrade(owner)));
+        for handle in windows {
+            handle
+                .update(app, |root, window, cx| {
+                    root.mount_exact_status_worker(worker.clone(), window, cx);
+                })
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn created_window_publication_waits_for_settings(
         &self,
         home: beryl_model::BerylHomeId,

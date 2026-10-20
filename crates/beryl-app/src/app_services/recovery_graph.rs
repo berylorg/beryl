@@ -131,6 +131,9 @@ impl ProcessServiceOwner {
             BerylState::reacquire_candidate(retained).map_err(|error| reject(error.to_string()))?;
         let syndic = SyndicStorage::reacquire_candidate(retained)
             .map_err(|error| reject(error.to_string()))?;
+        self.settlements
+            .qualify_recovered_originals(retained, &state, &syndic)
+            .map_err(|error| reject(error.to_string()))?;
         let settings = crate::settings_service::PreparedSettingsService::prepare_candidate(
             &retained
                 .recovery_access()

@@ -206,6 +206,7 @@ struct ActivationSource {
     marker_seals: crate::composer_marker_seal::DraftMarkerSealService,
     provider: Option<TranscriptProviderReader>,
     transcript: Option<PreparedTranscriptAttachment>,
+    discussion: Option<crate::discussion_presentation::DiscussionPresentationSnapshot>,
     request: TranscriptAttachmentRequest,
     transcript_cancel: AtomicBool,
     cancellation: beryl_home_store::CommandCancellation,

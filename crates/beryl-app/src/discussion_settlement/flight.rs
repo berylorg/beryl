@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     num::NonZeroUsize,
     sync::{Arc, Mutex, Weak},
     task::Waker,
@@ -14,12 +14,12 @@ use beryl_model::JobId;
 #[derive(Clone)]
 pub struct DiscussionSettlementOperations {
     process: ProcessAdmissionGate,
-    flights: Arc<Flights>,
-    retained: Arc<RetainedAudits>,
+    pub(super) flights: Arc<Flights>,
+    pub(super) retained: Arc<RetainedAudits>,
 }
 
 pub(super) struct RetainedAudits {
-    audits: Mutex<HashMap<JobId, DiscussionSettlementAudit>>,
+    pub(super) audits: Mutex<HashMap<JobId, DiscussionSettlementAudit>>,
     nondispatch: Mutex<HashMap<JobId, Arc<RetainedNondispatch>>>,
 }
 impl RetainedAudits {
@@ -51,15 +51,21 @@ impl RetainedAudits {
     }
 }
 
-struct Flights {
+pub(super) struct Flights {
     maximum: NonZeroUsize,
-    active: Mutex<ActiveFlights>,
+    pub(super) active: Mutex<ActiveFlights>,
+    pub(super) presentation: Arc<super::presentation::LocalBoundary>,
 }
-struct ActiveFlights {
-    jobs: HashSet<JobId>,
+pub(super) struct ActiveFlights {
+    pub(super) jobs: HashMap<JobId, ActiveAttempt>,
     dispatch_wake: Option<Waker>,
     coordinator_wake: Option<Waker>,
     dispatch_waiting: bool,
+}
+
+pub(super) struct ActiveAttempt {
+    pub(super) child: Option<beryl_model::SyndicThreadId>,
+    pub(super) audit: Option<Weak<super::Attempt>>,
 }
 
 impl DiscussionSettlementOperations {
@@ -75,8 +81,9 @@ impl DiscussionSettlementOperations {
             }),
             flights: Arc::new(Flights {
                 maximum,
+                presentation: Arc::new(super::presentation::LocalBoundary::new()),
                 active: Mutex::new(ActiveFlights {
-                    jobs: HashSet::new(),
+                    jobs: HashMap::new(),
                     dispatch_wake: None,
                     coordinator_wake: None,
                     dispatch_waiting: false,
@@ -117,12 +124,35 @@ impl DiscussionSettlementOperations {
     }
 
     pub(super) fn acquire(&self, job_id: JobId) -> Result<Flight, DiscussionSettlementError> {
+        self.acquire_selected(job_id, None)
+    }
+
+    pub(super) fn acquire_selected(
+        &self,
+        job_id: JobId,
+        child: Option<beryl_model::SyndicThreadId>,
+    ) -> Result<Flight, DiscussionSettlementError> {
+        let revision = if let Some(child) = child {
+            let revision = self.flights.presentation.revision()?;
+            if self.presentation_fact(child)?.is_some_and(|fact| {
+                matches!(
+                    fact.disposition,
+                    super::presentation::LocalDisposition::Collision
+                        | super::presentation::LocalDisposition::Pending
+                )
+            }) {
+                return Err(DiscussionSettlementError::OriginalAttemptUnavailable);
+            }
+            Some(revision)
+        } else {
+            None
+        };
         let mut active = self
             .flights
             .active
             .lock()
             .map_err(|_| DiscussionSettlementError::CustodyUnavailable)?;
-        if active.jobs.contains(&job_id) {
+        if active.jobs.contains_key(&job_id) {
             active.dispatch_waiting = true;
             return Err(DiscussionSettlementError::DuplicateIdentity);
         }
@@ -130,7 +160,16 @@ impl DiscussionSettlementOperations {
             active.dispatch_waiting = true;
             return Err(DiscussionSettlementError::Capacity);
         }
-        active.jobs.insert(job_id);
+        let insert = || {
+            active
+                .jobs
+                .insert(job_id, ActiveAttempt { child, audit: None })
+        };
+        if let Some(revision) = revision {
+            self.flights.presentation.mutate_at(revision, insert)?;
+        } else {
+            self.flights.presentation.mutate(insert);
+        }
         Ok(Flight {
             flights: Arc::clone(&self.flights),
             retained: Arc::downgrade(&self.retained),
@@ -187,7 +226,7 @@ impl DiscussionSettlementOperations {
 }
 
 pub(super) struct Flight {
-    flights: Arc<Flights>,
+    pub(super) flights: Arc<Flights>,
     retained: Weak<RetainedAudits>,
     job_id: JobId,
 }
@@ -232,11 +271,16 @@ impl Flight {
             .active
             .lock()
             .map_err(|_| DiscussionSettlementError::CustodyUnavailable)?;
-        if active.jobs.contains(&job_id) {
+        if active.jobs.contains_key(&job_id) {
             return Err(DiscussionSettlementError::DuplicateIdentity);
         }
-        active.jobs.remove(&self.job_id);
-        active.jobs.insert(job_id);
+        self.flights.presentation.mutate(|| {
+            let slot = active
+                .jobs
+                .remove(&self.job_id)
+                .expect("owned active flight");
+            active.jobs.insert(job_id, slot);
+        });
         self.job_id = job_id;
         Ok(())
     }
@@ -250,7 +294,9 @@ impl Drop for Flight {
                 .active
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            active.jobs.remove(&self.job_id);
+            self.flights
+                .presentation
+                .mutate(|| active.jobs.remove(&self.job_id));
             if active.dispatch_waiting
                 && (active.dispatch_wake.is_some() || active.coordinator_wake.is_some())
             {

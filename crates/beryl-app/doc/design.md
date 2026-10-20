@@ -61,8 +61,10 @@ bindings; diagnostic commands do not gain authority to bypass ordinary lifecycle
   observation and seal routing, bounded capture publication, audit, and repair adaptation.
 - [Feature adapters](design-feature-adapters.md) is normative for package-local GUI, tool, audio,
   settings, theme, transcript, image, discussion, diagnostics, and status adapters.
+- [Discussion presentation](design-discussion-presentation.md) is normative for selected discussion
+  status/composer observation, first-frame/recovery publication and the exact retry adapter.
 
-These six supplements are part of this package design. Each is authoritative only for its stated
+These supplements are part of this package design. Each is authoritative only for its stated
 beryl-app role and cannot redefine feature-visible behavior, system policy, or a dependency's
 internal contract.
 

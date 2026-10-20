@@ -38,6 +38,16 @@ pub(crate) struct PreparedRetiredWindowSelectionRelease<'a> {
     registry: std::sync::MutexGuard<'a, AcquisitionFlights>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+pub(crate) enum RetiredSelectionReleaseError {
+    #[error("retained selection registry is busy")]
+    Busy,
+    #[error("retained selection exclusion membership changed")]
+    Changed,
+    #[error("retained selection registry is unavailable")]
+    Unavailable,
+}
+
 impl PreparedRetiredWindowSelectionRelease<'_> {
     pub(crate) fn apply(mut self) {
         self.registry.selection_owner = None;
@@ -243,14 +253,15 @@ impl RetiredWindowSelectionLease {
         }
         Ok(())
     }
-    pub(crate) fn prepare_coherent_release(
+    pub(crate) fn try_prepare_coherent_release(
         &self,
-    ) -> Result<PreparedRetiredWindowSelectionRelease<'_>, String> {
-        let registry = self
-            .registry
-            .try_lock()
-            .map_err(|_| "retained selection registry is busy")?;
-        self.validate_registry(&registry)?;
+    ) -> Result<PreparedRetiredWindowSelectionRelease<'_>, RetiredSelectionReleaseError> {
+        let registry = self.registry.try_lock().map_err(|error| match error {
+            std::sync::TryLockError::WouldBlock => RetiredSelectionReleaseError::Busy,
+            std::sync::TryLockError::Poisoned(_) => RetiredSelectionReleaseError::Unavailable,
+        })?;
+        self.validate_registry(&registry)
+            .map_err(|_| RetiredSelectionReleaseError::Changed)?;
         Ok(PreparedRetiredWindowSelectionRelease { registry })
     }
     pub(crate) fn release(self) -> Result<(), (Self, String)> {

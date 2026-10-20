@@ -38,6 +38,7 @@ impl DiscussionSettlementAudit {
             .disposition
             .lock()
             .map_err(|_| DiscussionSettlementError::CustodyUnavailable)?;
+        let prior_disposition = std::mem::discriminant(&*disposition);
         if access.home_id() != self.0.home_id {
             return Err(DiscussionSettlementError::ForeignHome);
         }
@@ -51,13 +52,13 @@ impl DiscussionSettlementAudit {
         if let Disposition::Indeterminate(handle) = &*disposition {
             match (natural, access.reconcile(handle)?) {
                 (HandoffJobTransitionStatus::ExactOld, ReconciliationResolution::ExactOld) => {
-                    *disposition = Disposition::NotCommitted
+                    self.mutate(|| *disposition = Disposition::NotCommitted)
                 }
                 (
                     HandoffJobTransitionStatus::ExactNew,
                     ReconciliationResolution::ExactNew { .. },
-                ) => *disposition = Disposition::Committed,
-                _ => *disposition = Disposition::Collision,
+                ) => self.mutate(|| *disposition = Disposition::Committed),
+                _ => self.mutate(|| *disposition = Disposition::Collision),
             }
         }
         let outcome = match (&*disposition, natural) {
@@ -69,12 +70,29 @@ impl DiscussionSettlementAudit {
             }
             _ => DiscussionSettlementAuditOutcome::Collision,
         };
+        if matches!(outcome, DiscussionSettlementAuditOutcome::Collision) {
+            if !matches!(*disposition, Disposition::Collision) {
+                self.mutate(|| *disposition = Disposition::Collision);
+            }
+            let custody = self.0._flight.custody()?;
+            self.0._flight.retain(&custody, self.clone());
+        }
         if matches!(
             outcome,
             DiscussionSettlementAuditOutcome::NotCommitted
                 | DiscussionSettlementAuditOutcome::Settled(_)
-        ) {
+        ) && self.original_allows_release()?
+        {
             self.0._flight.release_retained();
+        }
+        if prior_disposition != std::mem::discriminant(&*disposition)
+            && matches!(
+                outcome,
+                DiscussionSettlementAuditOutcome::Settled(DiscussionSettlementResult::RetryResumed)
+            )
+            && self.original_allows_release()?
+        {
+            self.0._flight.wake_dispatch();
         }
         if matches!(
             outcome,

@@ -26,6 +26,7 @@ mod nondispatch;
 pub use nondispatch::DiscussionParentNondispatch;
 pub(crate) use nondispatch::DiscussionPreparationFailure;
 mod prepare;
+pub(crate) mod presentation;
 mod recovery;
 mod reservation;
 mod retained_nondispatch;
@@ -69,6 +70,8 @@ pub enum DiscussionSettlementError {
     Capacity,
     #[error("another operation retains this handoff job")]
     DuplicateIdentity,
+    #[error("the selected discussion retains an unresolved original handoff attempt")]
+    OriginalAttemptUnavailable,
     #[error("discussion settlement custody is unavailable")]
     CustodyUnavailable,
     #[error("discussion settlement names another home")]
@@ -103,6 +106,7 @@ struct Attempt {
     syndic: Option<SyndicSettlementIntent>,
     result: DiscussionSettlementResult,
     disposition: Mutex<Disposition>,
+    retry_original: Mutex<Option<Arc<presentation::RetryOriginal>>>,
     _flight: Arc<Flight>,
 }
 enum JobWitness {
@@ -212,7 +216,8 @@ impl PreparedDiscussionSettlement<'_> {
             };
             match outcome {
                 CommandOutcome::NotCommitted { evidence } => {
-                    *disposition = Disposition::NotCommitted;
+                    self.audit
+                        .mutate(|| *disposition = Disposition::NotCommitted);
                     DiscussionSettlementOutcome::NotCommitted {
                         evidence: evidence.into(),
                     }
@@ -222,7 +227,7 @@ impl PreparedDiscussionSettlement<'_> {
                     later_failure,
                     local_finalization,
                 } => {
-                    *disposition = Disposition::Committed;
+                    self.audit.mutate(|| *disposition = Disposition::Committed);
                     if matches!(
                         self.audit.0.result,
                         DiscussionSettlementResult::ParentRetryable { .. }
@@ -240,7 +245,9 @@ impl PreparedDiscussionSettlement<'_> {
                     failure,
                     reconciliation,
                 } => {
-                    *disposition = Disposition::Indeterminate(reconciliation.install_and_handle());
+                    let handle = reconciliation.install_and_handle();
+                    self.audit
+                        .mutate(|| *disposition = Disposition::Indeterminate(handle));
                     self.audit.0._flight.retain(&custody, self.audit.clone());
                     DiscussionSettlementOutcome::Indeterminate {
                         failure,
@@ -256,7 +263,8 @@ impl PreparedDiscussionSettlement<'_> {
         let outcome = match outcome {
             Ok(outcome) => outcome,
             Err(error) => {
-                *disposition = Disposition::NotCommitted;
+                self.audit
+                    .mutate(|| *disposition = Disposition::NotCommitted);
                 DiscussionSettlementOutcome::NotCommitted {
                     evidence: error.into(),
                 }
@@ -282,7 +290,7 @@ impl Drop for PreparedDiscussionSettlement<'_> {
     fn drop(&mut self) {
         if let Ok(mut state) = self.audit.0.disposition.lock() {
             if matches!(*state, Disposition::Prepared) {
-                *state = Disposition::NotCommitted;
+                self.audit.mutate(|| *state = Disposition::NotCommitted);
             }
         }
     }

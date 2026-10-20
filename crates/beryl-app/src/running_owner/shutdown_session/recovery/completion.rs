@@ -97,26 +97,31 @@ impl RunningProcessOwner {
                 };
                 #[cfg(not(test))]
                 let process = &mut owner.process;
-                drafts.release_recovered_mounts_after(&process.windows, &appearance, app, || {
-                    #[cfg(test)]
-                    if let Some(hook) = before_reopen.take() {
-                        hook(
-                            process
-                                .services
-                                .as_ref()
-                                .ok_or("Published recovery services are unavailable")?,
-                        );
-                    }
-                    process
-                        .services
-                        .as_mut()
-                        .ok_or("Published recovery services are unavailable")?
-                        .reopen_recovery_admission(generation)?;
-                    if let Some(creation) = &creation {
-                        creation.require_live_source()?;
-                    }
-                    Ok(())
-                })?
+                let Some(prepared) = drafts.prepare_recovered_mount_publication(
+                    &process.windows,
+                    &appearance,
+                    app,
+                )?
+                else {
+                    return Ok(false);
+                };
+                #[cfg(test)]
+                if let Some(hook) = before_reopen.take() {
+                    hook(
+                        process
+                            .services
+                            .as_ref()
+                            .ok_or("Published recovery services are unavailable")?,
+                    );
+                }
+                let snapshot = prepared.snapshot().cloned();
+                process
+                    .services
+                    .as_mut()
+                    .ok_or("Published recovery services are unavailable")?
+                    .reopen_recovery_admission_observed(generation, snapshot.as_ref(), || {
+                        prepared.apply(app)
+                    })?
             };
             if !released {
                 return Ok(false);

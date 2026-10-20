@@ -510,6 +510,7 @@ impl ProcessServiceOwner {
             marker_seals: graph.marker(),
             turn_start_requirement: graph.cas().config().turn_start_admission_requirement(),
             submission_execution: graph.cas().submission_execution_wake(),
+            discussion_presentation: Some(graph.cas().discussion_presentation_reader()),
             #[cfg(feature = "test-faults")]
             test_before_initial_advance: None,
         });

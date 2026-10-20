@@ -94,6 +94,7 @@ fn exercise(
     limits: DraftMarkerAdmissionLimitsV1,
     kind: MainWindowComposerMutationFeedbackKind,
 ) {
+    let started = std::time::Instant::now();
     let (mounted, service) = configured_large_mount(
         cx,
         seed,
@@ -101,11 +102,19 @@ fn exercise(
     );
     let composer = composer(&mounted, cx);
     eprintln!(
+        "large refusal: mounted flags (enabled, surface, quiescent, error) {:?}",
+        support::editor_flags(&composer, cx)
+    );
+    eprintln!(
         "large refusal fixture: {}",
         mounted.fixture.directory.path().display()
     );
     prepare_editor(&mounted, &composer, cx);
-    eprintln!("large refusal: editor ready");
+    eprintln!("large refusal: editor ready at {:?}", started.elapsed());
+    eprintln!(
+        "large refusal: ready flags (enabled, surface, quiescent, error) {:?}",
+        support::editor_flags(&composer, cx)
+    );
     let asset = asset(&mounted, cx);
     request_marker(&mounted, &composer, asset, 1, cx);
     drive_until(cx, |_| {
@@ -119,7 +128,10 @@ fn exercise(
             == 1
     });
     let input = composer.read_with(cx, |composer, _| composer.gpui_input());
-    eprintln!("large refusal: existing marker committed");
+    eprintln!(
+        "large refusal: existing marker committed at {:?}",
+        started.elapsed()
+    );
     drive_until(cx, |cx| {
         input.read_with(cx, |input, _| input.is_surface_current_and_interactive())
     });
@@ -243,7 +255,10 @@ fn exercise(
             });
         }
         budgets(&input, cx);
-        eprintln!("large refusal: attempt {attempt} complete");
+        eprintln!(
+            "large refusal: attempt {attempt} complete at {:?}",
+            started.elapsed()
+        );
     }
     if matches!(
         kind,
@@ -332,4 +347,5 @@ fn exercise(
     assert!(weak_composer.upgrade().is_none());
     assert!(weak_input.upgrade().is_none());
     assert!(weak_service.upgrade().is_none());
+    eprintln!("large refusal: custody released at {:?}", started.elapsed());
 }

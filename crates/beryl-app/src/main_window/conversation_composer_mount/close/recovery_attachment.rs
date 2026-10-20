@@ -102,12 +102,22 @@ impl MainWindowConversationComposerMount {
         if !self.prepare_interrupted_exit_mount(ticket, cx)? {
             return Ok(false);
         }
-        let resident = self.contribution.as_ref().unwrap().clone();
-        if !resident.update(cx, |resident, cx| {
-            resident.release_interrupted_exit_resident(ticket, cx)
-        })? {
-            return Ok(false);
+        self.release_prepared_interrupted_exit_mount(ticket, cx)
+    }
+
+    pub(in crate::main_window) fn release_prepared_interrupted_exit_mount(
+        &mut self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, String> {
+        if self.prepared_recovery_publication != Some(ticket) {
+            return Err("recovered mount publication was not prepared".into());
         }
+        let resident = self.contribution.as_ref().unwrap().clone();
+        resident.update(cx, |resident, cx| {
+            resident.release_prepared_interrupted_exit_resident(ticket, cx)
+        });
+        self.prepared_recovery_publication = None;
         self.window_close = None;
         self.failed_recovery_close = None;
         self.failed_resident = None;
@@ -121,6 +131,7 @@ impl MainWindowConversationComposerMount {
         ticket: MainWindowConversationComposerCloseTicket,
         cx: &mut Context<Self>,
     ) -> Result<bool, String> {
+        self.prepared_recovery_publication = None;
         if self.window_close_released != Some(ticket) {
             return Err("recovered draft service close is not released".into());
         }
@@ -131,13 +142,52 @@ impl MainWindowConversationComposerMount {
             return Ok(false);
         }
         let resident = self.contribution.as_ref().unwrap().clone();
+        let owner = resident.read(cx);
+        if owner.discussion_presentation_reader().is_some()
+            && (!owner.discussion_presentation_fresh()
+                || owner
+                    .discussion_presentation()
+                    .is_none_or(|snapshot| !snapshot.current()))
+        {
+            return Ok(false);
+        }
         #[cfg(test)]
         if std::mem::take(&mut self.test_defer_recovered_mount) {
             return Ok(false);
         }
-        resident.update(cx, |resident, cx| {
+        let ready = resident.update(cx, |resident, cx| {
             resident.prepare_interrupted_exit_resident(ticket, cx)
-        })
+        })?;
+        if ready {
+            self.prepared_recovery_publication = Some(ticket);
+        }
+        Ok(ready)
+    }
+
+    pub(in crate::main_window) fn prepared_discussion_publication(
+        &self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        cx: &App,
+    ) -> Result<Option<crate::discussion_presentation::DiscussionPresentationSnapshot>, String>
+    {
+        if self.prepared_recovery_publication != Some(ticket) {
+            return Err("recovered mount publication was not prepared".into());
+        }
+        let resident = self
+            .contribution
+            .as_ref()
+            .ok_or("prepared recovery resident is missing")?
+            .read(cx);
+        if resident.discussion_presentation_reader().is_none() {
+            return Ok(None);
+        }
+        let snapshot = resident
+            .discussion_presentation()
+            .ok_or("prepared recovery discussion is missing")?;
+        if !resident.discussion_presentation_fresh() {
+            return Err("prepared recovery discussion is stale".into());
+        }
+        Ok(Some(snapshot.clone()))
     }
 
     #[cfg(test)]

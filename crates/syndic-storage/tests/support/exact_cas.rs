@@ -642,7 +642,7 @@ pub fn activate_turn_with_profile(
                 )
             }
         };
-    let basis = storage
+    let plan = storage
         .prepare_native_projection(
             store,
             &syndic_storage::NativeProjectionRequest::new(
@@ -653,8 +653,61 @@ pub fn activate_turn_with_profile(
             ),
             point_limit(),
         )
-        .unwrap()
-        .basis();
+        .unwrap();
+    let basis = plan.basis();
+    let selected = basis.selected_path();
+    let (lineage, native_turn_count) = if let Some(context) = basis.context() {
+        match &plan {
+            syndic_storage::NativeProjectionPlan::Fork {
+                native_turn_count, ..
+            } => {
+                let injection = context.needs_seed().then(|| {
+                    let projection = storage
+                        .prepare_native_context_seed(store, basis, Some(1_000_000))
+                        .unwrap();
+                    let pool = beryl_stream::PagePool::new(
+                        std::num::NonZeroUsize::new(65_536).unwrap(),
+                        std::num::NonZeroUsize::new(1).unwrap(),
+                    )
+                    .unwrap();
+                    let mut cursor = storage.open_recovery_cursor(store, projection).unwrap();
+                    let mut lease = pool.try_lease().unwrap();
+                    let mut bytes = 0u64;
+                    while let Some(page) = storage
+                        .read_recovery_cursor_page(store, &mut cursor, lease, 65_536)
+                        .unwrap()
+                    {
+                        assert_eq!(page.sequence_ordinal(), 1);
+                        assert_eq!(page.item_offset(), bytes);
+                        bytes = bytes.checked_add(page.text().len() as u64).unwrap();
+                        lease = page.into_page_lease();
+                    }
+                    assert_eq!(bytes, projection.utf8_bytes().get());
+                    syndic_storage::ContextInjectionObservation::new(
+                        projection.item_count(),
+                        projection.utf8_bytes(),
+                        projection.sequence_digest(),
+                        started_at,
+                    )
+                    .unwrap()
+                });
+                (
+                    context
+                        .complete_native(NativeCasLineage::Fork, loaded_generation(), injection)
+                        .unwrap(),
+                    *native_turn_count,
+                )
+            }
+            syndic_storage::NativeProjectionPlan::Current { source, .. }
+            | syndic_storage::NativeProjectionPlan::Resume { source, .. } => (
+                source.binding().lineage(),
+                source.binding().native_turn_count(),
+            ),
+            _ => panic!("exact-CAS context fixture requires a qualified native source: {plan:?}"),
+        }
+    } else {
+        (lineage, native_turn_count)
+    };
     require_committed(
         store.execute_current(storage.clone().current_publish_valid_binding(
             PublishValidBinding::from_native(

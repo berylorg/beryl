@@ -153,10 +153,13 @@ impl MainWindowCreation {
     #[inline(never)]
     fn prepare_activated_initial(
         &mut self,
-        initial: Box<MainWindowInitialComposer>,
+        mut initial: Box<MainWindowInitialComposer>,
         appearance: &Arc<crate::theme_runtime::AppearanceGeneration>,
     ) -> CreationStep {
         let mut configurator = (self.services.configurator_source)();
+        if let Some(reader) = &self.services.discussion_presentation {
+            initial.bind_discussion_presentation(reader.clone());
+        }
         let prepared = match initial.prepare_owned(&mut configurator) {
             Ok(prepared) => prepared,
             Err(failure) => {

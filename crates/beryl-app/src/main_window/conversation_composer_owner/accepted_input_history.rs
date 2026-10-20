@@ -296,10 +296,6 @@ impl MainWindowConversationComposer {
                             }
                         }
                         self.sync_mutation_gate(cx);
-                        if self.is_live() {
-                            self.input
-                                .update(cx, |input, cx| input.set_enabled(true, cx));
-                        }
                         cx.notify();
                         false
                     }

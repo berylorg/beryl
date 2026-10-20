@@ -257,6 +257,12 @@ pub struct RestoredWindowComposer {
 }
 
 impl RestoredWindowComposer {
+    pub(in crate::main_window) fn bind_discussion_presentation(
+        &mut self,
+        reader: crate::discussion_presentation::DiscussionPresentationReader,
+    ) {
+        self.candidate.discussion_presentation = Some(reader);
+    }
     pub(in crate::main_window) fn recovery_window(&self) -> &SessionWindowRecord {
         &self.source.window
     }

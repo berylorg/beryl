@@ -26,6 +26,7 @@ mod candidate_source;
 mod candidate_worker;
 mod claim_cleanup;
 mod claim_publication;
+mod discussion;
 mod thread_creation;
 pub(crate) use crate::main_window::composer_slot::{
     MainWindowCompletedThreadPredecessorDisposal, MainWindowCompletedThreadSuccessorCleanup,
@@ -356,6 +357,7 @@ impl Future for PendingCompletionTestGate {
 }
 
 pub struct MainWindowConversationComposerService {
+    discussion: Mutex<discussion::PreparedDiscussionPresentation>,
     private_clipboard_owner: Mutex<Option<super::MainWindowPrivateClipboardOwner>>,
     pub(super) store: Arc<HomeServiceReference>,
     pub(super) slot: Mutex<Box<MainWindowComposerSlot>>,
@@ -510,6 +512,7 @@ impl MainWindowConversationComposerService {
 
     fn from_boxed_slot(store: HomeServiceReference, slot: Box<MainWindowComposerSlot>) -> Self {
         Self {
+            discussion: Mutex::new(Default::default()),
             private_clipboard_owner: Mutex::new(None),
             store: Arc::new(store),
             slot: Mutex::new(slot),

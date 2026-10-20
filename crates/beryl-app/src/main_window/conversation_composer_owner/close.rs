@@ -10,12 +10,22 @@ impl MainWindowConversationComposer {
         if !self.prepare_interrupted_exit_resident(ticket, cx)? {
             return Ok(false);
         }
+        self.release_prepared_interrupted_exit_resident(ticket, cx);
+        Ok(true)
+    }
+
+    pub(in crate::main_window) fn release_prepared_interrupted_exit_resident(
+        &mut self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        cx: &mut Context<Self>,
+    ) {
+        assert_eq!(self.window_close, Some(ticket));
+        assert!(self.unpublished_recovery_protection.is_none());
         self.phase = MainWindowConversationComposerPhase::Live;
         self.window_close = None;
         self.failed_resident = None;
         self.sync_mutation_gate(cx);
         cx.notify();
-        Ok(true)
     }
 
     pub(in crate::main_window) fn prepare_interrupted_exit_resident(
@@ -47,10 +57,14 @@ impl MainWindowConversationComposer {
                 self.activation_seeds.clear();
             }
         }
+        let enabled = self.discussion.as_ref().is_none_or(|snapshot| {
+            snapshot.composer()
+                != crate::discussion_presentation::DiscussionComposerContribution::Inert
+        });
         self.input.update(cx, |input, cx| {
             input.set_read_only(true, cx);
-            input.set_enabled(true, cx);
-            if input.is_enabled() {
+            input.set_enabled(enabled, cx);
+            if input.is_enabled() == enabled {
                 Ok(())
             } else {
                 Err("recovered composer could not enable input".to_owned())

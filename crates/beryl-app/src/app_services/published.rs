@@ -201,6 +201,12 @@ impl PublishedAppServices {
     pub(crate) fn cas(&self) -> &ProjectionConnectionService {
         self.cas.as_ref().expect("published CAS")
     }
+
+    pub(crate) fn discussion_presentation_reader(
+        &self,
+    ) -> crate::discussion_presentation::DiscussionPresentationReader {
+        self.cas().discussion_presentation_reader()
+    }
     pub(crate) fn sessions(&self) -> &ScheduledExecutionSessions {
         &self.sessions
     }

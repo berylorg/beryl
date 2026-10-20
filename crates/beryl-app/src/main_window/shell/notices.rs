@@ -10,6 +10,7 @@ use gpui::Focusable;
 
 mod activity;
 mod composer;
+mod discussion;
 mod home_warning;
 mod lifecycle_attention;
 mod recovery;
@@ -145,6 +146,7 @@ impl MainWindowNoticeIngress {
 }
 
 pub(super) struct MainWindowShellNotices {
+    discussion: discussion::DiscussionNoticeContribution,
     arbiter: MainWindowNoticeArbiter,
     composer: composer::ComposerNoticeContribution,
     stop_feedback: stop_feedback::StopFeedbackNoticeContribution,
@@ -194,6 +196,7 @@ impl MainWindowShellNotices {
     ) -> Self {
         let appearance = controller.appearance().clone();
         Self {
+            discussion: Default::default(),
             arbiter: MainWindowNoticeArbiter::new(controller.window_id()),
             composer: composer::ComposerNoticeContribution::default(),
             stop_feedback: stop_feedback::StopFeedbackNoticeContribution::default(),
@@ -503,6 +506,7 @@ impl MainWindowShellRoot {
         }
         if self.notices.scope_current() {
             self.sync_composer_notice(cx);
+            self.sync_discussion_notice(cx);
             self.sync_stop_feedback_notice();
             self.sync_runtime_notice(cx);
         }

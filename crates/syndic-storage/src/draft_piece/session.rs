@@ -536,7 +536,7 @@ impl DomainMutation<SyndicDomain> for OpenSessionMutation {
             return Err(SyndicMutationError::IdentityCollision);
         }
         let selector_matches = selector_matches(reader, self.prepared.request)?;
-        crate::mutation::discussion_mutation::require_editable(
+        crate::mutation::discussion_mutation::qualify_editability(
             reader,
             self.prepared.request.selector().thread_id(),
         )?;

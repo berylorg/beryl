@@ -44,6 +44,7 @@ impl ProjectionConnectionService {
         permit.reopen_process_admission(fence, home, self.home_generation)
     }
 
+    #[cfg(test)]
     pub(crate) fn try_reopen_shutdown_admission_with<R, E>(
         &self,
         fence: &crate::process_admission::ProcessAdmissionFence,
@@ -59,6 +60,31 @@ impl ProjectionConnectionService {
             return Err(crate::process_admission::ProcessAdmissionReopenError::StaleHome);
         }
         permit.reopen_process_admission_with(fence, home, self.home_generation, prepare, apply)
+    }
+
+    pub(crate) fn try_reopen_shutdown_admission_observed_with<R, E>(
+        &self,
+        fence: &crate::process_admission::ProcessAdmissionFence,
+        observation: Option<&beryl_home_store::HomeMutationObservation>,
+        prepare: impl FnOnce() -> Result<R, E>,
+        apply: impl FnOnce(R),
+    ) -> Result<Result<(), E>, crate::process_admission::ProcessAdmissionReopenError> {
+        let permit = self.command_authorizer.authorize()?;
+        let home = self
+            .home
+            .as_deref()
+            .ok_or(LiveCommandAdmissionError::Closed)?;
+        if home.home_id() != self.home_id {
+            return Err(crate::process_admission::ProcessAdmissionReopenError::StaleHome);
+        }
+        permit.reopen_process_admission_observed_with(
+            fence,
+            home,
+            self.home_generation,
+            observation,
+            prepare,
+            apply,
+        )
     }
 
     pub fn lifecycle_yield_handler(

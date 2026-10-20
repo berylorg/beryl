@@ -16,6 +16,22 @@ pub struct Mounted {
     pub coordinator: Option<AppearanceCoordinator>,
 }
 
+pub fn editor_flags(
+    composer: &Entity<MainWindowConversationComposer>,
+    cx: &TestAppContext,
+) -> (bool, bool, bool, bool) {
+    composer.read_with(cx, |composer, app| {
+        let input = composer.gpui_input();
+        let input = input.read(app);
+        (
+            input.is_enabled(),
+            input.is_surface_current_and_interactive(),
+            input.is_semantically_quiescent(),
+            composer.last_error().is_some(),
+        )
+    })
+}
+
 pub fn mount(cx: &mut TestAppContext, seed: u8) -> Mounted {
     mount_with_preparation(cx, seed, move |fixture, services, appearance| {
         let mut initial = fixture.begin(seed.wrapping_add(1));
@@ -65,6 +81,7 @@ pub fn mount_with_preparation_timeout(
     + Send
     + 'static,
 ) -> Mounted {
+    let started = std::time::Instant::now();
     cx.update(gpui_text_input::ensure_text_input_bindings);
     let worker = home_support::worker(move || {
         let fixture = Fixture::new(seed);
@@ -88,7 +105,7 @@ pub fn mount_with_preparation_timeout(
         std::thread::sleep(std::time::Duration::from_millis(1));
     }
     let (fixture, services, mut coordinator, appearance, prepared) = worker.join().unwrap();
-    eprintln!("notice fixture: shell prepared");
+    eprintln!("notice fixture: shell prepared at {:?}", started.elapsed());
     let appearance_owner = cx.update(|app| {
         GpuiAppearanceWindowSet::new(appearance, NonZeroUsize::new(256).unwrap(), app)
     });
@@ -110,14 +127,25 @@ pub fn mount_with_preparation_timeout(
             GpuiMainWindowShellHost::new(app, appearance_owner.clone()).construct_hidden(prepared)
         })
         .unwrap_or_else(|_| panic!("source hidden shell"));
-    eprintln!("notice fixture: hidden shell constructed");
+    eprintln!(
+        "notice fixture: hidden shell constructed at {:?}",
+        started.elapsed()
+    );
     cx.update(|app| shell.attach_creation(owner.clone(), app));
     drive_until(cx, |cx| cx.update(|app| shell.ready_to_publish(app)));
-    eprintln!("notice fixture: ready to publish");
+    eprintln!(
+        "notice fixture: ready to publish at {:?}",
+        started.elapsed()
+    );
     cx.update(|app| shell.publish(app).unwrap());
+    eprintln!("notice fixture: published at {:?}", started.elapsed());
     let window = shell.window();
     cx.update(|app| shell.release_published_handle(app))
         .unwrap_or_else(|_| panic!("source published"));
+    eprintln!(
+        "notice fixture: published handle released at {:?}",
+        started.elapsed()
+    );
     Mounted {
         fixture,
         services,

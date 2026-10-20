@@ -34,6 +34,14 @@ pub(crate) enum CasPreparationError {
 }
 
 impl PreparedCasServices {
+    pub(crate) fn discussion_presentation_reader(
+        &self,
+    ) -> crate::discussion_presentation::DiscussionPresentationReader {
+        self.service
+            .as_ref()
+            .expect("prepared CAS custody")
+            .discussion_presentation_reader()
+    }
     pub(crate) fn catalog_source_start_gate(&self) -> Arc<InitialStartGate> {
         self.service
             .as_ref()

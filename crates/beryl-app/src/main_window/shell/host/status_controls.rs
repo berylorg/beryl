@@ -261,6 +261,7 @@ impl MainWindowShellRoot {
     }
 
     pub(super) fn sync_status_controls(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.sync_discussion_demand(cx);
         self.status_controls.prune_acknowledgments();
         if self
             .status_controls
@@ -325,12 +326,14 @@ impl MainWindowShellRoot {
                         root.runtime_retry_observation_target(),
                         root.submission_observation_epoch(cx),
                         root.selected_view_interest_observation_target(),
+                        root.discussion_observation_target(cx),
                     ))
                 });
                 let Ok(observation) = observation else {
                     break;
                 };
-                if let Some((worker, selection, generation, retained_failure, submission_epoch, view_target)) = observation {
+                if let Some((worker, selection, generation, retained_failure, submission_epoch, view_target, discussion_target)) = observation {
+                    let discussion_read = discussion_target.as_ref().map(|(_, selection, _, reader)| (reader.clone(), selection.claim().thread_id()));
                     let result = background
                         .spawn(async move {
                             let runtime = worker.selected_runtime_failure(selection);
@@ -348,10 +351,12 @@ impl MainWindowShellRoot {
                                 let observation = worker.selected_view_binding_observation(selection, &binding);
                                 (worker.clone(), epoch, observation)
                             });
-                            (worker.selected_operation_snapshot(selection), runtime, eligibility, worker.selected_compaction_availability(selection), worker.selected_submission_availability(selection), worker.selected_historical_edit_availability(selection), view_observation)
+                            let discussion = discussion_read.map(|(reader, thread)| reader.observe(thread));
+                            (worker.selected_operation_snapshot(selection), runtime, eligibility, worker.selected_compaction_availability(selection), worker.selected_submission_availability(selection), worker.selected_historical_edit_availability(selection), view_observation, discussion)
                         })
                         .await;
                     let _ = this.update_in(cx, |root, window, cx| {
+                        if let Some((target, result)) = discussion_target.zip(result.7) { root.apply_discussion_observation(target, result, window, cx); }
                         root.apply_historical_edit_observation(selection, generation, submission_epoch.clone(), result.5, window, cx);
                         root.apply_submission_observation(selection, generation, submission_epoch, result.4, window, cx);
                         root.apply_compaction_observation(selection, generation, result.3, window, cx);

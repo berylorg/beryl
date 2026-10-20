@@ -49,6 +49,11 @@ through the owning item/transcript mutations before testing descendants. A maxim
 needs one finalized projection resource: a long plain paragraph may become several resources,
 whereas a single fenced code resource supplies the intended 65,536-byte selection.
 
+Shared exact-CAS activation helpers must also publish the lineage and turn count from their actual
+native plan. Preparing a context-aware basis but fabricating a legacy native-Fork binding with zero
+turns correctly fails writer validation with `BindingPathConflict`. Fixture activation must complete
+the real bounded context seed and retain existing context proofs through Current/Resume.
+
 The fake CAS server must emit the pinned adapter's valid bounded wire envelopes, including the
 established response discriminant ordering. Fixture-only schema failures do not justify broadening
 the production decoder. Likewise, provisional validation tests must explicitly request schema

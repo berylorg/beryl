@@ -7,9 +7,23 @@ pub struct MainWindowConversationComposerPreparedSelection {
     pub(super) activation_seeds: VecDeque<MainWindowConversationComposerActivationSeed>,
     pub(super) submission_intent: Option<syndic_storage::DraftSubmissionIntent>,
     assets: beryl_state::AssetState,
+    pub(super) discussion: Option<crate::discussion_presentation::DiscussionPresentationSnapshot>,
 }
 
 impl MainWindowConversationComposerPreparedSelection {
+    pub(in crate::main_window) fn discussion_visible(&self) -> bool {
+        self.discussion
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.status().is_some())
+    }
+    pub(in crate::main_window) fn refresh_discussion_preparation(&mut self) -> Result<(), String> {
+        self.service
+            .prepare_discussion_presentation(self.selection_identity())?;
+        self.discussion = self
+            .service
+            .prepared_discussion_presentation(self.selection_identity());
+        Ok(())
+    }
     pub(in crate::main_window) fn panel_minimum_size(&self) -> gpui::Size<gpui::Pixels> {
         self.config.panel_minimum_size()
     }
@@ -24,6 +38,10 @@ impl MainWindowConversationComposerPreparedSelection {
         let activation_seeds =
             MainWindowConversationComposer::activation_seeds(config.selection(), initial)?;
         let submission_intent = service.selected_submission_intent(config.selection());
+        let discussion = service.prepared_discussion_presentation(config.selection());
+        if service.discussion_presentation_reader().is_some() && discussion.is_none() {
+            return Err("prepared discussion presentation is missing".into());
+        }
         Ok(Self {
             config,
             service,
@@ -31,6 +49,7 @@ impl MainWindowConversationComposerPreparedSelection {
             activation_seeds,
             submission_intent,
             assets,
+            discussion,
         })
     }
 
@@ -78,14 +97,22 @@ impl MainWindowConversationComposerPreparedSelection {
         cx: &mut App,
     ) -> Result<Entity<MainWindowConversationComposer>, String> {
         self.validate_current()?;
-        Ok(cx.new(|composer_cx| {
-            MainWindowConversationComposer::consume_prepared(
-                self,
-                clipboard_writer,
-                window,
-                composer_cx,
-            )
-        }))
+        let snapshot = self.discussion.clone();
+        let mount = || {
+            cx.new(|composer_cx| {
+                MainWindowConversationComposer::consume_prepared(
+                    self,
+                    clipboard_writer,
+                    window,
+                    composer_cx,
+                )
+            })
+        };
+        if let Some(snapshot) = snapshot {
+            snapshot.try_elect(mount).map_err(|error| error.to_string())
+        } else {
+            Ok(mount())
+        }
     }
 
     #[cfg(feature = "test-faults")]

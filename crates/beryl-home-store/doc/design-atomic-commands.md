@@ -72,6 +72,9 @@ is governed by [the package design](design.md), including that design's engineer
   mutation interval, and runs the caller's bounded in-memory election atomically against mutation
   entry. The callback must not perform storage/backend I/O, wait, join, or acquire another
   ownership lock. Required reads and ownership acquisition precede this callback.
+- `HomeMutationObservation::same_interval` compares only the exact observer registration and
+  captured mutation interval. It performs no I/O and grants no freshness, publication or election
+  authority; a caller still needs the ordinary currentness checks and exact election.
 - All runtime mutation entry paths, including typed commands, domain registration and supported
   persisted-corruption fault injection, invalidate earlier observations before storage work.
   Cancellation or rejection may conservatively invalidate a token without committing anything.

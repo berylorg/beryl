@@ -44,6 +44,9 @@ impl RestoredWindowShellUnpublished {
 }
 
 impl RestoredWindowShellPrepared {
+    pub(in crate::main_window) fn refresh_discussion_preparation(&mut self) -> Result<(), String> {
+        self.selected.composer.refresh_discussion_preparation()
+    }
     #[cfg(target_os = "windows")]
     pub(in crate::main_window) fn native_validation(
         &self,

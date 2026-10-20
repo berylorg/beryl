@@ -311,6 +311,7 @@
 - [x] Accepted pre-activation failure settlement preserving exact pending input and binding through existing bounded proof custody and fresh-candidate recovery.
 - [x] Accepted managed preparation failure classification and capture without pausing temporary waits or letting runtime recovery retry a handoff.
 - [x] Accepted bounded ordinary handoff coordination with shared publication fencing, coalesced wake routing and joined disposal before complete graph mounting.
+- [x] Accepted mounted coherent discussion status/composer/notice and exact same-job Retry, including first-frame/recovery fencing, original outcome custody and readonly session allocation; [qualification and evidence limits](../../audits/discussion-presentation-qualification.md).
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

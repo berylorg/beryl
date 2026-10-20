@@ -93,11 +93,17 @@ impl ProcessServiceOwner {
         storage: &SyndicStorage,
     ) -> Result<(), String> {
         for source in &mut self.failed_residents {
-            source.retired.as_mut().ok_or("failed resident retirement is unavailable")?
+            source
+                .retired
+                .as_mut()
+                .ok_or("failed resident retirement is unavailable")?
                 .observe_historical_recovery(candidate, storage)?;
         }
         for source in &mut self.failed_residents {
-            source.retired.as_mut().ok_or("failed resident retirement is unavailable")?
+            source
+                .retired
+                .as_mut()
+                .ok_or("failed resident retirement is unavailable")?
                 .settle_historical_recovery(candidate, storage)?;
         }
         Ok(())
@@ -315,7 +321,10 @@ impl ProcessServiceOwner {
             if cancellation.is_cancelled() {
                 return Err("historical resident settlement was cancelled".into());
             }
-            source.retired.as_mut().ok_or("failed resident retirement is unavailable")?
+            source
+                .retired
+                .as_mut()
+                .ok_or("failed resident retirement is unavailable")?
                 .settle_historical_recovery(candidate, &storage)?;
         }
         let state = BerylState::reacquire_candidate(candidate).map_err(|e| e.to_string())?;
@@ -525,7 +534,7 @@ impl super::recovery_graph::PreparedRecoveryServiceGraph {
             .retired
             .take()
             .expect("captured failed resident owns one reconstruction");
-        let Some((candidate, _)) = self
+        let Some((candidate, cas)) = self
             .services
             .as_mut()
             .unwrap()
@@ -540,13 +549,14 @@ impl super::recovery_graph::PreparedRecoveryServiceGraph {
             evidence.window().window_id() == source.window
                 && evidence.window().selected_thread() == Some(retired.selection().claim())
         });
-        MainWindowFailedResidentCandidateSource::new(
+        MainWindowFailedResidentCandidateSource::new_for_recovery(
             candidate,
             retired,
             self.syndic.clone(),
             &self.state,
             source.seed,
             restored,
+            Some(cas.discussion_presentation_reader()),
         )
     }
 

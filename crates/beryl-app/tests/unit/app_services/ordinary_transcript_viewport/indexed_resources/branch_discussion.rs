@@ -29,6 +29,14 @@ mod lifecycle;
 mod outcomes;
 #[path = "branch_discussion/scope.rs"]
 mod scope;
+#[path = "branch_discussion/status.rs"]
+mod status;
+#[path = "branch_discussion/status_initial.rs"]
+mod status_initial;
+#[path = "branch_discussion/status_retry.rs"]
+mod status_retry;
+#[path = "branch_discussion/status_support.rs"]
+mod status_support;
 
 pub(super) const SOURCE: &str = "branch prefix **café 🌸 words** suffix\r\n";
 pub(super) const SELECTED: &str = "**café 🌸 words**";

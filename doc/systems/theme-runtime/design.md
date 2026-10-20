@@ -79,6 +79,11 @@ authority.
   use `BorderColor`. Transparent normal fills remain unpainted, and `currentColor` descendants
   inherit the actual rendered row-state foreground. Fixed widget geometry remains in its spec;
   this mapping introduces no new value domain or persistent scalar setting.
+- The bundled segmented status bar uses its canonical root, segment state, divider, key and value
+  role identities. The root's block-start border color maps to `BorderColor`; its font size maps to
+  `FontSize`. Fills, foregrounds and key/value weights use their matching existing properties and
+  the bundled fallbacks. Fixed geometry stays in the widget spec, and font family inherits from
+  the containing window. This adds no separate discussion-specific role family or value domain.
 - An appearance generation carries its current window/service Home identity separately from the
   immutable prepared source proof. An unavailable recovery context binds the fresh Home while
   retaining the prior proof metadata unchanged and read-only; current window identity checks use

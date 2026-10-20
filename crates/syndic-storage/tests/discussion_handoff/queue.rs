@@ -5,6 +5,8 @@ mod edit_gates;
 mod edit_support;
 #[path = "mutation_gates.rs"]
 mod mutation_gates;
+#[path = "readonly_sessions.rs"]
+mod readonly_sessions;
 #[path = "../draft_edit_history/support.rs"]
 #[allow(dead_code, unused_imports)]
 mod support;

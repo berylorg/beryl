@@ -40,8 +40,28 @@ pub(crate) enum ProcessAdmissionReopenError {
     Process(#[from] ProcessAdmissionError),
     #[error(transparent)]
     Home(#[from] beryl_home_store::HomeCoherenceError),
+    #[error(transparent)]
+    ObservedHome(#[from] beryl_home_store::HomeObservedCoherenceError),
     #[error("shutdown service does not own the expected home")]
     StaleHome,
+}
+
+impl ProcessAdmissionReopenError {
+    pub(crate) fn is_waiting(self) -> bool {
+        use beryl_home_store::{
+            HomeCoherenceError, HomeMutationObservationError, HomeObservedCoherenceError,
+        };
+        matches!(
+            self,
+            Self::Home(HomeCoherenceError::Busy)
+                | Self::ObservedHome(HomeObservedCoherenceError::Coherence(
+                    HomeCoherenceError::Busy
+                ))
+                | Self::ObservedHome(HomeObservedCoherenceError::Observation(
+                    HomeMutationObservationError::Busy | HomeMutationObservationError::Stale
+                ))
+        )
+    }
 }
 
 pub(crate) struct ProcessAdmissionReopening<'a> {

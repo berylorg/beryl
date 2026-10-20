@@ -10,6 +10,17 @@ pub(crate) fn require_editable(
     reader: &DomainReader<'_, SyndicDomain>,
     thread_id: SyndicThreadId,
 ) -> Result<(), SyndicMutationError> {
+    if qualify_editability(reader, thread_id)? {
+        Ok(())
+    } else {
+        Err(SyndicMutationError::DiscussionMutationBlocked)
+    }
+}
+
+pub(crate) fn qualify_editability(
+    reader: &DomainReader<'_, SyndicDomain>,
+    thread_id: SyndicThreadId,
+) -> Result<bool, SyndicMutationError> {
     let thread = required::<ThreadsFamily>(reader, &thread_id)?;
     let attributes = required::<ThreadAttributesFamily>(reader, &thread_id)?;
     let gate = point::<DiscussionHandoffGatesFamily>(reader, &thread_id)?;
@@ -17,13 +28,15 @@ pub(crate) fn require_editable(
         return Err(SyndicMutationError::DiscussionHandoffConflict);
     }
     match (thread.parent_thread_id(), attributes.archive(), gate) {
-        (None, ThreadArchiveState::Ordinary, None) if thread.context_owner_id().is_none() => Ok(()),
+        (None, ThreadArchiveState::Ordinary, None) if thread.context_owner_id().is_none() => {
+            Ok(true)
+        }
         (Some(_), archive, Some(gate))
             if gate.thread_id() == thread_id && thread.context_owner_id().is_some() =>
         {
             match (archive, gate.state()) {
                 (ThreadArchiveState::BranchDiscussionOpen, DiscussionHandoffGateState::Open) => {
-                    Ok(())
+                    Ok(true)
                 }
                 (
                     ThreadArchiveState::BranchDiscussionOpen,
@@ -32,7 +45,7 @@ pub(crate) fn require_editable(
                 | (
                     ThreadArchiveState::BranchDiscussionArchived { .. },
                     DiscussionHandoffGateState::Open,
-                ) => Err(SyndicMutationError::DiscussionMutationBlocked),
+                ) => Ok(false),
                 _ => Err(SyndicMutationError::DiscussionHandoffConflict),
             }
         }
