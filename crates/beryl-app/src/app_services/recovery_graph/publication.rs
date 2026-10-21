@@ -51,6 +51,7 @@ impl ProcessServiceOwner {
             .expect("prepared recovery queries")
             .publish();
         self.graph = Some(PublishedAppServices {
+            media: services.media.take(),
             prepared_settings: services.settings.take(),
             settings: None,
             settings_themes: None,

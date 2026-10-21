@@ -44,20 +44,22 @@ beryl-stream = { path = "crates/beryl-stream" }
 beryl-wsl-supervisor = { path = "crates/beryl-wsl-supervisor" }
 syndic-storage = { path = "crates/syndic-storage" }
 clap = { version = "4.6.1", features = ["derive"] }
+crc32fast = "=1.5.0"
 fjall = { path = "../fjall-fork", version = "=3.1.6" }
 futures-channel = "0.3.32"
 getrandom = "0.4.2"
 hex = "0.4.3"
-gpui = { git = "https://github.com/berylorg/zed-fork.git", rev = "3210d6ad35f90a3d13d705b836e84ae206b3d656", default-features = false, features = ["windows-manifest"] }
-gpui-scrollbar = { git = "https://github.com/berylorg/gpui-scrollbar.git", rev = "c78e315aedebb99b8e14888b520f1c26fd336cae" }
-gpui-settings-window = { git = "https://github.com/berylorg/gpui-settings-window.git", rev = "75b92518efc7013a5df83e8f83a5ce6dd55489af" }
-gpui-text-input = { git = "https://github.com/berylorg/gpui-text-input.git", rev = "b1e5c9681d3a1af1e4723e750508b2dda0c03f87" }
+gpui = { git = "https://github.com/berylorg/zed-fork.git", rev = "93f0584c01b6b4fd09409d0e1ee502535c020b5b", default-features = false, features = ["windows-manifest"] }
+gpui-scrollbar = { git = "https://github.com/berylorg/gpui-scrollbar.git", rev = "a2596519d98d0b9f04ecc4e4bb21d4ac77231a59" }
+gpui-settings-window = { git = "https://github.com/berylorg/gpui-settings-window.git", rev = "3400fed9de82ec3c99f13d7d4718be3843c2548d" }
+gpui-text-input = { git = "https://github.com/berylorg/gpui-text-input.git", rev = "d6fba6a83e1b5011b204d0c97751f419355bb50f" }
 gpui_sum_tree = "0.2.2"
 image = "0.25.1"
 jsonc-parser = { version = "0.32.4", default-features = false }
 libc = "0.2.186"
 markdown = { version = "1.0.0", default-features = false }
 once_cell = "1.21.4"
+png = "=0.18.1"
 regex = "1.12.3"
 raw-window-handle = "0.6.2"
 rodio = { version = "0.22.2", default-features = false, features = ["playback", "hound"] }

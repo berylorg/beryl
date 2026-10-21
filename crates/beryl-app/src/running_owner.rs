@@ -102,6 +102,7 @@ impl SettingsAppearanceReaders {
 }
 
 pub(crate) struct RunningProcessOwner {
+    media_resources: Option<std::sync::Arc<crate::image_processing::ImageMediaProcess>>,
     settings_window: Option<Entity<crate::settings_window::SettingsWindowController>>,
     settings_source: Option<crate::settings_service::AppliedSettingsReader>,
     settings_appearance_busy: bool,
@@ -287,7 +288,9 @@ impl RunningProcessOwner {
                 .service_reference(),
         );
         let surface = process.startup_surface.take();
+        let media_resources = process.services.media_process();
         let owner = Rc::new(RefCell::new(Self {
+            media_resources,
             settings_window: None,
             settings_source: None,
             settings_appearance_busy: false,

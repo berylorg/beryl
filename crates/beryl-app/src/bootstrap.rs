@@ -16,6 +16,7 @@ use gpui::{App, Application};
 
 mod diagnostic;
 mod inputs;
+pub(crate) mod media;
 #[cfg(test)]
 pub(crate) mod test_support;
 
@@ -106,6 +107,9 @@ struct BootstrapLifetime {
     commands: StartupCommands,
     running: Option<Rc<RefCell<RunningProcessOwner>>>,
     unavailable: Option<startup_owner::UnavailableStartup>,
+    _media_domain: gpui::ImageResourceDomain,
+    _media_maintenance: gpui::Task<()>,
+    media_failure: Option<gpui::ImageResourceError>,
 }
 impl gpui::Global for BootstrapLifetime {}
 
@@ -136,11 +140,22 @@ pub fn run(configuration: Configuration) -> Result<(), BootstrapError> {
 }
 
 fn launch(
-    configuration: StartupConfiguration,
+    mut configuration: StartupConfiguration,
     unsuccessful: Rc<Cell<bool>>,
     endpoint: Option<crate::diagnostic_child_target::DiagnosticTargetServer>,
     app: &mut App,
 ) {
+    let media_domain = match media::domain(configuration.services.media_limits, app) {
+        Ok(domain) => domain,
+        Err(error) => {
+            tracing::error!(?error, "shared image resource domain is unavailable");
+            unsuccessful.set(true);
+            app.quit();
+            return;
+        }
+    };
+    configuration.services.media_domain = Some(media_domain.clone());
+    let media_maintenance = media::maintain(media_domain.clone(), app);
     let home = configuration.home.clone();
     let executable = std::env::current_exe().ok();
     let windows = configuration.windows.clone();
@@ -172,6 +187,9 @@ fn launch(
         commands,
         running: None,
         unavailable: None,
+        _media_domain: media_domain,
+        _media_maintenance: media_maintenance,
+        media_failure: None,
     });
     if let Some(endpoint) = endpoint {
         diagnostic::attach(endpoint, app);

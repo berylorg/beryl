@@ -208,10 +208,10 @@ impl MainWindowShell {
             return Err("exact destroyed native close settlement is unavailable".into());
         }
         let window = self.retained_window_id(app)?;
-        if !self
-            .root
-            .update(app, |root, cx| root.retire_final_shutdown_draft(draft, cx))?
-        {
+        if !self.root.update(app, |root, cx| {
+            root.close_image_media_window();
+            root.retire_final_shutdown_draft(draft, cx)
+        })? {
             return Ok(false);
         }
         self.root.update(app, |root, cx| {

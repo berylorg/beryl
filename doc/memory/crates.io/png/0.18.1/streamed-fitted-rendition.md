@@ -92,14 +92,42 @@ closure storage. A conventional at-most-doubling `Vec` growth model would charge
 addition to the other terms. Those multipliers require an audited standard-library/allocation
 model; png's public API promises no upper capacity multiplier and exposes no scratch-capacity
 diagnostics. This inspection did not audit the local Rust standard library or allocator.
-Consequently it establishes a finite requested-length route without requiring a fork, but does
-not by itself certify an exact allocation-capacity ceiling for a particular build. Changing png,
+Consequently that initial inspection established a finite requested-length route without requiring
+a fork, but did not itself certify an allocation-capacity ceiling for a particular build. Changing png,
 fdeflate, transforms, supported metadata, or the allocation model requires refreshing the bound.
 
 `Limits::bytes` is explicitly best effort. Its accounting reserves the transformed line and
 selected metadata; the unfiltering vectors, inflate tables, metadata clones, and caller allocations
 do not all debit it. Treating its default 64 MiB or a custom value as the complete decoder budget
 would be incorrect.
+
+## Supported Rust Allocation Model Follow-up
+
+On 2026-10-21, local source inspection covered the installed x86_64-pc-windows-msvc Rust 1.97.1
+toolchain (`8bab26f4f68e0e26f0bb7960be334d5b520ea452`). Its `alloc::raw_vec::RawVecInner`
+`grow_amortized` selects `max(2 * old_capacity, required_capacity, minimum_nonzero_capacity)`;
+`grow_exact` selects the requested length. `set_ptr_and_cap` records that selected capacity.
+`Global::alloc_impl_runtime` returns a slice of exactly the requested layout size, and its grow
+path returns the new requested layout size. Allocator-private physical rounding is not exposed as
+extra Vec capacity. Thus the at-most-doubling capacity model above applies to this supported build;
+it is no longer an unaudited assumption about this toolchain.
+
+For the admitted subset, the dynamic-capacity terms are bounded by `2 * U` for the unfilter vector,
+`4 * max(R, 8)` for the two row scratch vectors, 262144 bytes for both secondary tables,
+`2 * max(M, 128)` for the raw processed chunk vector, and the checked caller row and source page.
+Primary inflate tables contribute another 18432 bytes. The inflater state/header, scalar PNG
+metadata and palette expansion table are fixed-size terms. Skipped text/ICC and refused eXIf/APNG
+cannot add retained variable metadata. Multiplying this per-decoder envelope by admitted worker
+slots bounds concurrent private workspace independently of source height. Surface and staging
+allocations retain their separate ledgers; this derivation is not a measurement of RSS or a promise
+about a future Rust/dependency version.
+
+The exact inspected installed source files under `lib/rustlib/src/rust/library/alloc/src/` were
+`raw_vec/mod.rs` (SHA-256 `ed847fcc6d237a1ddf95dc54bc8a3823ae89bea125f3e45cb8bb54ae0000fff0`)
+and `alloc.rs` (SHA-256 `afc8eece58d63942328cab563fad1b180b50afdadc9141d40e5d98a6df90cd70`).
+The upstream responsibility is [Rust alloc](https://github.com/rust-lang/rust/tree/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/alloc/src).
+Verification was bounded source inspection plus `rustc --version --verbose` and file hashing;
+no global allocator instrumentation was used. Runtime row/surface tests are separate evidence.
 
 ## Completion, Integrity, And Cancellation
 

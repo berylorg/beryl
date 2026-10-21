@@ -238,6 +238,7 @@ impl Worker {
             };
         }
         if owner.graph().unwrap().home().health().state() == HomeHealthState::Failed {
+            Self::drain_failed_media(owner)?;
             return owner.retire_failed_startup().map_err(|e| e.to_string());
         }
         if let Err(error) = owner.begin_shutdown() {
@@ -285,9 +286,22 @@ impl Worker {
             .graph()
             .is_some_and(|graph| graph.home().health().state() == HomeHealthState::Failed)
         {
+            Self::drain_failed_media(owner)?;
             owner.retire_failed_startup().map_err(|e| e.to_string())
         } else {
             Err(error)
         }
+    }
+
+    fn drain_failed_media(owner: &ProcessServiceOwner) -> Result<(), String> {
+        while owner.retire_media_attachment() == gpui::ImageResourceDrain::Pending {
+            if let Some(error) = owner.media_failure() {
+                return Err(format!(
+                    "image retirement retains source custody: {error:?}"
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        Ok(())
     }
 }

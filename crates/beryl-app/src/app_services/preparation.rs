@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub(super) struct PreparedAppServices {
+    media: Option<Arc<ImageMediaAttachment>>,
     settings: Option<crate::settings_service::PreparedSettingsService>,
     runtime_setup: Option<Arc<super::runtime_setup::RuntimeSetupService>>,
     paste_resources: crate::main_window::MainWindowComposerPasteResources,
@@ -91,6 +92,7 @@ impl PreparedAppServices {
     ) -> Result<Self, PreparedAppServiceFailure> {
         let (provider, sessions) = ProcessScheduledExecutionProvider::new();
         let mut prepared = Self {
+            media: None,
             settings: None,
             runtime_setup: None,
             paste_resources: configuration.paste_resources,
@@ -110,6 +112,15 @@ impl PreparedAppServices {
         let result: Result<(), AppServiceOpenError> = (|| {
             check_cancellation(cancellation)?;
             let candidate = prepared.candidate.as_mut().expect("private candidate");
+            if let Some(media) = owner.prepare_media_process(&configuration)? {
+                let source = ImageSourceProvider::prepare_initial(
+                    candidate,
+                    prepared.syndic.clone(),
+                    prepared.state.assets(),
+                    configuration.media_limits,
+                )?;
+                prepared.media = Some(Arc::new(media.attach(source)?));
+            }
             let generation = owner.next_settings_generation()?;
             prepared.settings = Some(
                 crate::settings_service::PreparedSettingsService::prepare_candidate(
@@ -273,6 +284,7 @@ impl PreparedAppServices {
             .expect("prepared catalog queries")
             .publish();
         let graph = PublishedAppServices {
+            media: self.media.take(),
             prepared_settings: self.settings.take(),
             settings: None,
             settings_themes: None,
@@ -322,6 +334,9 @@ impl PreparedAppServices {
     }
 
     fn join_components(&mut self) {
+        if let Some(media) = self.media.take() {
+            media.retire();
+        }
         drop(self.catalog_query.take());
         drop(self.catalog_source.take());
         drop(self.runtime_setup.take());

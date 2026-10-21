@@ -101,11 +101,7 @@ pub(super) fn open_and_verify_final(
     durability_tier: HomeDurabilityTier,
     repair_final_barrier: bool,
 ) -> Result<(), SidecarError> {
-    let path = final_path(directories.shard_path(), address);
-    let mut file = platform::open_final_file(&path).map_err(map_final_open_error)?;
-    faults
-        .check(FaultPoint::BeforeSidecarVerification)
-        .map_err(|source| storage(SidecarStage::OpenFinal, source))?;
+    let mut file = open_final_for_verification(faults, directories, address)?;
     verify_file(&mut file, address, expected_bytes)?;
     if repair_final_barrier {
         flush_directory(
@@ -116,6 +112,19 @@ pub(super) fn open_and_verify_final(
         )?;
     }
     Ok(())
+}
+
+pub(super) fn open_final_for_verification(
+    faults: &FaultController,
+    directories: &SidecarDirectoryChain,
+    address: &SidecarAddress,
+) -> Result<File, SidecarError> {
+    let path = final_path(directories.shard_path(), address);
+    let file = platform::open_final_file(&path).map_err(map_final_open_error)?;
+    faults
+        .check(FaultPoint::BeforeSidecarVerification)
+        .map_err(|source| storage(SidecarStage::OpenFinal, source))?;
+    Ok(file)
 }
 
 fn retain_directory(
@@ -184,6 +193,17 @@ pub(super) fn verify_file(
     address: &SidecarAddress,
     expected_bytes: Option<&[u8]>,
 ) -> Result<(), SidecarError> {
+    let mut page = vec![0; COPY_BUFFER_BYTES];
+    verify_file_with_page(file, address, expected_bytes, &mut page, || false)
+}
+
+pub(super) fn verify_file_with_page(
+    file: &mut File,
+    address: &SidecarAddress,
+    expected_bytes: Option<&[u8]>,
+    page: &mut [u8],
+    cancelled: impl Fn() -> bool,
+) -> Result<(), SidecarError> {
     let metadata = file
         .metadata()
         .map_err(|source| storage(SidecarStage::ReadFinal, source))?;
@@ -192,27 +212,43 @@ pub(super) fn verify_file(
     }
 
     let mut hasher = Sha256::new();
-    let mut buffer = vec![0_u8; COPY_BUFFER_BYTES];
-    let mut offset = 0usize;
-    loop {
-        let count = file
-            .read(&mut buffer)
-            .map_err(|source| storage(SidecarStage::ReadFinal, source))?;
-        if count == 0 {
-            break;
+    let mut offset = 0_u64;
+    while offset < address.length {
+        if cancelled() {
+            return Err(SidecarError::Cancelled);
         }
-        hasher.update(&buffer[..count]);
+        let request = (address.length - offset).min(page.len() as u64) as usize;
+        let count = match file.read(&mut page[..request]) {
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            result => result.map_err(|source| storage(SidecarStage::ReadFinal, source))?,
+        };
+        if count == 0 {
+            return Err(SidecarError::ContentMismatch);
+        }
+        hasher.update(&page[..count]);
         if let Some(expected) = expected_bytes {
-            let end = offset
+            let start = usize::try_from(offset).map_err(|_| SidecarError::ContentMismatch)?;
+            let end = start
                 .checked_add(count)
                 .ok_or(SidecarError::ContentMismatch)?;
-            if expected.get(offset..end) != Some(&buffer[..count]) {
+            if expected.get(start..end) != Some(&page[..count]) {
                 return Err(SidecarError::ContentMismatch);
             }
-            offset = end;
+        }
+        offset += count as u64;
+    }
+    loop {
+        if cancelled() {
+            return Err(SidecarError::Cancelled);
+        }
+        match file.read(&mut page[..1]) {
+            Ok(0) => break,
+            Ok(_) => return Err(SidecarError::ContentMismatch),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(source) => return Err(storage(SidecarStage::ReadFinal, source)),
         }
     }
-    if expected_bytes.is_some_and(|expected| offset != expected.len()) {
+    if expected_bytes.is_some_and(|expected| offset != expected.len() as u64) {
         return Err(SidecarError::ContentMismatch);
     }
     let found: [u8; HASH_BYTES] = hasher.finalize().into();

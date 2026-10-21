@@ -13,6 +13,54 @@ const PREVIEW_WIDTH: Pixels = px(360.0);
 const PREVIEW_HEIGHT: Pixels = px(224.0);
 
 impl MainWindowConversationComposer {
+    pub(in crate::main_window) fn set_image_media_window(
+        &mut self,
+        media: Option<&std::sync::Arc<crate::image_processing::ImageMediaWindow>>,
+    ) {
+        let next = media.map(std::sync::Arc::downgrade).unwrap_or_default();
+        if !std::sync::Weak::ptr_eq(&self.image_media_window, &next) {
+            self.image_inspection = None;
+            self.image_media_window = next;
+        }
+    }
+
+    fn prepare_image_inspection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let preview = self.image_surfaces.preview().filter(|preview| {
+            self.is_live()
+                && !self.startup_interaction_gated
+                && !self.shutdown_interaction_gated
+                && self.exact_origin_is_active(preview.origin(), cx)
+        });
+        let Some(preview) = preview else {
+            self.image_inspection = None;
+            return;
+        };
+        let media = self.image_media_window.upgrade();
+        if self
+            .image_inspection
+            .as_ref()
+            .is_none_or(|(origin, _)| *origin != preview)
+        {
+            let anchor = preview.origin();
+            let demand = u64::try_from(anchor.order.get()).ok().map(|order_key| {
+                crate::image_processing::ImageSourceDemand::Composer {
+                    binding: self.selection.binding(),
+                    marker_id: beryl_model::SyndicDraftMarkerId::from_bytes(
+                        anchor.object_id.get().to_be_bytes(),
+                    ),
+                    order_key,
+                }
+            });
+            self.image_inspection = Some((
+                preview,
+                super::super::image_inspection::ImageInspection::new(media.as_deref(), demand),
+            ));
+        }
+        if let Some((_, inspection)) = self.image_inspection.as_mut() {
+            inspection.prepare(media.as_deref(), window, cx);
+        }
+    }
+
     pub(in crate::main_window) fn protected_resident_layout(
         &self,
         cx: &gpui::App,
@@ -129,17 +177,10 @@ impl MainWindowConversationComposer {
     }
 
     fn render_image_preview(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let preview = self.image_surfaces.preview().unwrap();
-        let (heading, detail) = match preview.state() {
-            ComposerImagePresentationState::Pending => (
-                "Image preview pending",
-                "The local image presentation is still being prepared.",
-            ),
-            ComposerImagePresentationState::LocalUnavailable => (
-                "Image preview unavailable",
-                "This image is not available from local storage.",
-            ),
-        };
+        let presentation = self
+            .image_inspection
+            .as_ref()
+            .map(|(_, inspection)| inspection.element());
         let viewport = window.viewport_size();
         let position = point(
             clamp_axis(
@@ -220,8 +261,7 @@ impl MainWindowConversationComposer {
                             .gap_2()
                             .rounded_md()
                             .bg(rgb(0x181b20))
-                            .child(div().text_sm().child(heading))
-                            .child(div().text_xs().opacity(0.72).child(detail)),
+                            .children(presentation),
                     )
                     .child(
                         div()
@@ -248,6 +288,7 @@ impl Render for MainWindowConversationComposer {
         #[cfg(feature = "test-faults")]
         self.submission_outcome_rendered.set(None);
         self.schedule_pump(window, cx);
+        self.prepare_image_inspection(window, cx);
         let protected_layout = self.protected_resident_layout(cx);
         let selected = !self.is_pending_target();
         div()

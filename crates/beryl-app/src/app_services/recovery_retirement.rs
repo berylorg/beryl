@@ -52,6 +52,10 @@ pub(super) struct ServiceGraphRetirement {
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ServiceGraphRetirementError {
     #[error(transparent)]
+    Media(#[from] ImageMediaError),
+    #[error("image source workers or native resources have not drained")]
+    MediaPending,
+    #[error(transparent)]
     Settings(#[from] crate::settings_service::SettingsServiceError),
     #[error("service graph recovery retirement is already retained")]
     AlreadyRetained,
@@ -285,6 +289,13 @@ impl ProcessServiceOwner {
         expected: HomeGeneration,
     ) -> Result<(), ServiceGraphRetirementError> {
         self.validate_failed_service_graph_retirement(expected)?;
+        let media = self.retire_media_attachment();
+        if let Some(error) = self.media_failure() {
+            return Err(ImageMediaError(error).into());
+        }
+        if media != gpui::ImageResourceDrain::Drained {
+            return Err(ServiceGraphRetirementError::MediaPending);
+        }
         let fence = self.process.fence()?;
         let graph = self
             .graph

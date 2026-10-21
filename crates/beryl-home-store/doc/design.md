@@ -99,6 +99,26 @@ failure returns no token, closes source/file handles and may leave inert tempora
 it does not delete a final sidecar or report metadata admission. Once final publication is admitted,
 later cancellation drains its exact result rather than assuming the write did not occur.
 
+## Bounded Verified Sidecar Source
+
+The public sidecar source boundary opens one exact canonical final sidecar under ordinary healthy
+generation admission. It accepts a positive source-byte allowance, working-page ceiling and
+cancellation observation. Verification hashes the declared complete source, checks length/digest
+and physical EOF with one bounded page, then rewinds and returns an opaque verified reader on
+that same open file. The reader transports the existing verified address/store/generation facts;
+it grants no metadata visibility or domain-reference authority. Calling domains must establish
+that authority separately before opening it.
+
+The reader supports bounded Read/BufRead/Seek consumption without exposing a mutable file, write,
+rename or alternate-path operation. Reads check cancellation and never request more than the
+configured page from the filesystem. Verification/cancellation/failure returns no reader and drops
+all file/directory/page owners. Read/seek failure stays typed and cannot silently reopen the path.
+Successful verification retains only the one file and bounded read state; no complete original
+buffer or one-handle-per-reference registry is created. Health admission and generation checks
+retain the ordinary sidecar boundary's rules. Consumers cancel and drain readers before their
+service/Home retires; reader drop releases its file and page. Existing path-only runtime projection
+and durable sidecar admission remain independent consumers of their established APIs.
+
 # Engineering Rigor
 
 Profile: `production-application/v2`

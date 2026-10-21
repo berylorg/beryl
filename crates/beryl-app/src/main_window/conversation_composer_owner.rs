@@ -237,6 +237,11 @@ pub struct MainWindowConversationComposer {
     clipboard_limits: ClipboardLimits,
     mutation_limits: MutationLimits,
     image_surfaces: MainWindowComposerImageSurfaces,
+    image_media_window: std::sync::Weak<crate::image_processing::ImageMediaWindow>,
+    image_inspection: Option<(
+        ComposerImagePreviewShell,
+        super::image_inspection::ImageInspection,
+    )>,
     image_surface_focus: FocusHandle,
     image_surface_attachment: Option<InlineObjectSurfaceAttachment>,
     pending_marker_removal: Option<gpui_text_input::MutationKey>,
@@ -541,12 +546,27 @@ impl MainWindowConversationComposer {
         self.image_surfaces.preview()
     }
 
+    #[cfg(any(test, feature = "test-faults"))]
+    pub fn test_image_preview_rendition(&self) -> Option<(bool, bool, bool, bool)> {
+        self.image_inspection
+            .as_ref()
+            .map(|(_, inspection)| inspection.diagnostics())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_image_preview_pixel(
+        &self,
+    ) -> Option<Result<[u8; 4], crate::image_processing::ImageMediaError>> {
+        self.image_inspection.as_ref()?.1.read_pixel_for_test()
+    }
+
     fn activate_marker(
         &mut self,
         activation: InlineObjectActivation,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
+        self.image_inspection = None;
         if self.startup_interaction_gated {
             return Err("conversation composer is waiting for startup".to_owned());
         }
@@ -580,6 +600,7 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
+        self.image_inspection = None;
         if self.startup_interaction_gated {
             return Err("conversation composer is waiting for startup".to_owned());
         }
@@ -673,6 +694,7 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<Option<ComposerMarkerFocusTarget>, String> {
+        self.image_inspection = None;
         let Some(anchor) = self
             .image_surfaces
             .preview()

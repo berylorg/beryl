@@ -158,7 +158,11 @@ impl MainWindowShellRoot {
     ) -> Self {
         let minimum_protection = controller.minimum_size;
         let input_history = controller.accepted_input_history.clone();
-        cx.on_release(move |_, _| input_history.close()).detach();
+        cx.on_release(move |root, _| {
+            root.close_image_media_window();
+            input_history.close();
+        })
+        .detach();
         let shell_focus = cx.focus_handle();
         let notices =
             notices::MainWindowShellNotices::new(&controller, publication, shell_focus.clone(), cx);
@@ -195,6 +199,9 @@ impl MainWindowShellRoot {
             notices,
             home_warning_startup: None,
             transcript_image_preview: None,
+            image_media_window: None,
+            image_media_attachment: None,
+            image_media_retry: None,
             branch_discussion: branch_discussion::BranchDiscussionContribution::default(),
         };
         #[cfg(all(test, feature = "test-faults"))]
@@ -374,6 +381,7 @@ impl Render for MainWindowShellRoot {
         self.sync_activity(window, cx);
         self.sync_notices(window, cx);
         self.sync_historical_record_dimming(cx);
+        self.sync_image_media_window(window, cx);
         let history_loading = self.selected_history_loading(cx);
         self.running_threads
             .transcript

@@ -76,10 +76,10 @@ impl MainWindowShell {
                     .map_err(|error| error.to_string())?,
             ),
         };
-        if let Err(error) = self
-            .window
-            .update(app, |_, window, _| window.remove_window())
-        {
+        if let Err(error) = self.window.update(app, |root, window, _| {
+            root.close_image_media_window();
+            window.remove_window();
+        }) {
             if let Some(admission) = self.startup_disposal.as_mut() {
                 admission.receipt = Some(receipt);
             }

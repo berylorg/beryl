@@ -396,7 +396,7 @@ impl Controller {
             if !blocked && self.commands.exit_requested() {
                 match self.close_surface(cx).await {
                     Ok(()) => {
-                        self.exit(cx);
+                        self.exit(cx).await;
                         return;
                     }
                     Err(error) => {
@@ -411,7 +411,7 @@ impl Controller {
                     return;
                 }
                 if self.commands.exit_requested() {
-                    self.exit(cx);
+                    self.exit(cx).await;
                     return;
                 }
             }
@@ -433,7 +433,7 @@ impl Controller {
                 }
                 None => {
                     match self.close_surface(cx).await {
-                        Ok(()) => self.exit(cx),
+                        Ok(()) => self.exit(cx).await,
                         Err(error) => self.block(error, cx).await,
                     }
                     return;
@@ -532,7 +532,33 @@ impl Controller {
         .expect("startup owns the live GUI executor");
     }
 
-    fn exit(self, cx: &mut AsyncApp) {
+    async fn exit(self, cx: &mut AsyncApp) {
+        if let Some(services) = self.custody.worker.services.as_ref() {
+            services.begin_media_process_shutdown();
+        }
+        loop {
+            let progress = self.custody.worker.services.as_ref().map(|services| {
+                (
+                    services.poll_media_process_shutdown(),
+                    services.media_failure(),
+                )
+            });
+            match progress {
+                Some((_, Some(error))) => {
+                    self.unavailable(
+                        format!("Startup image cleanup retains custody: {error:?}"),
+                        cx,
+                    );
+                    return;
+                }
+                Some((gpui::ImageResourceDrain::Pending, None)) => {
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(16))
+                        .await;
+                }
+                _ => break,
+            }
+        }
         self.commands.0.borrow_mut().stage = Stage::Finished;
         let callback = self
             .completion

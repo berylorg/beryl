@@ -206,6 +206,7 @@ impl MainWindowShell {
                     }
                     self.window
                         .update(app, |root, window, cx| {
+                            root.close_image_media_window();
                             root.retire_notices(window, cx);
                             window.remove_window();
                         })

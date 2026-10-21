@@ -168,6 +168,7 @@ pub use scrub::WholeHomeScrubTrigger;
 pub use sidecar::{
     AdmittedSidecar, SidecarAddress, SidecarByteLimit, SidecarDigest, SidecarError,
     SidecarNamespace, SidecarNamespaceError, SidecarStage, SidecarVerifier, VerifiedSidecar,
+    VerifiedSidecarReader,
 };
 #[cfg(feature = "test-faults")]
 pub use store::HomeOwnershipTestSeam;

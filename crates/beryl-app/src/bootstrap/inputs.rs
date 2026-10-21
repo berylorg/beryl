@@ -76,9 +76,21 @@ pub(super) fn services() -> Result<AppServiceConfiguration, BootstrapError> {
     fn configuration(error: impl std::fmt::Debug) -> BootstrapError {
         BootstrapError::Inputs(format!("{error:?}"))
     }
+    let media_limits = crate::image_processing::MediaResourceLimits::new(
+        crate::image_processing::MediaResourceConfiguration::default(),
+    )
+    .map_err(configuration)?;
+    let media = media_limits.configuration();
     Ok(AppServiceConfiguration {
-        paste_resources: crate::main_window::MainWindowComposerPasteResources::new(1, 4096)
-            .map_err(configuration)?,
+        media_limits,
+        media_domain: None,
+        #[cfg(test)]
+        allow_absent_media_domain_for_tests: false,
+        paste_resources: crate::main_window::MainWindowComposerPasteResources::new(
+            media.paste_admission_queue_items,
+            media.sidecar_io_page_bytes,
+        )
+        .map_err(configuration)?,
         projection: ProjectionServiceConfig::try_new(
             64,
             16,

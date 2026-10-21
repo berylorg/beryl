@@ -487,3 +487,6 @@ fn native_mounted_mixed_transcript_interactions_navigation_invalidation_and_disp
 
 #[path = "mounted_workflow/replacement_branch.rs"]
 mod replacement_branch;
+
+#[path = "mounted_workflow/image_inspection.rs"]
+mod image_inspection;

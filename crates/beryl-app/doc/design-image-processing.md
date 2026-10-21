@@ -25,6 +25,16 @@ Fresh graph publication cannot reuse old capabilities.
 The ordinary asynchronous process close predicate includes that drain; a window callback never
 blocks waiting for it.
 
+Bootstrap retains one process-owned foreground task for GPUI retirement maintenance. It awaits
+the domain's bounded coalesced notification while idle, polls native retirement on the foreground,
+and uses an asynchronous bounded timer only while completion is Pending. It survives graph
+replacement and keeps running through zero-window shutdown until the domain drains. Native poll
+errors remain observable in process failure custody and prevent disposal from claiming success;
+they do not erase resource charges. On such failure the same task awaits GPUI's bounded recovery
+notification, retaining error custody until shared device recovery clears it, then resumes ordinary
+retirement maintenance. It never abandons maintenance when GPUI can subsequently recover.
+Background source workers never invoke native retirement.
+
 The CPU LRU is the only App pixel cache. Its bounded map owns output reservations, pixels, active
 reader counts and rendition keys. GPUI owns texture/staging admission, the native texture LRU and
 pins. App retains no mirror texture map: a current bounded presentation may own its opaque pin or
@@ -81,6 +91,17 @@ charged until their actual owners release. CPU reader pins prevent eviction duri
 acknowledge cancelled staging work before GPUI can release that allocation's charge. Generation
 change rejects old completions, retains eligible CPU renditions and refreshes only current visible
 interests through ordinary admission. It never rescans history or changes durable records.
+
+Current interests observe a bounded process native-progress revision captured when each request
+is admitted. Foreground maintenance advances it after recovery and completed retirement, waking
+only the existing bounded interests and refreshing the windows. A visible interest refused by a
+transient native generation/capacity condition retains its compact demand and one notification
+waiter, then retries through ordinary occurrence authentication after progress. This includes
+requests invalidated before receiving a pin. Capturing the revision at admission prevents losing
+progress that precedes failure delivery. Malformed, unsupported, stale source and cancelled interests
+remain terminal. This creates no per-asset timer, historical retry map or source repair. The running
+process retains access to its process media owner while graph services temporarily execute on a
+worker, so foreground progress delivery survives graph retirement/replacement work.
 
 ## Feature Mounting And Focus
 

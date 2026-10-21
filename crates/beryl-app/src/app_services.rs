@@ -23,6 +23,10 @@ use crate::{
         DiscussionSettlementOperations, HandoffCandidateConvergenceError,
         coordinator::HandoffCoordinator,
     },
+    image_processing::{
+        ImageMediaAttachment, ImageMediaError, ImageMediaProcess, ImageSourceProvider,
+        MediaResourceLimits,
+    },
     lifecycle_attention::ProcessLifecycleAttentionPool,
     process_admission::{ProcessAdmissionError, ProcessAdmissionFence, ProcessAdmissionGate},
     runtime_activity_enrollment::{
@@ -35,6 +39,7 @@ mod attempt;
 mod catalog_queries;
 mod failed_retirement;
 mod initial_disposal;
+mod media;
 mod model_selection;
 mod preparation;
 mod published;
@@ -71,6 +76,10 @@ pub(crate) use window_services::{
 
 #[derive(Clone)]
 pub(crate) struct AppServiceConfiguration {
+    pub(crate) media_limits: MediaResourceLimits,
+    pub(crate) media_domain: Option<gpui::ImageResourceDomain>,
+    #[cfg(test)]
+    pub(crate) allow_absent_media_domain_for_tests: bool,
     pub(crate) paste_resources: crate::main_window::MainWindowComposerPasteResources,
     pub(crate) projection: ProjectionServiceConfig,
     pub(crate) runtime_interest: RuntimeInterestConfig,
@@ -85,6 +94,14 @@ pub(crate) struct AppServiceConfiguration {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum AppServiceOpenError {
+    #[error("the process image resource domain is unavailable")]
+    MediaDomainUnavailable,
+    #[error("the process image configuration changed")]
+    MediaConfigurationChanged,
+    #[error(transparent)]
+    Media(#[from] ImageMediaError),
+    #[error(transparent)]
+    MediaSource(#[from] crate::image_processing::ImageSourceError),
     #[error("runtime admission preparation failed: {0}")]
     RuntimeSetup(String),
     #[error("a service graph is already installed")]
@@ -159,6 +176,7 @@ impl From<ThemeRuntimeStartError> for AppServiceOpenError {
 }
 
 pub(crate) struct ProcessServiceOwner {
+    media_process: std::sync::Mutex<Option<Arc<ImageMediaProcess>>>,
     settings_owner: crate::settings_service::SettingsProcessOwner,
     settings_generation: std::sync::atomic::AtomicU64,
     theme_recovery_context: Option<crate::theme_runtime::ThemeRecoveryContext>,
@@ -202,6 +220,7 @@ pub(crate) struct ProcessServiceOwner {
 }
 
 pub(crate) struct PublishedAppServices {
+    media: Option<Arc<ImageMediaAttachment>>,
     prepared_settings: Option<crate::settings_service::PreparedSettingsService>,
     settings: Option<Arc<crate::settings_service::SettingsService>>,
     settings_themes: Option<crate::theme_runtime::SettingsThemeBroker>,
@@ -236,6 +255,7 @@ impl ProcessServiceOwner {
     ) -> Self {
         let process = ProcessAdmissionGate::new();
         Self {
+            media_process: std::sync::Mutex::new(None),
             settings_owner: crate::settings_service::SettingsProcessOwner::new(home_id),
             settings_generation: std::sync::atomic::AtomicU64::new(0),
             theme_recovery_context: None,
@@ -433,6 +453,9 @@ impl PublishedAppServices {
     }
 
     fn join_components(&mut self) {
+        if let Some(media) = self.media.take() {
+            media.retire();
+        }
         let _ = self.retire_settings();
         drop(self.catalog_query.take());
         drop(self.catalog_source.take());

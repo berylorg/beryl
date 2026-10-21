@@ -138,6 +138,13 @@ fn owner(candidate: &HomeOpenPublication) -> ProcessServiceOwner {
 pub(super) fn configuration() -> AppServiceConfiguration {
     let one = NonZeroUsize::new(1).unwrap();
     AppServiceConfiguration {
+        media_limits: crate::image_processing::MediaResourceLimits::new(
+            crate::image_processing::MediaResourceConfiguration::default(),
+        )
+        .unwrap(),
+        media_domain: None,
+        // This fixture exercises graph lifecycle without starting a native GPU domain.
+        allow_absent_media_domain_for_tests: true,
         wsl_supervisor_artifact: None,
         paste_resources: crate::main_window::MainWindowComposerPasteResources::new(1, 4096)
             .unwrap(),

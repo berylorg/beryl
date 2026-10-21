@@ -380,6 +380,7 @@ impl MainWindowConversationComposer {
         completed.acknowledge()?;
         let previous = completed.initiating_selection;
         self.selection = completed.selection;
+        self.image_inspection = None;
         self.image_surfaces.selection_changed(self.selection);
         self.private_clipboard_owner
             .adopted(previous, self.selection, None);

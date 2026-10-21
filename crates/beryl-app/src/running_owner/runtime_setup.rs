@@ -1,6 +1,18 @@
 use super::*;
 
 impl RunningProcessOwner {
+    pub(crate) fn image_media_process(
+        &self,
+    ) -> Option<std::sync::Arc<crate::image_processing::ImageMediaProcess>> {
+        self.media_resources.clone()
+    }
+
+    pub(crate) fn media_attachment(
+        &self,
+    ) -> Option<std::sync::Arc<crate::image_processing::ImageMediaAttachment>> {
+        self.process.services.as_ref()?.graph()?.media_attachment()
+    }
+
     pub(crate) fn runtime_setup_services(
         &self,
     ) -> Option<crate::app_services::runtime_setup::PublishedRuntimeSetupServices> {

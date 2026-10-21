@@ -12,6 +12,10 @@ use crate::{
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum AppServiceCloseError {
     #[error(transparent)]
+    Media(#[from] ImageMediaError),
+    #[error("image source workers or native resources have not drained")]
+    MediaPending,
+    #[error(transparent)]
     Settings(#[from] crate::settings_service::SettingsServiceError),
     #[error("the complete service graph is unavailable")]
     Unavailable,
@@ -199,6 +203,13 @@ impl ProcessServiceOwner {
             }
             ShutdownProgress::Ready => {
                 self.require_settled_custody()?;
+                let media = self.retire_media_attachment();
+                if let Some(error) = self.media_failure() {
+                    return Err(ImageMediaError(error).into());
+                }
+                if media != gpui::ImageResourceDrain::Drained {
+                    return Ok(AppServiceShutdownProgress::Waiting);
+                }
                 self.graph.as_mut().expect("installed graph").shutdown_ready = true;
                 Ok(AppServiceShutdownProgress::Ready)
             }
@@ -220,6 +231,13 @@ impl ProcessServiceOwner {
             .ok_or(AppServiceCloseError::Unavailable)?;
         if !graph.shutdown_ready {
             return Err(AppServiceCloseError::NotReady);
+        }
+        let media = graph.retire_media();
+        if let Some(error) = self.media_failure() {
+            return Err(ImageMediaError(error).into());
+        }
+        if media != gpui::ImageResourceDrain::Drained {
+            return Err(AppServiceCloseError::MediaPending);
         }
         self.require_settled_custody()?;
         if self.failed_close.is_some() {

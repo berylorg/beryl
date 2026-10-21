@@ -223,6 +223,9 @@
 
 - [x] Reconciled existing asset foundations, missing media/title consumers and their separate architecture prerequisites; [readiness](../../audits/asset-processing-readiness.md).
 - [x] Established shared image-processing ownership, bounded decoder/source admission and native renderer/pin/generation contracts with independent complete-boundary review; [architecture readiness](../../audits/shared-image-processing-architecture.md).
+- [x] Mounted bounded asset-backed composer/transcript renditions through authenticated source,
+  shared CPU/native owners and graph drain, with independent acceptance of pinned production and
+  fifty-nine scoped cases; [qualification and limits](../../audits/bounded-image-rendition-qualification.md).
 - [ ] Complete generated-output producer/resource/reference and atomic finalization contracts in the image system and owning State/Syndic/App designs before finalizer implementation.
 - [ ] Implement Beryl-home image admission for paste and generated output, content-addressed
   sidecars, labels, references, Host/WSL projection, and generated-output ownership.

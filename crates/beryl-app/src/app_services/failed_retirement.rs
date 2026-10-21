@@ -13,6 +13,13 @@ impl ProcessServiceOwner {
         if graph.home().health().state() != HomeHealthState::Failed {
             return Err(AppServiceCloseError::NotFailed);
         }
+        let media = graph.retire_media();
+        if let Some(error) = self.media_failure() {
+            return Err(ImageMediaError(error).into());
+        }
+        if media != gpui::ImageResourceDrain::Drained {
+            return Err(AppServiceCloseError::MediaPending);
+        }
         if !matches!(self.attempt, InitialServiceAttemptState::Published(_))
             || self.failed_close.is_some()
             || self.failed_retirement.is_some()

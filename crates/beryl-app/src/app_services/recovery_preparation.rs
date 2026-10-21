@@ -8,6 +8,7 @@ use crate::{
 };
 
 pub(crate) struct PreparedRecoveryAppServices {
+    pub(super) media: Option<Arc<ImageMediaAttachment>>,
     pub(super) settings: Option<crate::settings_service::PreparedSettingsService>,
     pub(super) cas: Option<PreparedRecoveryCasServices>,
     pub(super) catalog_source: Option<CatalogSourceCoordinator>,
@@ -200,6 +201,7 @@ impl PreparedRecoveryAppServices {
         cancellation: &CommandCancellation,
     ) -> Result<Self, RecoveryAppServicePreparationFailure> {
         let mut prepared = Self {
+            media: None,
             settings: Some(settings),
             cas: Some(cas),
             catalog_source: None,
@@ -266,7 +268,10 @@ impl PreparedRecoveryAppServices {
         self.fail(AppServiceOpenError::Cancelled)
     }
 
-    fn fail(mut self, error: AppServiceOpenError) -> RecoveryAppServicePreparationFailure {
+    pub(super) fn fail(
+        mut self,
+        error: AppServiceOpenError,
+    ) -> RecoveryAppServicePreparationFailure {
         self.join_ancillary_services();
         let cas = self
             .cas
@@ -277,6 +282,9 @@ impl PreparedRecoveryAppServices {
     }
 
     fn join_ancillary_services(&mut self) {
+        if let Some(media) = self.media.take() {
+            media.retire();
+        }
         drop(self.catalog_query.take());
         drop(self.catalog_source.take());
         drop(self.theme.take());

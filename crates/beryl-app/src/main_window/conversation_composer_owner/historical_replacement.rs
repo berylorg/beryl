@@ -402,6 +402,7 @@ impl MainWindowConversationComposer {
         self.selection = completed.selection;
         self.replacement_intent = Some(completed.value.intent());
         if completed.value.requires_rebind() {
+            self.image_inspection = None;
             self.image_surfaces.selection_changed(self.selection);
             self.private_clipboard_owner
                 .adopted(previous, self.selection, None);

@@ -63,17 +63,30 @@ impl RunningProcessOwner {
             (owner.process.services.take().unwrap(), result_slot)
         };
         let retained = owner.clone();
-        let work = app.background_executor().spawn(async move {
-            let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                before_retire();
-                services
-                    .retire_failed_service_graph(generation)
-                    .map_err(|error| error.to_string())
-            }))
-            .unwrap_or_else(|_| Err("Interrupted Exit graph retirement unwound".into()));
-            (services, result)
-        });
         app.spawn(async move |cx| {
+            while services.retire_media_attachment() == gpui::ImageResourceDrain::Pending {
+                if let Some(error) = services.media_failure() {
+                    retained.borrow_mut().process.services = Some(services);
+                    *result_slot.borrow_mut() = Some(GraphRetirement::Returned(Err(format!(
+                        "Image resource retirement retains custody: {error:?}"
+                    ))));
+                    let _ = cx.update(|app| completed(&retained, app));
+                    return;
+                }
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(16))
+                    .await;
+            }
+            let work = cx.background_executor().spawn(async move {
+                let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                    before_retire();
+                    services
+                        .retire_failed_service_graph(generation)
+                        .map_err(|error| error.to_string())
+                }))
+                .unwrap_or_else(|_| Err("Interrupted Exit graph retirement unwound".into()));
+                (services, result)
+            });
             let (services, result) = work.await;
             retained.borrow_mut().process.services = Some(services);
             *result_slot.borrow_mut() = Some(GraphRetirement::Returned(result));

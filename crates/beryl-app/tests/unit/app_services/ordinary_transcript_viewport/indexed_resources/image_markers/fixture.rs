@@ -40,6 +40,14 @@ pub(in super::super) fn seed(path: &std::path::Path) {
 }
 
 pub(in super::super) fn seed_content(path: &std::path::Path, prefix: &str, suffix: &str) {
+    seed_asset_content(path, prefix, suffix, false);
+}
+
+pub(in super::super) fn seed_png(path: &std::path::Path) {
+    seed_asset_content(path, "before ", " after", true);
+}
+
+fn seed_asset_content(path: &std::path::Path, prefix: &str, suffix: &str, png: bool) {
     use crate::support::exact_cas;
     let StartupHomeOpen::Ready {
         candidate,
@@ -71,7 +79,11 @@ pub(in super::super) fn seed_content(path: &std::path::Path, prefix: &str, suffi
         ),
     ];
     let asset_state = state.assets();
-    let asset = assets::publish_asset(&home, &asset_state, b"saved image original fixture");
+    let asset = if png {
+        publish_png(&home, &asset_state)
+    } else {
+        assets::publish_asset(&home, &asset_state, b"saved image original fixture")
+    };
     let proof = assets::seal_marker_set(&home, &asset_state, &markers, asset);
     host_support::committed(host_support::execute(
         &home,
@@ -126,4 +138,52 @@ pub(in super::super) fn seed_content(path: &std::path::Path, prefix: &str, suffi
     exact_cas::converge_and_release_terminal_history(&home, syndic.clone(), thread, turn);
     drop((state, syndic, asset_state));
     home.close().unwrap();
+}
+
+fn publish_png(home: &HomeStore, assets: &AssetState) -> beryl_model::AssetId {
+    let mut bytes = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut bytes, 3, 2);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().unwrap();
+        writer
+            .write_image_data(&[
+                255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 0, 0, 255, 0, 255, 0, 255, 0,
+                0, 255, 255,
+            ])
+            .unwrap();
+        writer.finish().unwrap();
+    }
+    let sidecar = home
+        .admit_sidecar(
+            beryl_home_store::SidecarNamespace::new("images").unwrap(),
+            &bytes,
+            beryl_home_store::SidecarByteLimit::new(NonZeroU64::new(1024).unwrap()),
+        )
+        .unwrap();
+    let asset = beryl_model::AssetId::sha256_v1(
+        sidecar.address().digest().as_bytes(),
+        NonZeroU64::new(sidecar.address().length()).unwrap(),
+    );
+    let revision = assets.revision(home).unwrap();
+    let contribution = assets
+        .publish_metadata(
+            revision,
+            sidecar,
+            beryl_state::PublishAssetMetadata::new(
+                asset,
+                beryl_state::AssetMediaType::new("image/png").unwrap(),
+                Some(beryl_state::AssetDimensions::new(
+                    NonZeroU64::new(3).unwrap(),
+                    NonZeroU64::new(2).unwrap(),
+                )),
+                revision.checked_next().unwrap(),
+            ),
+        )
+        .unwrap();
+    let mut command = HomeCommand::new(home.home_revision().unwrap());
+    contribution.add_to(&mut command).unwrap();
+    host_support::committed(home.execute(command));
+    asset
 }

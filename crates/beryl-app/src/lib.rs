@@ -218,6 +218,7 @@ pub mod discussion_settlement;
 mod dynamic_tool_namespace;
 mod exit_session;
 pub mod input_admission;
+mod image_processing;
 pub mod lifecycle_attention;
 mod lifecycle_dynamic_tools;
 pub mod main_window;

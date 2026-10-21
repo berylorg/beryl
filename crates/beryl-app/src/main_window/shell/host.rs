@@ -734,6 +734,9 @@ pub struct MainWindowShellRoot {
     pub(super) notices: notices::MainWindowShellNotices,
     pub(super) home_warning_startup: Option<Arc<()>>,
     transcript_image_preview: Option<transcript_image_preview::TranscriptImagePreview>,
+    image_media_window: Option<Arc<crate::image_processing::ImageMediaWindow>>,
+    image_media_attachment: Option<u64>,
+    image_media_retry: Option<gpui::Task<()>>,
     branch_discussion: branch_discussion::BranchDiscussionContribution,
 }
 

@@ -276,6 +276,17 @@ impl RunningProcessOwner {
             .services
             .take()
             .expect("admitted final teardown owns returned services");
+        let mut media = services.begin_media_process_shutdown();
+        while media == gpui::ImageResourceDrain::Pending {
+            if let Some(error) = services.media_failure() {
+                owner.borrow_mut().process.services = Some(services);
+                return Err(format!("Final image cleanup retains custody: {error:?}"));
+            }
+            cx.background_executor()
+                .timer(Duration::from_millis(16))
+                .await;
+            media = services.poll_media_process_shutdown();
+        }
         let (returned, result) = cx
             .background_executor()
             .spawn(async move {

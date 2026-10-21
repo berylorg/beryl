@@ -127,6 +127,10 @@ impl ProcessServiceOwner {
         if self.failed_markers.is_some() {
             return Err(reject("original marker custody is not settled".into()));
         }
+        let media_process = self
+            .prepare_media_process(&configuration)
+            .map_err(|error| reject(error.to_string()))?;
+        let media_limits = configuration.media_limits;
         let state =
             BerylState::reacquire_candidate(retained).map_err(|error| reject(error.to_string()))?;
         let syndic = SyndicStorage::reacquire_candidate(retained)
@@ -260,6 +264,37 @@ impl ProcessServiceOwner {
             )
             .map_err(RecoveryServicePreparationError::App)?,
         );
+        let media_result: Result<Option<Arc<ImageMediaAttachment>>, AppServiceOpenError> = (|| {
+            let Some(process) = media_process else {
+                return Ok(None);
+            };
+            let services = prepared
+                .services
+                .as_mut()
+                .expect("prepared recovery services");
+            let (candidate, _) = services
+                .cas
+                .as_mut()
+                .expect("prepared recovery CAS")
+                .app_preparation_parts()
+                .ok_or(AppServiceOpenError::HandoffUnavailable)?;
+            let source = ImageSourceProvider::prepare_recovery(
+                candidate,
+                prepared.syndic.clone(),
+                prepared.state.assets(),
+                media_limits,
+            )?;
+            Ok(Some(Arc::new(process.attach(source)?)))
+        })(
+        );
+        match media_result {
+            Ok(media) => prepared.services.as_mut().unwrap().media = media,
+            Err(error) => {
+                return Err(RecoveryServicePreparationError::App(
+                    prepared.services.take().unwrap().fail(error),
+                ));
+            }
+        }
         prepared.failed_residents = std::mem::take(&mut self.failed_residents);
         prepared.failed_claims = std::mem::take(&mut self.failed_claims);
         Ok(prepared)

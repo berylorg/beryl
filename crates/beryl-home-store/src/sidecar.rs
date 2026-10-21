@@ -14,9 +14,11 @@ use crate::{
 mod io;
 mod operations;
 mod platform;
+mod reader;
 mod streaming;
 
 use io::*;
+pub use reader::VerifiedSidecarReader;
 
 const SIDECAR_DIRECTORY: &str = "sidecars";
 const MAX_NAMESPACE_BYTES: usize = 32;
@@ -257,6 +259,7 @@ pub enum SidecarStage {
     RenameFinal,
     OpenFinal,
     ReadFinal,
+    SeekFinal,
     ConfirmHealth,
 }
 

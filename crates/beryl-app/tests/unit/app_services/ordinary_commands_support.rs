@@ -546,6 +546,9 @@ fn run_mounted_case_with_home(
     Application::new()
         .with_quit_on_last_window_close(false)
         .run(move |app| {
+            let media_domain = crate::bootstrap::media::domain(input.services.media_limits, app).unwrap();
+            input.services.media_domain = Some(media_domain.clone());
+            crate::bootstrap::media::maintain(media_domain, app).detach();
             let readiness_deadline = Instant::now() + completion_deadline;
             startup_owner::start(
                 input,

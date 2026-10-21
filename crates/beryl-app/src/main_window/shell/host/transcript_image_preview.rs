@@ -12,6 +12,7 @@ pub(super) struct TranscriptImagePreview {
     origin: ImageMarkerInspectionRequested,
     close: FocusHandle,
     _focus_guard: gpui::Subscription,
+    inspection: crate::main_window::image_inspection::ImageInspection,
 }
 
 pub(super) fn subscribe(
@@ -47,11 +48,17 @@ pub(super) fn subscribe(
                 }
             });
             window.focus(&close);
+            let demand = transcript_image_demand(event);
+            let inspection = crate::main_window::image_inspection::ImageInspection::new(
+                root.image_media_window.as_deref(),
+                demand,
+            );
             root.transcript_image_preview = Some(TranscriptImagePreview {
                 source: source.clone(),
                 origin: event.clone(),
                 close,
                 _focus_guard: guard,
+                inspection,
             });
             cx.notify();
         },
@@ -59,6 +66,93 @@ pub(super) fn subscribe(
 }
 
 impl MainWindowShellRoot {
+    pub(super) fn sync_image_media_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(target_os = "windows")]
+        let attachment = crate::running_owner::RunningProcessOwner::mounted_owner(cx)
+            .and_then(|owner| owner.upgrade())
+            .and_then(|owner| owner.borrow().media_attachment());
+        #[cfg(not(target_os = "windows"))]
+        let attachment: Option<Arc<crate::image_processing::ImageMediaAttachment>> = None;
+        let identity = attachment
+            .as_ref()
+            .map(|attachment| attachment.id())
+            .or(self.image_media_attachment);
+        if self
+            .image_media_window
+            .as_ref()
+            .is_some_and(|media| media.is_closed())
+        {
+            self.image_media_window = None;
+            self.dismiss_transcript_image_preview(window, cx);
+        }
+        if self.image_media_attachment != identity {
+            self.image_media_retry = None;
+            self.dismiss_transcript_image_preview(window, cx);
+            if let Some(media) = self.image_media_window.take() {
+                media.close();
+            }
+            self.image_media_attachment = identity;
+            if let Some(attachment) = attachment.filter(|attachment| !attachment.is_retired()) {
+                match attachment.new_window(window) {
+                    Ok(media) => self.image_media_window = Some(Arc::new(media)),
+                    Err(crate::image_processing::ImageMediaError(
+                        crate::image_processing::ImageMediaFailure::Native(
+                            gpui::ImageResourceError::Pending,
+                        ),
+                    )) => {
+                        self.image_media_retry = Some(cx.spawn(async move |root, cx| {
+                            cx.background_executor()
+                                .timer(std::time::Duration::from_millis(16))
+                                .await;
+                            let _ = root.update(cx, |root, cx| {
+                                root.image_media_attachment = None;
+                                root.image_media_retry = None;
+                                cx.notify();
+                            });
+                        }));
+                    }
+                    Err(_) => {}
+                }
+            }
+        }
+        let composer = self
+            .controller
+            .as_ref()
+            .and_then(|controller| controller.composer_mount())
+            .or_else(|| self.runtime_setup.mount.clone())
+            .and_then(|mount| mount.read(cx).contribution());
+        if let Some(composer) = composer {
+            composer.update(cx, |composer, _| {
+                composer.set_image_media_window(self.image_media_window.as_ref())
+            });
+        }
+    }
+
+    pub(crate) fn close_image_media_window(&mut self) {
+        self.image_media_retry = None;
+        self.transcript_image_preview = None;
+        if let Some(media) = self.image_media_window.take() {
+            media.close();
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_image_marker_pixel(
+        &self,
+    ) -> Option<Result<[u8; 4], crate::image_processing::ImageMediaError>> {
+        self.transcript_image_preview
+            .as_ref()?
+            .inspection
+            .read_pixel_for_test()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_image_marker_rendition(&self) -> Option<(bool, bool, bool, bool)> {
+        self.transcript_image_preview
+            .as_ref()
+            .map(|preview| preview.inspection.diagnostics())
+    }
+
     #[cfg(test)]
     pub(crate) fn test_image_marker_inspection(&self) -> Option<ImageMarkerInspectionRequested> {
         self.transcript_image_preview
@@ -84,8 +178,10 @@ impl MainWindowShellRoot {
             window.focus(&preview.origin.focus);
         } else {
             let fallback = (preview.source == self.running_threads.transcript
-                && !self.running_threads.views_retired && !self.running_threads.reads_suspended)
-                .then(|| preview.source.read(cx).image_marker_return_focus(window)).flatten()
+                && !self.running_threads.views_retired
+                && !self.running_threads.reads_suspended)
+                .then(|| preview.source.read(cx).image_marker_return_focus(window))
+                .flatten()
                 .unwrap_or_else(|| self.thread_switcher.focus.clone());
             window.focus(&fallback);
         }
@@ -116,7 +212,11 @@ impl MainWindowShellRoot {
         {
             self.dismiss_transcript_image_preview(window, cx);
         }
-        let preview = self.transcript_image_preview.as_ref()?;
+        let preview = self.transcript_image_preview.as_mut()?;
+        preview
+            .inspection
+            .prepare(self.image_media_window.as_deref(), window, cx);
+        let presentation = preview.inspection.element();
         let ResidentContextMenuContentKind::ImageMarker(marker) =
             preview.origin.target.record.content_kind
         else {
@@ -225,9 +325,7 @@ impl MainWindowShellRoot {
                                 .items_center()
                                 .justify_center()
                                 .text_color(colors.disabled)
-                                .child(
-                                    "The original image is not available in this transcript view.",
-                                ),
+                                .child(presentation),
                         )
                         .child(
                             div()
@@ -248,4 +346,23 @@ impl MainWindowShellRoot {
                 .into_any_element(),
         )
     }
+}
+
+fn transcript_image_demand(
+    event: &ImageMarkerInspectionRequested,
+) -> Option<crate::image_processing::ImageSourceDemand> {
+    let record = &event.target.record;
+    let ResidentContextMenuContentKind::ImageMarker(marker) = record.content_kind else {
+        return None;
+    };
+    Some(
+        crate::image_processing::ImageSourceDemand::TranscriptMarker {
+            thread_id: record.source.view_id.0.parse().ok()?,
+            entry: record.source.transcript_entry?,
+            projection_id: record.projection_id.0.parse().ok()?,
+            projection_revision: beryl_model::ProjectionRevision::new(record.projection_revision.0)
+                .ok()?,
+            marker,
+        },
+    )
 }
