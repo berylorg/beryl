@@ -1,6 +1,7 @@
 use syndic_storage::{
-    AdvanceItemProjectionBuild, ItemProjectionBuildPhase, ProjectionLifecycle,
-    StartItemProjectionBuild, SyndicStorage,
+    AdvanceItemProjectionBuild, ItemProjectionBuildPhase, ItemProjectionSource,
+    ProjectionLifecycle, PublishGeneratedResourceProjection, StartItemProjectionBuild,
+    SyndicStorage,
 };
 
 use super::{access::HistoryAccess, command, snapshot};
@@ -19,6 +20,20 @@ pub(super) fn step(
 ) -> Result<ItemProjectionStep, OrdinaryTurnExecutionError> {
     if current_projection(current)? {
         return Ok(ItemProjectionStep::Current);
+    }
+    if let snapshot::ProjectionBacking::GeneratedResource(resource) = &current.backing {
+        command::dispatch(
+            store,
+            storage.current_publish_generated_resource_projection(
+                PublishGeneratedResourceProjection::new(
+                    current.item.id(),
+                    current.item.revision(),
+                    resource.id(),
+                    current.generation,
+                ),
+            ),
+        )?;
+        return Ok(ItemProjectionStep::Advanced);
     }
     let request = match current.build.as_ref() {
         Some(build) => {
@@ -50,7 +65,7 @@ fn current_projection(
         .item
         .projection_source()
         .ok_or(OrdinaryTurnExecutionError::Invariant(
-            "visible item projection source has no text content",
+            "visible item projection source is missing",
         ))?;
     match current.head.as_ref() {
         Some(head) if head.lifecycle() == ProjectionLifecycle::Current => {
@@ -62,7 +77,18 @@ fn current_projection(
                         && set.generation() == head.generation()
                         && set.source_item_revision() == current.item.revision()
                         && set.source() == source
-                        && set.source_bytes() == source.logical_utf8_bytes()
+                        && match source {
+                            ItemProjectionSource::Text(source) => {
+                                set.text_state().is_some_and(|text| {
+                                    text.source_bytes() == source.logical_utf8_bytes()
+                                })
+                            }
+                            ItemProjectionSource::GeneratedResource(_) => {
+                                set.text_state().is_none()
+                                    && set.projection_count() == 1
+                                    && set.resource_count() == 0
+                            }
+                        }
                         && set.projection_count() != 0
                 });
             if exact {
@@ -84,7 +110,7 @@ fn valid_parsing_build(
     current: &snapshot::ProjectionSnapshot,
     build: &syndic_storage::ItemProjectionBuildRecord,
 ) -> bool {
-    let Some(source) = current.item.projection_source() else {
+    let Some(source) = current.item.projection_text_source() else {
         return false;
     };
     build.item_id() == current.item.id()

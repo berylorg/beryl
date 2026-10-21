@@ -72,3 +72,25 @@ Implementation acceptance must qualify native original-source credentials/read/c
 Home admission, then the complete durable preparation/publication/replacement/uncertainty and
 visible marker/command outcome. Component proofs, architecture review and readable source alone
 do not establish those runtime boundaries.
+
+## Generated Projection Readiness
+
+Operator approved the explicit generated-resource projection repair after composed qualification
+exposed the missing non-text producer. Independent review accepted the revised system/history/V7
+and App contracts: a tagged generated source and completed set, an explicit stable occurrence,
+four existing publication families and fresh lifecycle proof separate from structural identity.
+The V2 set is exactly 98 payload bytes and the generated projection is 81 payload bytes; no parser
+state or invented content is admitted, and no family is added.
+
+The review required lifecycle freshness and adoption as one complete boundary. Whole bounded-read
+Home revision confirmation and existing mutation-observer election fence preparation/publication;
+refresh must also compare and adopt changed prepared lifecycle/action facts. Unchanged structural
+authority alone cannot suppress that update. These requirements are now explicit in owning
+contracts. Readiness establishes implementability, while actual producer, inherited refresh,
+stable occurrence and frontier qualification remain implementation acceptance requirements.
+
+Native qualification subsequently confirmed that ordinary complete-only branching excludes a
+Pending or Unavailable source tail. The reachable composed sequence therefore tests the original
+Pending/admission election and then legal inherited admitted access. It does not claim a native
+inherited Pending transition. The presentation comparison and bounded proof fences remain shared
+consumer guarantees; no completeness or branch-admission rule was weakened.

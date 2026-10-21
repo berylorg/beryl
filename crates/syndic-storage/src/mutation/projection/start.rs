@@ -21,12 +21,12 @@ impl StartBuildMutation {
     ) -> Result<StartBuildRecords, SyndicMutationError> {
         let item = required::<CanonicalItemsFamily>(reader, &self.request.item_id)?;
         if item.revision() != self.request.expected_item_revision
-            || item.projection_source().is_none()
+            || item.projection_text_source().is_none()
         {
             return Err(SyndicMutationError::ProjectionBuildConflict);
         }
         let source = item
-            .projection_source()
+            .projection_text_source()
             .ok_or(SyndicMutationError::ProjectionBuildConflict)?;
         lifecycle::validate_projection_source(reader, &item, source)?;
         if let Some(head) = point::<ItemProjectionHeadsFamily>(reader, &item.id())?

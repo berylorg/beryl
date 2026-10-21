@@ -66,6 +66,7 @@ pub(crate) mod input_gate;
 use input_gate::{current_input_gate, put_input_gate, reserve_input_gate};
 mod live;
 pub(crate) mod projection;
+pub use projection::PublishGeneratedResourceProjection;
 mod promotion;
 mod repair;
 pub use repair::{ConvergeRepairIncomplete, RequireTerminalRepair};
@@ -74,7 +75,7 @@ mod provider_observation;
 mod stop;
 mod thread_properties;
 pub use thread_properties::ThreadAcquisitionContribution;
-mod transcript;
+pub(crate) mod transcript;
 
 pub use accepted::{
     BeginAcceptedInputDelivery, CompleteAcceptedInputDelivery, RetryAcceptedInputDelivery,
@@ -324,7 +325,7 @@ pub(super) fn required<F: Family>(
     point::<F>(reader, key)?.ok_or(SyndicMutationError::RequiredRecordMissing { family: F::NAME })
 }
 
-pub(super) fn turn_is_on_selected_path(
+pub(crate) fn turn_is_on_selected_path(
     reader: &DomainReader<'_, SyndicDomain>,
     thread: &ThreadRecord,
     candidate: &crate::TurnRecord,

@@ -4,9 +4,9 @@ use beryl_model::{SyndicItemId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
     CanonicalItemRecord, ContentLifecycle, ContentManifestRecord, ItemProjectionBuildPhase,
     ItemProjectionBuildRecord, ItemProjectionGeneration, ItemProjectionHeadRecord,
-    ItemProjectionSetRecord, ProjectionLifecycle, ProjectionTextSource, ResourceMetadataRecord,
-    SyndicPointReadLimit, SyndicStorage, TranscriptBuildRecord, TranscriptViewHeadRecord,
-    TurnItemIndexRecord, TurnItemOrdinal, TurnRecord, TurnStateRecord,
+    ItemProjectionSetRecord, ItemProjectionSource, ProjectionLifecycle, ProjectionTextSource,
+    ResourceMetadataRecord, SyndicPointReadLimit, SyndicStorage, TranscriptBuildRecord,
+    TranscriptViewHeadRecord, TurnItemIndexRecord, TurnItemOrdinal, TurnRecord, TurnStateRecord,
 };
 
 use super::super::OrdinaryTurnExecutionError;
@@ -92,7 +92,7 @@ pub(super) fn turn_frontier(
     };
     let projection_manifest = match item
         .as_ref()
-        .and_then(CanonicalItemRecord::projection_source)
+        .and_then(CanonicalItemRecord::projection_text_source)
     {
         Some(source) => store.content_manifest(storage, source.content_id(), limit)?,
         None => None,
@@ -269,7 +269,7 @@ fn validate_item_backings(
             ));
         }
     }
-    match (item.projection_source(), projection_manifest) {
+    match (item.projection_text_source(), projection_manifest) {
         (Some(ProjectionTextSource::Composer(content)), Some(manifest))
             if manifest.id() == content.id()
                 && manifest.lifecycle() == ContentLifecycle::Sealed
@@ -300,11 +300,17 @@ fn validate_item_backings(
 pub(super) struct ProjectionSnapshot {
     pub(super) item: CanonicalItemRecord,
     pub(super) provider_manifest: Option<ContentManifestRecord>,
-    pub(super) projection_manifest: ContentManifestRecord,
+    pub(super) backing: ProjectionBacking,
     pub(super) head: Option<ItemProjectionHeadRecord>,
     pub(super) generation: ItemProjectionGeneration,
     pub(super) build: Option<ItemProjectionBuildRecord>,
     pub(super) set: Option<ItemProjectionSetRecord>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) enum ProjectionBacking {
+    Text(ContentManifestRecord),
+    GeneratedResource(ResourceMetadataRecord),
 }
 
 pub(super) fn item_projection(
@@ -324,12 +330,19 @@ pub(super) fn item_projection(
     };
     let projection_manifest = match item
         .as_ref()
-        .and_then(CanonicalItemRecord::projection_source)
+        .and_then(CanonicalItemRecord::projection_text_source)
     {
         Some(source) => store.content_manifest(storage, source.content_id(), limit)?,
         None => None,
     };
     let head = store.item_projection_head(storage, item_id, limit)?;
+    let resource = match item
+        .as_ref()
+        .and_then(|item| item.presentation().resource_id())
+    {
+        Some(resource_id) => store.resource(storage, resource_id, limit)?,
+        None => None,
+    };
     let latest_build = store.latest_item_projection_build(storage, item_id, limit)?;
     let generation = projection_generation(head.as_ref(), latest_build.as_ref());
     let (build, set) = match generation {
@@ -349,6 +362,7 @@ pub(super) fn item_projection(
     let confirmed_provider_manifest = reread_manifest(store, storage, &provider_manifest, limit)?;
     let confirmed_projection_manifest =
         reread_manifest(store, storage, &projection_manifest, limit)?;
+    let confirmed_resource = reread_resource(store, storage, &resource, limit)?;
     let confirmed_head = store.item_projection_head(storage, item_id, limit)?;
     let confirmed_latest_build = store.latest_item_projection_build(storage, item_id, limit)?;
     let confirmed_item = store.canonical_item(storage, item_id, limit)?;
@@ -356,6 +370,7 @@ pub(super) fn item_projection(
         || confirmed_set != set
         || confirmed_provider_manifest != provider_manifest
         || confirmed_projection_manifest != projection_manifest
+        || confirmed_resource != resource
         || confirmed_head != head
         || confirmed_latest_build != latest_build
         || confirmed_item != item
@@ -367,6 +382,7 @@ pub(super) fn item_projection(
         item,
         provider_manifest,
         projection_manifest,
+        resource,
         head,
         generation,
         build,
@@ -405,6 +421,7 @@ fn assemble_projection(
     item: Option<CanonicalItemRecord>,
     provider_manifest: Option<ContentManifestRecord>,
     projection_manifest: Option<ContentManifestRecord>,
+    resource: Option<ResourceMetadataRecord>,
     head: Option<ItemProjectionHeadRecord>,
     generation: Option<ItemProjectionGeneration>,
     build: Option<ItemProjectionBuildRecord>,
@@ -413,25 +430,38 @@ fn assemble_projection(
     let item = item.ok_or(OrdinaryTurnExecutionError::Invariant(
         "item projection source is missing",
     ))?;
-    let projection_manifest = projection_manifest.ok_or(OrdinaryTurnExecutionError::Invariant(
-        "item projection content manifest is missing",
-    ))?;
     let generation = generation.ok_or(OrdinaryTurnExecutionError::Invariant(
         "item-projection generation is exhausted",
     ))?;
     validate_item_backings(
         &item,
         provider_manifest.as_ref(),
-        Some(&projection_manifest),
-        None,
+        projection_manifest.as_ref(),
+        resource.as_ref(),
     )?;
     let source = item
         .projection_source()
         .ok_or(OrdinaryTurnExecutionError::Invariant(
-            "item projection source has no text content",
+            "item projection source is missing",
         ))?;
+    let backing = match (source, projection_manifest, resource) {
+        (ItemProjectionSource::Text(source), Some(manifest), None)
+            if manifest.id() == source.content_id() =>
+        {
+            ProjectionBacking::Text(manifest)
+        }
+        (ItemProjectionSource::GeneratedResource(resource_id), None, Some(resource))
+            if resource.id() == resource_id && build.is_none() =>
+        {
+            ProjectionBacking::GeneratedResource(resource)
+        }
+        _ => {
+            return Err(OrdinaryTurnExecutionError::Invariant(
+                "item projection backing disagrees with its source",
+            ));
+        }
+    };
     if item.id() != item_id
-        || projection_manifest.id() != source.content_id()
         || head.as_ref().is_some_and(|head| head.item_id() != item_id)
         || build
             .as_ref()
@@ -447,7 +477,7 @@ fn assemble_projection(
     Ok(ProjectionSnapshot {
         item,
         provider_manifest,
-        projection_manifest,
+        backing,
         head,
         generation,
         build,

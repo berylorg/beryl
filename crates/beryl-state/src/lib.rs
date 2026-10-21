@@ -126,8 +126,11 @@ pub use asset::{
     AssetReferencePageError, AssetReferenceSetBuildProof, AssetReferenceSetCompletion,
     AssetReferenceSetLifecycle, AssetReferenceSetManifest, AssetReferenceSetStagingAuthority,
     AssetSidecarState, AssetState, AssetValueError, BeginAssetReferenceSet,
-    ComposerRecallMarkerProofProtocolV1, HistoricalInputMarkerProofProtocolV1,
-    PublishAssetMetadata, SealAssetReferenceSet, UpdateAssetOwnerHeads, ValidateAssetOwnerHeads,
+    ComposerRecallMarkerProofProtocolV1, GeneratedMediaAdmission, GeneratedMediaCommandFootprint,
+    GeneratedMediaError, GeneratedMediaFacts, GeneratedMediaLifecycle, GeneratedMediaPreparation,
+    GeneratedMediaTarget,
+    HistoricalInputMarkerProofProtocolV1, PublishAssetMetadata, SealAssetReferenceSet,
+    UpdateAssetOwnerHeads, ValidateAssetOwnerHeads,
     accepted_input_to_submitted_item_owner_transfer_max_footprint,
     draft_to_submitted_item_owner_transfer_max_footprint,
 };

@@ -407,7 +407,7 @@ fn startup_projects_uncorrelated_input_and_later_text_without_finalizing_either(
             ProviderItemLifecycle::AwaitingCorrelation
         );
         assert!(matches!(
-            before[0].projection_source(),
+            before[0].projection_text_source(),
             Some(ProjectionTextSource::Composer(_))
         ));
         let (directory, service) = fixture.into_service();

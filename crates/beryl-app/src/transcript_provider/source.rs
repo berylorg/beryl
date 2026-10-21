@@ -38,14 +38,19 @@ impl access::ActivationReadSource<'_> {
         TranscriptAttachmentError,
     > {
         self.check_request(request, cancelled)?;
-        match self.read_bounded_activation(request, cancelled) {
+        let before = self.home_revision(cancelled)?;
+        let result = match self.read_bounded_activation(request, cancelled) {
             Err(TranscriptAttachmentError::Capacity)
                 if request.purpose == TranscriptAttachmentPurpose::Attach =>
             {
                 self.read_capacity_activation(request, cancelled)
             }
             result => result,
+        }?;
+        if self.home_revision(cancelled)? != before {
+            return Err(TranscriptAttachmentError::Stale);
         }
+        Ok(result)
     }
 
     fn read_bounded_activation(
@@ -340,6 +345,48 @@ impl access::ActivationReadSource<'_> {
                         preview.len(),
                     )
                 }
+                syndic_storage::ProjectionPayload::GeneratedResource { resource_id } => {
+                    if item.presentation().resource_id() != Some(*resource_id) {
+                        return Err(TranscriptAttachmentError::Identity);
+                    }
+                    self.check_request(request, cancelled)?;
+                    let proof = self
+                        .generated_media_source(*resource_id)
+                        .map_err(attachment_read_error)?
+                        .ok_or(TranscriptAttachmentError::Identity)?;
+                    if proof.resource().id() != *resource_id
+                        || proof.item_id() != item.id()
+                        || proof.turn_id() != item.turn_id()
+                        || proof.item().revision() != item.revision()
+                    {
+                        return Err(TranscriptAttachmentError::Stale);
+                    }
+                    use crate::syndic_transcript::{
+                        TranscriptGeneratedImage, TranscriptGeneratedImageLifecycle as Lifecycle,
+                    };
+                    let lifecycle = match proof.resource().backing() {
+                        syndic_storage::ResourceBacking::GeneratedMedia(
+                            syndic_storage::GeneratedMediaResourceDisposition::PendingAsset,
+                        ) => Lifecycle::Pending,
+                        syndic_storage::ResourceBacking::GeneratedMedia(
+                            syndic_storage::GeneratedMediaResourceDisposition::Asset(asset),
+                        ) => Lifecycle::Admitted(asset),
+                        syndic_storage::ResourceBacking::GeneratedMedia(
+                            syndic_storage::GeneratedMediaResourceDisposition::Unavailable(reason),
+                        ) => Lifecycle::Unavailable(reason),
+                        _ => return Err(TranscriptAttachmentError::Identity),
+                    };
+                    (
+                        ProjectionPayload::GeneratedImage(TranscriptGeneratedImage {
+                            resource_id: *resource_id,
+                            resource_revision: proof.resource().revision(),
+                            source_fingerprint: proof.source_fingerprint(),
+                            lifecycle,
+                        }),
+                        None,
+                        std::mem::size_of::<TranscriptGeneratedImage>(),
+                    )
+                }
                 syndic_storage::ProjectionPayload::Empty => (
                     ProjectionPayload::Text {
                         text: "".into(),
@@ -354,12 +401,14 @@ impl access::ActivationReadSource<'_> {
                     source_offset,
                     marker,
                 } => (
-                    ProjectionPayload::ImageMarker(crate::syndic_transcript::TranscriptImageMarker {
-                        atom_ordinal: *atom_ordinal,
-                        marker_ordinal: *marker_ordinal,
-                        source_offset: *source_offset,
-                        marker: *marker,
-                    }),
+                    ProjectionPayload::ImageMarker(
+                        crate::syndic_transcript::TranscriptImageMarker {
+                            atom_ordinal: *atom_ordinal,
+                            marker_ordinal: *marker_ordinal,
+                            source_offset: *source_offset,
+                            marker: *marker,
+                        },
+                    ),
                     Some(*source_offset..*source_offset),
                     std::mem::size_of::<crate::syndic_transcript::TranscriptImageMarker>(),
                 ),
@@ -392,7 +441,12 @@ impl access::ActivationReadSource<'_> {
                     .map(|block| block.as_bytes()),
                 projection_id: Some(projection_id.clone()),
                 resource_id: match &payload {
-                    ProjectionPayload::ResourceReference { resource_id, .. } => Some(resource_id.clone()),
+                    ProjectionPayload::GeneratedImage(image) => {
+                        Some(ResourceId(image.resource_id.to_string()))
+                    }
+                    ProjectionPayload::ResourceReference { resource_id, .. } => {
+                        Some(resource_id.clone())
+                    }
                     _ => None,
                 },
                 source_range: source_range.clone(),
@@ -400,7 +454,9 @@ impl access::ActivationReadSource<'_> {
                 copy_source_range: source_range,
             };
             let kind = match &payload {
-                ProjectionPayload::ImageMarker(_) => ProjectionRecordKind::ImageMarker,
+                ProjectionPayload::ImageMarker(_) | ProjectionPayload::GeneratedImage(_) => {
+                    ProjectionRecordKind::ImageMarker
+                }
                 ProjectionPayload::InlineTable { .. }
                 | ProjectionPayload::InlineTableUnavailable { .. } => {
                     ProjectionRecordKind::InlineTable

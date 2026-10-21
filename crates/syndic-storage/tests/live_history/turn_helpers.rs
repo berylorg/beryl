@@ -338,38 +338,7 @@ pub(super) fn turn_items(
 }
 
 pub(super) fn project_item(store: &HomeStore, storage: &SyndicStorage, item_id: SyndicItemId) {
-    let item = storage
-        .canonical_item(store, item_id, limit())
-        .unwrap()
-        .unwrap();
-    let generation = ItemProjectionGeneration::FIRST;
-    assert_committed(execute(
-        store,
-        storage.start_item_projection_build(
-            storage.revision(store).unwrap(),
-            StartItemProjectionBuild::new(item_id, item.revision(), generation),
-        ),
-    ));
-    loop {
-        if storage
-            .item_projection_set(store, item_id, generation, limit())
-            .unwrap()
-            .is_some()
-        {
-            break;
-        }
-        let build = storage
-            .item_projection_build(store, item_id, generation, limit())
-            .unwrap()
-            .unwrap();
-        assert_committed(execute(
-            store,
-            storage.advance_item_projection_build(
-                storage.revision(store).unwrap(),
-                AdvanceItemProjectionBuild::new(item_id, generation, build.revision()),
-            ),
-        ));
-    }
+    crate::support::exact_cas::project_item_if_needed(store, storage.clone(), item_id);
 }
 
 pub(super) fn complete_item_frontier(

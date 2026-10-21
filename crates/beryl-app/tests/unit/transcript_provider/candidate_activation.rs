@@ -101,7 +101,7 @@ fn seed_resource(fixture: &Fixture) {
         ResourceKind::Attachment,
         "text/plain",
         ResourceBacking::TextRange {
-            source: item.projection_source().unwrap(),
+            source: item.projection_text_source().unwrap(),
             range,
         },
         [22; 32],

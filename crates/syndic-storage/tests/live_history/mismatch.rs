@@ -203,7 +203,7 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
         })
     );
     assert_eq!(
-        canonical.projection_source(),
+        canonical.projection_text_source(),
         Some(ProjectionTextSource::provider_narrative(live_narrative))
     );
     let cas_source = canonical.cas_source().unwrap().clone();
@@ -324,7 +324,7 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
         })
     );
     assert_eq!(
-        canonical.projection_source(),
+        canonical.projection_text_source(),
         Some(ProjectionTextSource::provider_narrative(live_narrative))
     );
     let provider = canonical.provider().unwrap();

@@ -3,6 +3,7 @@ use beryl_home_store::DomainReader;
 use crate::{domain::SyndicDomain, error::SyndicValidationError};
 
 mod events;
+mod generated;
 mod item_replay;
 mod items;
 mod membership;

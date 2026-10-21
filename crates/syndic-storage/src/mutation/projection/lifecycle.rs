@@ -20,7 +20,7 @@ pub(in crate::mutation) fn validate_projection_source(
     item: &crate::CanonicalItemRecord,
     source: ProjectionTextSource,
 ) -> Result<bool, SyndicMutationError> {
-    if item.projection_source() != Some(source) {
+    if item.projection_text_source() != Some(source) {
         return Err(SyndicMutationError::ProjectionBuildConflict);
     }
     match source {
@@ -57,6 +57,36 @@ pub(in crate::mutation) fn validate_projection_source(
             Ok(complete)
         }
     }
+}
+
+pub(in crate::mutation) fn validate_item_projection_source(
+    reader: &DomainReader<'_, SyndicDomain>,
+    item: &crate::CanonicalItemRecord,
+    source: crate::ItemProjectionSource,
+) -> Result<(), SyndicMutationError> {
+    if item.projection_source() != Some(source) {
+        return Err(SyndicMutationError::ProjectionBuildConflict);
+    }
+    match source {
+        crate::ItemProjectionSource::Text(source) => {
+            validate_projection_source(reader, item, source)?;
+        }
+        crate::ItemProjectionSource::GeneratedResource(resource_id) => {
+            let resource = required::<ResourcesFamily>(reader, &resource_id)?;
+            if item.kind() != crate::CanonicalItemKind::GeneratedMedia
+                || resource.item_id() != item.id()
+                || resource.projection_id().is_some()
+                || resource.ordinal().is_some()
+                || !matches!(
+                    resource.backing(),
+                    crate::ResourceBacking::GeneratedMedia(_)
+                )
+            {
+                return Err(SyndicMutationError::ProjectionBuildConflict);
+            }
+        }
+    }
+    Ok(())
 }
 
 impl ProjectionSeed {
@@ -123,25 +153,32 @@ pub(super) fn projection_seed(
         });
     }
     if let Some(set) = set {
-        if set.stable_eof_resolved() && set.source() != current {
+        let text = set
+            .text_state()
+            .ok_or(SyndicMutationError::ProjectionBuildConflict)?;
+        let previous = set
+            .source()
+            .text()
+            .ok_or(SyndicMutationError::ProjectionBuildConflict)?;
+        if text.stable_eof_resolved() && previous != current {
             return Err(SyndicMutationError::ProjectionBuildConflict);
         }
         validate_projection_seed_source(
-            set.source(),
-            set.source_bytes(),
-            set.resume_checkpoint(),
+            previous,
+            text.source_bytes(),
+            text.resume_checkpoint(),
             current,
         )?;
-        if set.stable_projection_count() > set.projection_count()
-            || set.stable_resource_count() > set.resource_count()
+        if text.stable_projection_count() > set.projection_count()
+            || text.stable_resource_count() > set.resource_count()
         {
             return Err(SyndicMutationError::ProjectionBuildConflict);
         }
         return Ok(ProjectionSeed {
-            projection_count: set.stable_projection_count(),
-            resource_count: set.stable_resource_count(),
-            output_digest: set.stable_digest(),
-            checkpoint: set.resume_checkpoint().clone(),
+            projection_count: text.stable_projection_count(),
+            resource_count: text.stable_resource_count(),
+            output_digest: text.stable_digest(),
+            checkpoint: text.resume_checkpoint().clone(),
         });
     }
     Ok(ProjectionSeed::empty(current))
@@ -180,7 +217,9 @@ pub(in crate::mutation) fn invalidate_item_projection(
     let build = match latest_build(reader, item.id())? {
         Some(build) => match build.phase() {
             ItemProjectionBuildPhase::Parsing(checkpoint) => {
-                if build.source_item_revision() != item.revision() || build.source() != source {
+                if build.source_item_revision() != item.revision()
+                    || Some(build.source()) != source.text()
+                {
                     return Err(SyndicMutationError::ProjectionBuildConflict);
                 }
                 Some(ItemProjectionBuildRecord::new(

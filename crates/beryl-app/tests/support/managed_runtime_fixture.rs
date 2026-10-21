@@ -227,6 +227,8 @@ fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
     if matches!(
         mode.as_str(),
         "execution-lifetime"
+            | "execution-generated"
+            | "execution-generated-awaiting"
             | "execution-next"
             | "execution-compaction"
             | "execution-compaction-shutdown"
@@ -286,6 +288,31 @@ fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
             .unwrap();
         }
         let _ = socket.send(Message::Text(response.to_string().into()));
+        if mode == "projection-lifetime" {
+            while let Ok(message) = socket.read() {
+                if message.is_close() { break; }
+                if !message.is_text() { continue; }
+                let request: Value = serde_json::from_str(message.to_text().unwrap()).unwrap();
+                match request["method"].as_str() {
+                    Some("thread/resume" | "thread/start") => {
+                        let mut loaded = response.clone();
+                        loaded["id"] = request["id"].clone();
+                        loaded["result"]["cwd"] = request["params"]["cwd"].clone();
+                        loaded["result"]["thread"]["cwd"] = request["params"]["cwd"].clone();
+                        if request["method"] == "thread/resume" {
+                            loaded["result"]["initialTurnsPage"] = Value::Null;
+                            loaded["result"]["turnsBackwardsCursor"] = Value::Null;
+                            loaded["result"]["itemsBackwardsCursor"] = Value::Null;
+                        }
+                        send_json(&mut socket, loaded);
+                    }
+                    Some("thread/unsubscribe") => send_json(&mut socket,
+                        json!({"id":request["id"],"result":{"status":"unsubscribed"}})),
+                    method => panic!("unexpected projection request: {method:?}"),
+                }
+            }
+            return;
+        }
     }
     if mode == "reject-native-recovery" && index > 0 {
         let mut ordinal = 0;

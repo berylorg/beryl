@@ -4,6 +4,9 @@ use super::*;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProjectionPayload {
     Empty,
+    GeneratedResource {
+        resource_id: SyndicResourceId,
+    },
     InlineMarkdown {
         block_id: MarkdownBlockId,
         block_kind: MarkdownBlockKind,
@@ -116,7 +119,7 @@ impl ProjectionPayload {
     #[must_use]
     pub const fn block_id(&self) -> Option<MarkdownBlockId> {
         match self {
-            Self::Empty => None,
+            Self::Empty | Self::GeneratedResource { .. } => None,
             Self::InlineMarkdown { block_id, .. } | Self::ResourceReference { block_id, .. } => {
                 Some(*block_id)
             }
@@ -127,7 +130,7 @@ impl ProjectionPayload {
     #[must_use]
     pub const fn block_kind(&self) -> Option<MarkdownBlockKind> {
         match self {
-            Self::Empty => None,
+            Self::Empty | Self::GeneratedResource { .. } => None,
             Self::InlineMarkdown { block_kind, .. }
             | Self::ResourceReference { block_kind, .. } => Some(*block_kind),
             Self::ImageMarker { .. } => None,
@@ -137,7 +140,7 @@ impl ProjectionPayload {
     #[must_use]
     pub const fn source_range(&self) -> Option<ProjectionSourceRange> {
         match self {
-            Self::Empty => None,
+            Self::Empty | Self::GeneratedResource { .. } => None,
             Self::InlineMarkdown { source_range, .. }
             | Self::ResourceReference { source_range, .. } => Some(*source_range),
             Self::ImageMarker { .. } => None,
@@ -147,7 +150,7 @@ impl ProjectionPayload {
     #[must_use]
     pub const fn inline_source(&self) -> Option<&str> {
         match self {
-            Self::Empty => None,
+            Self::Empty | Self::GeneratedResource { .. } => None,
             Self::InlineMarkdown { source, .. } => Some(source),
             Self::ResourceReference { .. } | Self::ImageMarker { .. } => None,
         }
@@ -157,7 +160,8 @@ impl ProjectionPayload {
     pub const fn resource_id(&self) -> Option<SyndicResourceId> {
         match self {
             Self::Empty | Self::InlineMarkdown { .. } => None,
-            Self::ResourceReference { resource_id, .. } => Some(*resource_id),
+            Self::ResourceReference { resource_id, .. }
+            | Self::GeneratedResource { resource_id } => Some(*resource_id),
             Self::ImageMarker { .. } => None,
         }
     }
@@ -178,7 +182,10 @@ impl ProjectionPayload {
                 source_offset,
                 marker,
             } => Some((*atom_ordinal, *marker_ordinal, *source_offset, *marker)),
-            Self::Empty | Self::InlineMarkdown { .. } | Self::ResourceReference { .. } => None,
+            Self::Empty
+            | Self::GeneratedResource { .. }
+            | Self::InlineMarkdown { .. }
+            | Self::ResourceReference { .. } => None,
         }
     }
 }

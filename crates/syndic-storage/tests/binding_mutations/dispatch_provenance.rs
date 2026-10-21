@@ -228,6 +228,18 @@ fn repeated_cancellations_preserve_turn_and_content_and_advance_exact_provenance
         store
             .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
             .unwrap();
+        let backfill = retry(&store, &storage, &fixture, fixture.snapshot)
+            .with_generated_source_incarnation(Some(
+                beryl_model::GeneratedSourceIncarnation::from_bytes([0x47; 32]),
+            ));
+        let rejected = execute_outcome(
+            &store,
+            storage.activate_binding(storage.revision(&store).unwrap(), backfill),
+        );
+        assert!(matches!(
+            typed_error(&rejected),
+            SyndicMutationError::ExecutionSnapshotCollision
+        ));
         let snapshot = SyndicExecutionSnapshotId::from_bytes([byte; 16]);
         let activation = retry(&store, &storage, &fixture, snapshot);
         assert_eq!(

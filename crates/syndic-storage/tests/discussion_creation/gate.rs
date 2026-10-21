@@ -7,7 +7,7 @@ use syndic_storage::test_faults::{
 #[test]
 fn gate_codec_has_exact_shapes_and_rejects_reserved_or_trailing_values() {
     let names = syndic_storage::test_faults::syndic_v7_family_names();
-    assert_eq!(names.len(), 99);
+    assert_eq!(names.len(), 101);
     assert_eq!(names[87], "non-idle-gate-sources");
     assert_eq!(names[88], "discussion-handoff-gates");
     for record in [

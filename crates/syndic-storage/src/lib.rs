@@ -659,6 +659,11 @@ mod domain;
 mod draft_piece;
 mod error;
 mod footprint;
+mod generated_media;
+pub use generated_media::{
+    GeneratedMediaPendingEntry, GeneratedMediaPendingPage, GeneratedMediaReadError,
+    GeneratedMediaSourceProof, GeneratedMediaSourceState, GeneratedMediaSweep,
+};
 pub mod inline_table;
 mod membership;
 mod mutation;
@@ -700,6 +705,7 @@ pub use draft_piece::*;
 pub use error::{RecoveryBudgetKind, RecoveryProjectionError, SyndicReadError, SyndicRecordError};
 pub use footprint::{accepted_input_promotion_max_footprint, idle_submission_max_footprint};
 pub use mutation::{
+    PublishGeneratedResourceProjection,
     ACTIVITY_ENROLLMENT_CLEANUP_ROWS, ActivityEnrollmentPreparation, ActivityEnrollmentRequest,
     ActivityEnrollmentStatus, ActivityEnrollmentWitness, ActivityPeriodToken,
     PreparedActivityEnrollment,

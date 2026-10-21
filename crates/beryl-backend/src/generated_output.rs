@@ -2,7 +2,7 @@ use crate::{
     LoadedThreadSession, ManagedBackendReleaseAdmission, ManagedBackendServer,
     ManagedBackendSession, server::ManagedLaunchProvenance,
 };
-use beryl_model::{CasItemId, CasThreadId, CasTurnId, RuntimeNativePath};
+use beryl_model::{CasItemId, CasThreadId, CasTurnId, GeneratedSourceIncarnation, RuntimeNativePath};
 use std::{
     fs::File,
     io,
@@ -83,7 +83,8 @@ pub struct GeneratedOutputPermit {
 #[derive(Debug)]
 pub(crate) struct LoadedSourceAuthority {
     thread: CasThreadId,
-    live: AtomicBool,
+    pub(crate) incarnation: GeneratedSourceIncarnation,
+    pub(crate) live: AtomicBool,
 }
 impl PartialEq for LoadedSourceAuthority {
     fn eq(&self, other: &Self) -> bool {

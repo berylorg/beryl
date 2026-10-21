@@ -19,18 +19,20 @@ use syndic_storage::{
     DraftSubmissionIntent, FinalizeNextTurnItem, FreezeNextTurnItem,
     GeneratedMediaResourceDisposition, HistorySummaryRecord, ImageLabelAuthorityHeadV1,
     ImageLabelFrontier, ImageLabelOrdinal, ImageLabelOriginOwner, ImageLabelOriginSpanRecord,
-    InputGateRecord, InputGateState, ItemProjectionGeneration, LiveSourceEvent, NativeCasLineage,
-    PreparedContent, ProjectionLifecycle, ProviderFrameOrdinalV1, ProviderFramePreparationPlan,
-    ProviderFrameStageOutcome, ProviderItemBuildLifecycle, ProviderItemFrameV1,
-    ProviderItemLifecycle, ProviderItemObservationV1, ProviderItemV1,
-    ProviderLifecycleTimestampMsV1, ProviderSubmittedContentV1, ProviderUserMessageV1,
-    PublishActiveCasTurn, PublishValidBinding, ResourceBacking, SealedProviderFrameReference,
-    SelectedPathProof, SourceEventPayload, SourceEventSequence, StartItemProjectionBuild,
-    StartTranscriptBuild, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
-    ThreadParentIndexRecord, ThreadRecord, TranscriptBuildPhase, TranscriptViewHeadRecord,
-    TurnChildIndexRecord, TurnDepth, TurnItemIndexRecord, TurnItemOrdinal, TurnKind, TurnLifecycle,
-    TurnStateRecord, TurnStateRevision, child_turn_chain_digest, empty_selected_path_digest,
-    prepare_provider_frame, root_turn_chain_digest, stage_provider_frame,
+    InputGateRecord, InputGateState, ItemProjectionGeneration, ItemProjectionSource,
+    LiveSourceEvent, NativeCasLineage, PreparedContent, ProjectionLifecycle,
+    ProviderFrameOrdinalV1, ProviderFramePreparationPlan, ProviderFrameStageOutcome,
+    ProviderItemBuildLifecycle, ProviderItemFrameV1, ProviderItemLifecycle,
+    ProviderItemObservationV1, ProviderItemV1, ProviderLifecycleTimestampMsV1,
+    ProviderSubmittedContentV1, ProviderUserMessageV1, PublishActiveCasTurn,
+    PublishGeneratedResourceProjection, PublishValidBinding, ResourceBacking,
+    SealedProviderFrameReference, SelectedPathProof, SourceEventPayload, SourceEventSequence,
+    StartItemProjectionBuild, StartTranscriptBuild, SyndicPointReadLimit, SyndicStorage,
+    SyndicTimestamp, ThreadParentIndexRecord, ThreadRecord, TranscriptBuildPhase,
+    TranscriptViewHeadRecord, TurnChildIndexRecord, TurnDepth, TurnItemIndexRecord,
+    TurnItemOrdinal, TurnKind, TurnLifecycle, TurnStateRecord, TurnStateRevision,
+    child_turn_chain_digest, empty_selected_path_digest, prepare_provider_frame,
+    root_turn_chain_digest, stage_provider_frame,
 };
 
 use super::{batch, commit, prepared_content_records, seed_detached_canonical_draft_backing};
@@ -519,13 +521,34 @@ pub fn establish_turn_with_profile(
     started_at: SyndicTimestamp,
     initial_tool_profile: CasConversationToolProfile,
 ) -> CasTurnSource {
-    let (cas_thread, snapshot) = activate_turn_with_profile(
+    establish_turn_with_source_incarnation(
+        store,
+        storage,
+        thread,
+        turn,
+        started_at,
+        initial_tool_profile,
+        None,
+    )
+}
+
+pub fn establish_turn_with_source_incarnation(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    thread: SyndicThreadId,
+    turn: SyndicTurnId,
+    started_at: SyndicTimestamp,
+    initial_tool_profile: CasConversationToolProfile,
+    incarnation: Option<beryl_model::GeneratedSourceIncarnation>,
+) -> CasTurnSource {
+    let (cas_thread, snapshot) = activate_turn_with_source_incarnation(
         store,
         storage.clone(),
         thread,
         turn,
         started_at,
         initial_tool_profile,
+        incarnation,
     );
     let binding = storage
         .current_binding(store, thread, point_limit())
@@ -570,6 +593,26 @@ pub fn activate_turn_with_profile(
     turn: SyndicTurnId,
     started_at: SyndicTimestamp,
     initial_tool_profile: CasConversationToolProfile,
+) -> (CasThreadId, SyndicExecutionSnapshotId) {
+    activate_turn_with_source_incarnation(
+        store,
+        storage,
+        thread,
+        turn,
+        started_at,
+        initial_tool_profile,
+        None,
+    )
+}
+
+pub fn activate_turn_with_source_incarnation(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    thread: SyndicThreadId,
+    turn: SyndicTurnId,
+    started_at: SyndicTimestamp,
+    initial_tool_profile: CasConversationToolProfile,
+    incarnation: Option<beryl_model::GeneratedSourceIncarnation>,
 ) -> (CasThreadId, SyndicExecutionSnapshotId) {
     let _ = super::enroll_fixture_activity(store, &storage, thread, turn);
     let current = storage
@@ -753,7 +796,8 @@ pub fn activate_turn_with_profile(
                     loaded_generation(),
                     started_at,
                 )
-                .with_context_classification(classification),
+                .with_context_classification(classification)
+                .with_generated_source_incarnation(incarnation),
             ),
         ),
         "binding activation",
@@ -1128,6 +1172,7 @@ pub fn converge_items(
             }
         }
         if generated_media_is_waiting(store, storage.clone(), &item) {
+            project_item_if_needed(store, storage.clone(), item.id());
             return;
         }
         project_item_if_needed(store, storage.clone(), item.id());
@@ -1195,6 +1240,20 @@ pub fn project_item_if_needed(store: &HomeStore, storage: SyndicStorage, item_id
         .map_or(ItemProjectionGeneration::FIRST, |head| {
             head.generation().checked_next().unwrap()
         });
+    if let Some(ItemProjectionSource::GeneratedResource(resource)) = item.projection_source() {
+        require_committed(
+            store.execute_current(storage.current_publish_generated_resource_projection(
+                PublishGeneratedResourceProjection::new(
+                    item_id,
+                    item.revision(),
+                    resource,
+                    generation,
+                ),
+            )),
+            "generated resource projection publication",
+        );
+        return;
+    }
     require_committed(
         store.execute_current(storage.clone().current_start_item_projection_build(
             StartItemProjectionBuild::new(item_id, item.revision(), generation),

@@ -62,3 +62,19 @@ fn another_catalog_signal_cannot_replace_original_observation() {
     assert_eq!(original.0.load(Ordering::SeqCst), 1);
     assert_eq!(replacement.0.load(Ordering::SeqCst), 0);
 }
+
+#[test]
+fn generated_observation_preserves_other_consumers_and_owner_wake_is_isolated() {
+    let scheduler = Arc::new(WakeCount::default());
+    let catalog = Arc::new(WakeCount::default());
+    let generated = Arc::new(WakeCount::default());
+    let fanout = Arc::new(HomeMutationWake::new(Waker::from(Arc::clone(&scheduler))));
+    fanout.catalog.set(Waker::from(Arc::clone(&catalog))).unwrap();
+    fanout.generated.set(Waker::from(Arc::clone(&generated))).unwrap();
+    Waker::from(Arc::clone(&fanout)).wake_by_ref();
+    fanout.generated_waker().wake_by_ref();
+    assert_eq!(scheduler.0.load(Ordering::SeqCst), 1);
+    assert_eq!(catalog.0.load(Ordering::SeqCst), 1);
+    assert_eq!(generated.0.load(Ordering::SeqCst), 2);
+    assert!(fanout.generated.set(Waker::from(Arc::new(WakeCount::default()))).is_err());
+}

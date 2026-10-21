@@ -10,6 +10,8 @@ pub(in crate::cas_projection) struct ConnectionWorkBoundary {
 #[derive(Debug)]
 struct Boundary {
     state: Mutex<State>,
+    generated_wake: std::sync::OnceLock<std::task::Waker>,
+    generated_capacity_waiter: std::sync::atomic::AtomicBool,
 }
 
 #[derive(Debug)]
@@ -29,6 +31,7 @@ pub(in crate::cas_projection) struct ConnectionWorkObservation {
 #[must_use]
 pub(in crate::cas_projection) struct ConnectionWorkMutation {
     owner: Option<Arc<Boundary>>,
+    notify_generated: bool,
 }
 
 impl beryl_backend::ResponseWorkMutation for ConnectionWorkMutation {}
@@ -43,6 +46,8 @@ impl ConnectionWorkBoundary {
     pub(in crate::cas_projection) fn new() -> Self {
         Self {
             inner: Arc::new(Boundary {
+                generated_wake: std::sync::OnceLock::new(),
+                generated_capacity_waiter: std::sync::atomic::AtomicBool::new(false),
                 state: Mutex::new(State {
                     revision: Some(0),
                     active: 0,
@@ -52,16 +57,38 @@ impl ConnectionWorkBoundary {
         }
     }
 
+    pub(in crate::cas_projection) fn install_generated_waker(&self, wake: std::task::Waker) {
+        assert!(self.inner.generated_wake.set(wake).is_ok(), "one generated observer per connection owner");
+    }
+
+    pub(in crate::cas_projection) fn await_generated_capacity(&self) {
+        self.inner.generated_capacity_waiter.store(true, std::sync::atomic::Ordering::Release);
+    }
+
+    pub(in crate::cas_projection) fn wake_generated_capacity(&self) {
+        if self.inner.generated_capacity_waiter.swap(false, std::sync::atomic::Ordering::AcqRel)
+            && let Some(wake) = self.inner.generated_wake.get()
+        { wake.wake_by_ref(); }
+    }
+
     pub(in crate::cas_projection) fn begin_change(&self) -> ConnectionWorkMutation {
+        self.begin_observed_change(true)
+    }
+
+    pub(in crate::cas_projection) fn begin_quiet_change(&self) -> ConnectionWorkMutation {
+        self.begin_observed_change(false)
+    }
+
+    fn begin_observed_change(&self, notify_generated: bool) -> ConnectionWorkMutation {
         let mut state = match self.inner.state.lock() {
             Ok(state) => state,
             Err(poison) => {
                 poison.into_inner().revision = None;
-                return ConnectionWorkMutation { owner: None };
+                return ConnectionWorkMutation { owner: None, notify_generated };
             }
         };
         if state.closed {
-            return ConnectionWorkMutation { owner: None };
+            return ConnectionWorkMutation { owner: None, notify_generated };
         }
         let next = state
             .revision
@@ -69,12 +96,13 @@ impl ConnectionWorkBoundary {
             .zip(state.active.checked_add(1));
         let Some((revision, active)) = next else {
             state.revision = None;
-            return ConnectionWorkMutation { owner: None };
+            return ConnectionWorkMutation { owner: None, notify_generated };
         };
         state.revision = Some(revision);
         state.active = active;
         ConnectionWorkMutation {
             owner: Some(Arc::clone(&self.inner)),
+            notify_generated,
         }
     }
 
@@ -154,9 +182,18 @@ impl Drop for ConnectionWorkMutation {
         if std::thread::panicking() {
             state.revision = None;
         }
+        drop(state);
+        let capacity_waiting = owner.generated_capacity_waiter.swap(false, std::sync::atomic::Ordering::AcqRel);
+        if (self.notify_generated || capacity_waiting) && let Some(wake) = owner.generated_wake.get() {
+            wake.wake_by_ref();
+        }
     }
 }
 
 #[cfg(test)]
 #[path = "../../../tests/unit/connection_work_observation.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/unit/generated_source_wakes.rs"]
+mod generated_source_wake_tests;

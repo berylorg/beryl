@@ -373,7 +373,7 @@ pub(super) fn validate_context_envelopes(
         }
         let bytes = super::read_projection_text_range(
             reader,
-            item.projection_source()
+            item.projection_text_source()
                 .ok_or(SyndicValidationError::Invariant(
                     "context source assistant item omitted projection text",
                 ))?,

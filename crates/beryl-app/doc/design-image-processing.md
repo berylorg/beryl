@@ -51,6 +51,22 @@ An admitted generated-resource demand is a distinct owner-qualified variant alon
 markers; its source resolution authenticates the exact resource and Published State reference.
 Resource IDs do not become Syndic image-marker IDs or marker labels.
 
+Ordinary construction snapshots have explicit Text and GeneratedResource backing. Only Text loads
+a projection content manifest, compares logical byte frontiers or enters the parser. Generated
+construction authenticates canonical resource ownership and publishes one bounded structural set
+through Syndic's generated mutation. Preparation consumes the explicit GeneratedResource payload,
+then authenticates fresh lifecycle/source proof within the existing selected head/thread reread
+fences and a whole bounded-read Home revision confirmation. The same confirmation protects generated
+image-source resolution. A changed Home revision yields typed stale/retry, never a mixed prepared
+snapshot. Home mutation refresh remains active when an inherited structural head is unchanged.
+The refresh adoption decision compares bounded prepared presentation facts, including generated
+lifecycle and action authority, rather than structural head equality alone. Structural authority
+matching remains separate where it authenticates a selected entry; it cannot discard a fresh
+Pending-to-Admitted or Unavailable presentation for the same occurrence.
+Empty is not generated authority. The selected inherited entry supplies view authority;
+the resource's original thread supplies durable ownership. Those thread IDs need not match.
+Resource-only changes refresh presentation without replacing structural projection identity.
+
 Composer requests originate from the exact still-live candidate root, marker id and View operation.
 Transcript requests originate from its exact provider-authenticated media occurrence and resource
 revision. GUI adapters capture that compact demand from their prepared current presentation facts;
@@ -89,11 +105,35 @@ unrelated domain changes. An unfinished producer with current original authority
 without monopolizing a worker; completed or lost sources can become eligible independently of
 selected windows or connection callbacks.
 
+Typed concurrent source/admission read drift defers through the already registered Home mutation
+wake, including admission reads inside publication factories. Page deferral preserves the exact
+sweep continuation and high-water; it neither resets discovery nor stops the cohort. Genuine
+read/integrity failures retain their failure path.
+
 Workers obtain the opaque Syndic source proof and at most one bounded saved-path value only after
 admission. Backend mints the original file capability from the actual current runtime/projection
 owners. Those owners, not equal persisted IDs, decide source eligibility. Restart/replacement first
 checks fresh durable Prepared evidence; lacking it and an authentic original source terminalizes
 the same resource as unavailable. No old source callback or handle crosses service replacement.
+
+The connection driver retains its actual release admission and at most one clone of the actual
+current loaded-session authority. Historical source facts must match its existing exact loaded
+registry owner and generation before backend permit authorization. Unsubscribe, superseding load,
+connection retirement and backend revocation retain their ordinary fences. This adds no
+per-resource source-capability inventory.
+
+Ordinary dispatch reads the actual loaded-source incarnation through that same owner and includes
+it in Syndic activation's immutable snapshot association. Historical source proof must name the
+same incarnation before permit authorization; equal numeric generations after restart are
+insufficient. Missing historical provenance never triggers backfill or a fresh-session retry.
+
+Opening the original process source runs on that runtime's existing owner worker through one
+bounded request slot, outside its membership locks. Requests belong to admitted generated flights,
+so aggregate outstanding requests remain bounded by the fixed generated worker cohort. Request
+admission verifies the original runtime attempt/process; contention defers as Busy. An admitted
+request drains its exact response even after cancellation and retains any returned uncertain-source
+custody. Runtime retirement refuses unclaimed requests and settles an admitted open before disposing
+its original server. No replacement launch or current connector substitutes for that server.
 
 Generated source/sidecar work shares the process media owner's existing path-preparation and
 sidecar-verification stage reservations. A private stage-only lease exposes those counters without

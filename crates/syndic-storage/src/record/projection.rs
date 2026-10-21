@@ -200,7 +200,7 @@ impl CanonicalItemRecord {
         self.presentation.content()
     }
     #[must_use]
-    pub const fn projection_source(&self) -> Option<ProjectionTextSource> {
+    pub const fn projection_text_source(&self) -> Option<ProjectionTextSource> {
         match &self.presentation {
             CanonicalItemPresentation::UserInput { content, .. }
             | CanonicalItemPresentation::DiscussionHandoff { content, .. } => {
@@ -216,6 +216,19 @@ impl CanonicalItemRecord {
             CanonicalItemPresentation::Operational
             | CanonicalItemPresentation::Activity
             | CanonicalItemPresentation::GeneratedMedia { .. } => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn projection_source(&self) -> Option<ItemProjectionSource> {
+        match self.presentation {
+            CanonicalItemPresentation::GeneratedMedia { resource_id } => {
+                Some(ItemProjectionSource::GeneratedResource(resource_id))
+            }
+            _ => match self.projection_text_source() {
+                Some(source) => Some(ItemProjectionSource::Text(source)),
+                None => None,
+            },
         }
     }
     #[must_use]

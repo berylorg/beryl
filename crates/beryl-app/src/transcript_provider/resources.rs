@@ -322,7 +322,7 @@ impl TranscriptProviderReader {
             && (projection.payload().source_range() != Some(range)
                 || demand.provenance.source_range.as_ref() != Some(&(range.start()..range.end()))
                 || !item
-                    .projection_source()
+                    .projection_text_source()
                     .is_some_and(|current| source.can_extend(current)))
         {
             return Err(TranscriptAttachmentError::Identity);

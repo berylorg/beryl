@@ -66,7 +66,7 @@ pub(super) fn publish_entries(
     let source = item
         .projection_source()
         .ok_or(SyndicMutationError::TranscriptBuildConflict)?;
-    crate::mutation::projection::validate_projection_source(reader, &item, source)?;
+    crate::mutation::projection::validate_item_projection_source(reader, &item, source)?;
     let item_head = point::<ItemProjectionHeadsFamily>(reader, &item.id())?
         .ok_or(SyndicMutationError::TranscriptProjectionUnavailable)?;
     if item_head.lifecycle() != ProjectionLifecycle::Current

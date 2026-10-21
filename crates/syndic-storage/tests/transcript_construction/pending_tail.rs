@@ -137,13 +137,13 @@ fn pending_tail_publishes_saved_content_without_finalizing_history() {
     assert_ne!(started_item_generation, initial_item_generation);
     assert_eq!(started_item_set.source(), initial_item_set.source());
     assert_eq!(
-        started_item_set.stable_digest(),
-        initial_item_set.stable_digest()
+        started_item_set.text_state().unwrap().stable_digest(),
+        initial_item_set.text_state().unwrap().stable_digest()
     );
     assert_eq!(started_item_set.digest(), initial_item_set.digest());
     assert_eq!(
-        started_item_set.resume_checkpoint(),
-        initial_item_set.resume_checkpoint()
+        started_item_set.text_state().unwrap().resume_checkpoint(),
+        initial_item_set.text_state().unwrap().resume_checkpoint()
     );
     assert_eq!(
         item_projection_ids(&store, storage.clone(), pending.item),
@@ -288,13 +288,13 @@ fn pending_tail_publishes_saved_content_without_finalizing_history() {
     );
     assert_eq!(completed_item_set.source(), initial_item_set.source());
     assert_eq!(
-        completed_item_set.stable_digest(),
-        initial_item_set.stable_digest()
+        completed_item_set.text_state().unwrap().stable_digest(),
+        initial_item_set.text_state().unwrap().stable_digest()
     );
     assert_eq!(completed_item_set.digest(), initial_item_set.digest());
     assert_eq!(
-        completed_item_set.resume_checkpoint(),
-        initial_item_set.resume_checkpoint()
+        completed_item_set.text_state().unwrap().resume_checkpoint(),
+        initial_item_set.text_state().unwrap().resume_checkpoint()
     );
     assert_eq!(
         item_projection_ids(&store, storage.clone(), pending.item),

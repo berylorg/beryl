@@ -1742,7 +1742,7 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - For a repair snapshot, generated media must resolve promptly from the exact authenticated
   `savedPath`. Missing or unusable path/bytes makes the repair incomplete; discarded inline base64
   and similar files are never substitute authority.
-- Projection construction consumes one closed exact source: sealed composer content for submitted
+- Text projection construction consumes one closed exact source: sealed composer content for submitted
   user input, one selected provider narrative generation for normally captured transcript-visible
   provider text, or snapshot-backed canonical logical ranges for repaired transcript-visible text.
   Normal provider parsing walks the narrative-span index directly and reads only the referenced
@@ -1777,11 +1777,24 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - The transcript projection contains user-authored input, transcript-visible user media markers, assistant commentary, assistant final answers, assistant text marked transcript-visible by the source, and generated media intended as assistant output.
 - Operational records remain canonical history but are excluded from parent transcript narrative unless a later feature design promotes a bounded summary.
 - Markdown parsing, chunking, code/table externalization, and resource reference creation are Syndic projection responsibilities. The GPUI transcript renderer consumes projection records and must not parse raw provider Markdown.
-- Projection construction is a bounded durable pipeline rather than one whole-item parse. Each
+- Text projection construction is a bounded durable pipeline rather than one whole-item parse. Each
   item-projection generation records its exact canonical source revision, consumed-byte frontier,
   closed-block frontier, parser state, output frontier, and lifecycle. One construction step reads
   and writes bounded pages only; interruption leaves a resumable or superseded derived generation,
   never a partially current transcript.
+- Generated-media projection construction uses an explicit non-text source: the canonical item's
+  exact resource identity and item revision. It publishes one immutable generated-resource
+  occurrence from resource birth, including unfinished output. It has no text content, logical
+  range, parser checkpoint, authored marker or stable-EOF state. One bounded guarded publication
+  creates its completed set and membership through existing projection families. The occurrence
+  identity depends only on format, item and resource; completion, freezing, asset admission,
+  unavailability and inherited selected views preserve that identity. Canonical item revision
+  changes stale structural sets; resource-only resolution preserves them and refreshes selected
+  presentation. Current lifecycle and source facts require fresh authenticated resource proofs
+  bracketed by the selected head/thread authority and a whole bounded-read Home revision fence,
+  rather than persisted lifecycle in a projection. An inherited view may retain its structural
+  head while the original resource resolves; unchanged selected head/thread alone is insufficient.
+  Home mutation notification must still cause fresh lifecycle preparation for that occurrence.
 - Canonical content chunks have exact encoded-byte indexes plus closed logical-source span indexes.
   `ComposerV1` text spans skip framing and image-marker bytes, while a selected provider narrative
   view maps its own logical range to exact ProviderItemV1 frame ranges.

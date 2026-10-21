@@ -140,6 +140,8 @@ impl ImageMediaProcess {
             || !state.queue.is_empty()
             || !state.flights.is_empty()
             || state.original.is_some()
+            || state.path_slots != 0
+            || state.verification_slots != 0
         {
             return ImageResourceDrain::Pending;
         }

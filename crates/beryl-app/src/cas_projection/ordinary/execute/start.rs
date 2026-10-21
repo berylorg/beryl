@@ -157,6 +157,7 @@ pub(super) fn execute_in_flight(
         flight.bind_terminal_completion(pending.turn_id)
     ));
     let snapshot_id = execution_snapshot_id(coordinator, &projection, &pending);
+    let source_incarnation = retain_projection!(projection.generated_source_incarnation());
     let activation = ActivateBinding::new(
         pending.thread_id,
         pending.binding_revision,
@@ -168,7 +169,8 @@ pub(super) fn execute_in_flight(
         projection.loaded_session_generation(),
         started_at,
     )
-    .with_context_classification(pending.context_classification);
+    .with_context_classification(pending.context_classification)
+    .with_generated_source_incarnation(source_incarnation);
     let (active_binding_revision, active_gate_revision) =
         match activate(store, storage, &activation, limit) {
             ActivationAttempt::Activated {

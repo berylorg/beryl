@@ -314,7 +314,9 @@ impl SyndicStorage {
             .ok_or(SyndicReadError::Invariant(
                 "item-projection generation set is missing",
             ))?;
-        let set = set;
+        let stable_projection_count = set
+            .text_state()
+            .map_or(0, |text| text.stable_projection_count());
         if set.item_id() != item || set.generation() != generation {
             return Err(SyndicReadError::Invariant(
                 "item-projection generation set identity disagrees",
@@ -344,10 +346,10 @@ impl SyndicStorage {
         let mut records = Vec::with_capacity(limits.max_items());
         let mut stored_bytes = 0_usize;
         let mut decoded_bytes = 0_usize;
-        if next <= set.stable_projection_count() {
+        if next <= stable_projection_count {
             let first_ordinal = crate::ProjectionOrdinal::new(next)
                 .map_err(|_| SyndicReadError::Invariant("stable projection ordinal is invalid"))?;
-            let last_ordinal = crate::ProjectionOrdinal::new(set.stable_projection_count())
+            let last_ordinal = crate::ProjectionOrdinal::new(stable_projection_count)
                 .map_err(|_| SyndicReadError::Invariant("stable projection frontier is invalid"))?;
             let page = store.read_cursor::<
                 crate::domain::SyndicDomain,
@@ -401,7 +403,7 @@ impl SyndicStorage {
                     has_more: false,
                 });
             }
-            let Some(after_stable) = set.stable_projection_count().checked_add(1) else {
+            let Some(after_stable) = stable_projection_count.checked_add(1) else {
                 return Ok(SyndicPage {
                     records,
                     stored_bytes,

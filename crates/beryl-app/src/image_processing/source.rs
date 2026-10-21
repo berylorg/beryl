@@ -25,6 +25,8 @@ use super::MediaResourceLimits;
 
 const SOURCE_RECORD_BYTES: usize = 65_536;
 
+mod generated;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ImageSourceDemand {
     Composer {
@@ -38,6 +40,13 @@ pub(crate) enum ImageSourceDemand {
         projection_id: SyndicProjectionId,
         projection_revision: ProjectionRevision,
         marker: TranscriptImageMarker,
+    },
+    TranscriptGeneratedResource {
+        thread_id: SyndicThreadId,
+        entry: CurrentTranscriptEntryProof,
+        projection_id: SyndicProjectionId,
+        projection_revision: ProjectionRevision,
+        image: crate::syndic_transcript::TranscriptGeneratedImage,
     },
 }
 
@@ -193,6 +202,20 @@ impl ImageSourceProvider {
                 projection_id,
                 projection_revision,
                 marker,
+                cancellation,
+            )?,
+            ImageSourceDemand::TranscriptGeneratedResource {
+                thread_id,
+                entry,
+                projection_id,
+                projection_revision,
+                image,
+            } => self.resolve_generated(
+                thread_id,
+                entry,
+                projection_id,
+                projection_revision,
+                image,
                 cancellation,
             )?,
         };

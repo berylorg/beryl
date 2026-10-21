@@ -83,6 +83,7 @@ pub(crate) use resource_construction::{
 mod control_work;
 mod flight_registry;
 mod graceful_shutdown;
+mod generated_source;
 pub(crate) mod initial_preparation;
 mod mutation_wake;
 pub(crate) mod recovery_preparation;

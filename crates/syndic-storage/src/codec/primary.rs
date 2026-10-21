@@ -338,7 +338,7 @@ impl Family for ItemProjectionSetsFamily {
     type Key = ItemProjectionSetKey;
     type Value = ItemProjectionSetRecord;
     const NAME: &'static str = "item-projection-sets";
-    const RECORD_VERSION: beryl_home_store::RecordVersion = beryl_home_store::RecordVersion::new(1);
+    const RECORD_VERSION: beryl_home_store::RecordVersion = beryl_home_store::RecordVersion::new(2);
     const MAX_KEY_BYTES: usize = 24;
     const MAX_VALUE_BYTES: usize = SMALL_MAX;
 

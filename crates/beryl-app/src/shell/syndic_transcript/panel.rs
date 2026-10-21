@@ -359,7 +359,8 @@ impl SyndicTranscriptPanel {
         let (host, outcome) = self.host.prepare_coherent_activation(prepared.clone());
         let unplaced_tail = host.scroll_state().anchor.is_none()
             && prepared.placement == TranscriptActivationPlacement::Tail;
-        self.invalidate_transcript_menu();
+        let preserve_images = self.can_refresh_generated_images(&host);
+        if !preserve_images { self.invalidate_transcript_menu(); }
         self.staged = Some(StagedTranscript {
             activation: Some(prepared.clone()),
             host,
@@ -371,7 +372,7 @@ impl SyndicTranscriptPanel {
             narrative: None,
         });
         self.geometry = None;
-        self.close_invalid_geometry();
+        self.close_invalid_geometry_preserving_images(preserve_images);
     }
 
     pub(crate) fn adjacent_demand(&self) -> Option<super::AdjacentTranscriptDemand> {
@@ -781,10 +782,14 @@ impl SyndicTranscriptPanel {
     }
 
     fn close_invalid_geometry(&mut self) {
-        self.image_inspection_pending = None;
+        self.close_invalid_geometry_preserving_images(false);
+    }
+
+    fn close_invalid_geometry_preserving_images(&mut self, preserve_images: bool) {
+        if !preserve_images { self.image_inspection_pending = None; }
         self.cancel_literal_copy();
         self.narrative_selection = None;
-        self.invalidate_transcript_menu();
+        if !preserve_images { self.invalidate_transcript_menu(); }
         self.narrative_dragging = false;
         self.keyboard_copy.gesture.invalidate_records();
         self.keyboard_copy.feedback = "";
@@ -1447,7 +1452,11 @@ impl SyndicTranscriptPanel {
             {
                 state.scroll_mode = super::RealizedFrameScrollMode::LiveTailFollowing;
             }
-            self.close_invalid_geometry();
+            let preserve_images = self.pending_delta == 0.0
+                && self.staged.as_ref().is_some_and(|staged| {
+                    staged.activation.is_some() && self.can_refresh_generated_images(&staged.host)
+                });
+            self.close_invalid_geometry_preserving_images(preserve_images);
             self.geometry = Some(PendingGeometry {
                 revision: snapshot.presentation_revision,
                 environment,
@@ -1501,7 +1510,7 @@ impl SyndicTranscriptPanel {
                     if !keep { measurement_host.reserve_inline_parts_layout(&value.record, 0); }
                     keep
                 });
-                if matches!(record.kind, ResidentPresentationRecordKind::AuthoredInlineParts { .. } | ResidentPresentationRecordKind::ImageMarker(_)) {
+                if matches!(record.kind, ResidentPresentationRecordKind::AuthoredInlineParts { .. } | ResidentPresentationRecordKind::ImageMarker(_) | ResidentPresentationRecordKind::GeneratedImage(_)) {
                     return inline_parts::measure(&mut self.inline_parts_candidate_geometry, measurement_host,
                         &self.inline_parts_geometry, &snapshot, record, &self.narrative_appearance, viewport_size.width, observations, window, cx);
                 }
@@ -1798,6 +1807,9 @@ mod tests {
         env!("CARGO_MANIFEST_DIR"),
         "/tests/unit/syndic_transcript_panel.rs"
     ));
+    mod generated_images {
+        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/unit/generated_image_mount.rs"));
+    }
 }
 
 fn record_vertical_padding(
@@ -2182,7 +2194,7 @@ fn render_ordinary_record_content(
     table_row_height: f32,
 ) -> AnyElement {
     match &record.kind {
-        ResidentPresentationRecordKind::AuthoredInlineParts { .. } => {
+        ResidentPresentationRecordKind::AuthoredInlineParts { .. } | ResidentPresentationRecordKind::GeneratedImage(_) => {
             div().child("Inline content preparing").into_any_element()
         }
         ResidentPresentationRecordKind::ImageMarker(marker) => div()

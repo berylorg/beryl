@@ -97,6 +97,7 @@ fn converge_items(
             }
         }
         if generated_media_is_waiting(store, storage, &item) {
+            project_item_if_needed(store, storage, item.id());
             return;
         }
         project_item_if_needed(store, storage, item.id());
@@ -165,6 +166,24 @@ fn project_item_if_needed(store: &HomeStore, storage: &SyndicStorage, item: Synd
         .map_or(ItemProjectionGeneration::FIRST, |head| {
             head.generation().checked_next().unwrap()
         });
+    if let Some(resource) = record
+        .projection_source()
+        .and_then(|source| source.resource_id())
+    {
+        execute(
+            store,
+            storage.publish_generated_resource_projection(
+                storage.revision(store).unwrap(),
+                syndic_storage::PublishGeneratedResourceProjection::new(
+                    item,
+                    record.revision(),
+                    resource,
+                    generation,
+                ),
+            ),
+        );
+        return;
+    }
     execute(
         store,
         storage.start_item_projection_build(

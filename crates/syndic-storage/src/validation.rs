@@ -15,7 +15,7 @@ mod projections;
 mod provider_frame;
 mod provider_observation;
 mod queries;
-mod scan;
+pub(crate) mod scan;
 mod stop;
 mod thread_properties;
 
@@ -39,6 +39,7 @@ pub(crate) fn validate(
     ordering::validate(reader)?;
     queries::validate(reader)?;
     projections::validate(reader)?;
+    crate::generated_media::validation::validate(reader)?;
     provider_observation::validate(reader)?;
     thread_properties::validate(reader)?;
     graph::validate_context_envelopes(reader)?;

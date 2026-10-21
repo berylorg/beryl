@@ -1,3 +1,7 @@
+use crate::generated_media::{
+    SourceValue,
+    codec::{SourceKey, SourcesCodec, SourcesFamily},
+};
 use crate::mutation::input_gate::*;
 
 use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, ReconciliationReservation};
@@ -39,6 +43,7 @@ impl DomainMutation<SyndicDomain> for ActivateBindingMutation {
         reservation.reserve_records::<BindingsCodec>(1)?;
         reservation.reserve_records::<BindingHeadsCodec>(1)?;
         reservation.reserve_records::<ExecutionSnapshotsCodec>(1)?;
+        reservation.reserve_records::<SourcesCodec>(1)?;
         reservation.reserve_records::<TurnStatesCodec>(1)?;
         reservation.reserve_records::<TranscriptPathTurnsCodec>(1)?;
         reservation.reserve_records::<TranscriptHeadsCodec>(1)?;
@@ -65,6 +70,7 @@ pub struct ActivateBindingRecords {
     binding: BindingRecord,
     head: BindingHeadRecord,
     snapshot: ExecutionSnapshotRecord,
+    generated_source_incarnation: Option<beryl_model::GeneratedSourceIncarnation>,
     gate: InputGateRecord,
     route_head: AcceptedRouteGenerationHeadRecord,
     route_generation: AcceptedRouteGenerationRecord,
@@ -140,6 +146,7 @@ impl ActivateBindingMutation {
         }
         if point::<ExecutionSnapshotsFamily>(reader, &request.snapshot_id)?.is_some()
             || point::<ActiveCasTurnsFamily>(reader, &request.snapshot_id)?.is_some()
+            || point::<SourcesFamily>(reader, &SourceKey::Owner(request.snapshot_id))?.is_some()
         {
             return Err(SyndicMutationError::ExecutionSnapshotCollision);
         }
@@ -255,6 +262,7 @@ impl ActivateBindingMutation {
             binding,
             head,
             snapshot,
+            generated_source_incarnation: request.generated_source_incarnation,
             gate,
             route_head,
             route_generation,
@@ -280,6 +288,12 @@ impl ActivateBindingRecords {
         )?;
         mutations.put::<BindingHeadsCodec>(&self.binding.thread_id(), &self.head)?;
         mutations.put::<ExecutionSnapshotsCodec>(&self.snapshot.id(), &self.snapshot)?;
+        if let Some(owner) = self.generated_source_incarnation {
+            mutations.put::<SourcesCodec>(
+                &SourceKey::Owner(self.snapshot.id()),
+                &SourceValue::Owner(owner),
+            )?;
+        }
         put_input_gate(mutations, &self.gate)?;
         mutations.put::<AcceptedRouteGenerationHeadsCodec>(
             &self.route_head.thread_id(),

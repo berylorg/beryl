@@ -5,5 +5,6 @@ pub(super) const fn is_transcript_visible(kind: crate::CanonicalItemKind) -> boo
             | crate::CanonicalItemKind::DiscussionHandoff
             | crate::CanonicalItemKind::AssistantMessage(_)
             | crate::CanonicalItemKind::ProviderText(_)
+            | crate::CanonicalItemKind::GeneratedMedia
     )
 }

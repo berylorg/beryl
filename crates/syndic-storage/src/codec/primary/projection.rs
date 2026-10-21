@@ -67,6 +67,10 @@ pub(super) fn decode_projection_record(bytes: &[u8]) -> Result<ProjectionRecord,
 fn encode_projection_payload(e: &mut Encoder, value: &ProjectionPayload) {
     match value {
         ProjectionPayload::Empty => e.u8(3),
+        ProjectionPayload::GeneratedResource { resource_id } => {
+            e.u8(4);
+            enc_resource(e, *resource_id);
+        }
         ProjectionPayload::InlineMarkdown {
             block_id,
             block_kind,
@@ -136,6 +140,9 @@ fn decode_projection_payload(d: &mut Decoder<'_>) -> Result<ProjectionPayload, C
             ComposerImageMarker::new(dec_marker(d)?, dec_image_label(d)?),
         )),
         3 => Ok(ProjectionPayload::empty()),
+        4 => Ok(ProjectionPayload::GeneratedResource {
+            resource_id: dec_resource(d)?,
+        }),
         tag => Err(CodecError::InvalidTag {
             kind: "projection payload",
             tag,
@@ -178,16 +185,32 @@ pub(super) fn encode_item_projection_set(
     enc_item_projection_generation(&mut e, value.generation());
     enc_projection_format(&mut e, value.format());
     enc_projection_rev(&mut e, value.source_item_revision());
-    enc_projection_text_source(&mut e, value.source());
-    e.u64(value.source_bytes());
-    e.u64(value.stable_projection_count());
-    e.u64(value.stable_resource_count());
-    e.fixed32(&value.stable_digest());
-    e.u64(value.projection_count());
-    e.u64(value.resource_count());
-    e.fixed32(&value.digest());
-    encode_markdown_checkpoint(&mut e, value.resume_checkpoint());
-    enc_bool(&mut e, value.stable_eof_resolved());
+    match value.source() {
+        ItemProjectionSource::Text(source) => {
+            let text = value.text_state().ok_or(CodecError::InvalidTag {
+                kind: "item projection text state",
+                tag: 1,
+            })?;
+            e.u8(0);
+            enc_projection_text_source(&mut e, source);
+            e.u64(text.source_bytes());
+            e.u64(text.stable_projection_count());
+            e.u64(text.stable_resource_count());
+            e.fixed32(&text.stable_digest());
+            e.u64(value.projection_count());
+            e.u64(value.resource_count());
+            e.fixed32(&value.digest());
+            encode_markdown_checkpoint(&mut e, text.resume_checkpoint());
+            enc_bool(&mut e, text.stable_eof_resolved());
+        }
+        ItemProjectionSource::GeneratedResource(resource) => {
+            e.u8(1);
+            enc_resource(&mut e, resource);
+            e.u64(value.projection_count());
+            e.u64(value.resource_count());
+            e.fixed32(&value.digest());
+        }
+    }
     Ok(e.finish())
 }
 
@@ -195,22 +218,51 @@ pub(super) fn decode_item_projection_set(
     bytes: &[u8],
 ) -> Result<ItemProjectionSetRecord, CodecError> {
     let mut d = Decoder::new(bytes);
-    let value = ItemProjectionSetRecord::new(
-        dec_item(&mut d)?,
-        dec_item_projection_generation(&mut d)?,
-        dec_projection_format(&mut d)?,
-        dec_projection_rev(&mut d)?,
-        dec_projection_text_source(&mut d)?,
-        d.u64()?,
-        d.u64()?,
-        d.u64()?,
-        d.fixed32()?,
-        d.u64()?,
-        d.u64()?,
-        d.fixed32()?,
-        decode_markdown_checkpoint(&mut d)?,
-        dec_bool(&mut d, "item projection stable EOF resolution")?,
-    );
+    let item = dec_item(&mut d)?;
+    let generation = dec_item_projection_generation(&mut d)?;
+    let format = dec_projection_format(&mut d)?;
+    let revision = dec_projection_rev(&mut d)?;
+    let value = match d.u8()? {
+        0 => ItemProjectionSetRecord::new(
+            item,
+            generation,
+            format,
+            revision,
+            dec_projection_text_source(&mut d)?,
+            d.u64()?,
+            d.u64()?,
+            d.u64()?,
+            d.fixed32()?,
+            d.u64()?,
+            d.u64()?,
+            d.fixed32()?,
+            decode_markdown_checkpoint(&mut d)?,
+            dec_bool(&mut d, "item projection stable EOF resolution")?,
+        ),
+        1 => {
+            let resource = dec_resource(&mut d)?;
+            if d.u64()? != 1 || d.u64()? != 0 {
+                return Err(CodecError::InvalidTag {
+                    kind: "generated projection counts",
+                    tag: 1,
+                });
+            }
+            ItemProjectionSetRecord::generated_resource(
+                item,
+                generation,
+                format,
+                revision,
+                resource,
+                d.fixed32()?,
+            )
+        }
+        tag => {
+            return Err(CodecError::InvalidTag {
+                kind: "item projection source",
+                tag,
+            });
+        }
+    };
     d.finish()?;
     Ok(value)
 }
@@ -343,6 +395,9 @@ fn encode_generated_media_unavailable_reason(
         GeneratedMediaUnavailableReason::Oversized => 2,
         GeneratedMediaUnavailableReason::Unsupported => 3,
         GeneratedMediaUnavailableReason::Unreadable => 4,
+        GeneratedMediaUnavailableReason::ProducerFailed => 5,
+        GeneratedMediaUnavailableReason::LostSourceAuthority => 6,
+        GeneratedMediaUnavailableReason::MalformedOutput => 7,
     });
 }
 
@@ -355,6 +410,9 @@ fn decode_generated_media_unavailable_reason(
         2 => Ok(GeneratedMediaUnavailableReason::Oversized),
         3 => Ok(GeneratedMediaUnavailableReason::Unsupported),
         4 => Ok(GeneratedMediaUnavailableReason::Unreadable),
+        5 => Ok(GeneratedMediaUnavailableReason::ProducerFailed),
+        6 => Ok(GeneratedMediaUnavailableReason::LostSourceAuthority),
+        7 => Ok(GeneratedMediaUnavailableReason::MalformedOutput),
         tag => Err(CodecError::InvalidTag {
             kind: "generated media unavailable reason",
             tag,

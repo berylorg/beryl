@@ -82,7 +82,7 @@ impl SyndicStorage {
         }
         let source = before
             .item()
-            .projection_source()
+            .projection_text_source()
             .ok_or(SyndicReadError::CaptureItemHasNoTextContent)?;
         let source_bytes = source.logical_utf8_bytes();
         if start > source_bytes {

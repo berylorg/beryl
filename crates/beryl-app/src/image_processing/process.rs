@@ -115,7 +115,12 @@ pub(crate) struct ImageMediaAttachment {
     inner: Arc<AttachmentState>,
 }
 
+pub(crate) struct GeneratedSourceStageLease {
+    _lease: worker::SourceStageLease,
+}
+
 struct ProcessCore {
+    generated_capacity: Arc<signal::ChangeEvent>,
     original_capacity: Arc<original::OriginalCapacityEvent>,
     native_progress: Arc<signal::NativeProgress>,
     domain: ImageResourceDomain,
@@ -256,6 +261,7 @@ impl ImageMediaProcess {
             return Err(ImageMediaError(ImageMediaFailure::Capacity));
         }
         let core = Arc::new(ProcessCore {
+            generated_capacity: Arc::new(signal::ChangeEvent::default()),
             original_capacity: Arc::new(original::OriginalCapacityEvent::new(limits)),
             native_progress: Arc::new(signal::NativeProgress::default()),
             domain,
@@ -298,6 +304,18 @@ impl ImageMediaProcess {
     }
     pub(crate) fn changed(&self) -> ImageMediaChanged {
         self.core.event.changed(false)
+    }
+
+    pub(crate) fn generated_capacity_changed(&self) -> ImageMediaChanged {
+        self.core.generated_capacity.changed(false)
+    }
+
+    pub(crate) fn acquire_generated_source_stages(
+        &self,
+    ) -> Result<GeneratedSourceStageLease, ImageMediaError> {
+        Ok(GeneratedSourceStageLease {
+            _lease: worker::SourceStageLease::acquire(&self.core)?,
+        })
     }
 
     pub(crate) fn native_resources_changed(&self) -> Result<(), ImageMediaError> {

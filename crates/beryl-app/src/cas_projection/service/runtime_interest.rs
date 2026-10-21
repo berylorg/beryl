@@ -173,6 +173,9 @@ impl ProjectionConnectionService {
             self.scheduler_signal.clone(),
             enrollments,
         )));
+        self.runtime_interest.as_ref().expect("installed runtime owner").install_generated_waker(
+            self.mutation_wake.generated_waker(),
+        );
         Ok(())
     }
 

@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub(super) struct PreparedAppServices {
+    pub(super) generated_media: Option<crate::image_processing::GeneratedMediaCoordinator>,
     media: Option<Arc<ImageMediaAttachment>>,
     settings: Option<crate::settings_service::PreparedSettingsService>,
     runtime_setup: Option<Arc<super::runtime_setup::RuntimeSetupService>>,
@@ -92,6 +93,7 @@ impl PreparedAppServices {
     ) -> Result<Self, PreparedAppServiceFailure> {
         let (provider, sessions) = ProcessScheduledExecutionProvider::new();
         let mut prepared = Self {
+            generated_media: None,
             media: None,
             settings: None,
             runtime_setup: None,
@@ -199,6 +201,15 @@ impl PreparedAppServices {
             );
             check_cancellation(cancellation)?;
             let cas = prepared.cas.as_ref().expect("prepared CAS");
+            if let Some(process) = owner.media_process() {
+                let generated = crate::image_processing::GeneratedMediaCoordinator::prepare(
+                    Arc::new(candidate.service_reference()), prepared.syndic.clone(),
+                    prepared.state.assets(), cas.generated_source_authority(), process,
+                    cas.catalog_source_start_gate(),
+                )?;
+                cas.install_generated_media_waker(generated.waker());
+                prepared.generated_media = Some(generated);
+            }
             let catalog_source = CatalogSourceCoordinator::prepare(
                 Arc::new(candidate.service_reference()),
                 prepared.syndic.clone(),
@@ -284,6 +295,7 @@ impl PreparedAppServices {
             .expect("prepared catalog queries")
             .publish();
         let graph = PublishedAppServices {
+            generated_media: self.generated_media.take(),
             media: self.media.take(),
             prepared_settings: self.settings.take(),
             settings: None,
@@ -334,13 +346,13 @@ impl PreparedAppServices {
     }
 
     fn join_components(&mut self) {
-        if let Some(media) = self.media.take() {
-            media.retire();
-        }
+        if let Some(generated) = &self.generated_media { generated.begin_retirement(); }
         drop(self.catalog_query.take());
         drop(self.catalog_source.take());
         drop(self.runtime_setup.take());
         drop(self.cas.take());
+        drop(self.generated_media.take());
+        if let Some(media) = self.media.take() { media.retire(); }
         drop(self.activity.take());
         drop(self.marker.take());
         drop(self.theme.take());

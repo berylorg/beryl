@@ -27,8 +27,18 @@ capability. The App source-proof join supplies the exact item/resource/path corr
 rechecks its live original launch and loaded-session fences before opening and during reads.
 
 `ManagedBackendSession::authorize_generated_output` checks the original release admission and
-opaque loaded session and returns a `GeneratedOutputPermit`. `GeneratedOutputTarget` supplies
-descriptive resource/turn/item correlation; constructing that tuple grants no authority.
+opaque loaded session and returns a `GeneratedOutputPermit`.
+`FreshLoadedThreadSession::loaded` borrows its original loaded
+session so the existing connection owner may retain that actual opaque authority without consuming
+fresh injection authority; it neither reconstructs a session nor extends its validity after revoke.
+Each actual loaded-source authority mints one fresh 256-bit random GeneratedSourceIncarnation and
+exposes it descriptively through the original LoadedThreadSession. Entropy failure leaves generated
+source authority absent, without inventing an identity or preventing ordinary thread operation.
+The incarnation remains bound to the original launch/loaded authority; superseding load, unsubscribe
+and retirement revoke it through the same existing fences. An equal descriptive identity alone
+cannot mint a permit or substitute for the actual release and loaded-session capabilities.
+`GeneratedOutputTarget` supplies descriptive resource/turn/item correlation; constructing that
+tuple grants no authority.
 `ManagedBackendServer::open_generated_output` takes the permit, native path, configured reader
 allowance and cancellation flag. Its `GeneratedOutputSource` supplies captured length, borrowed
 independent cursors and consuming explicit close. Failed open or close returns any source whose

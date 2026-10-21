@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    image_processing::{ImageMediaWindow, ImageSourceDemand, OriginalImageRequest},
+    image_processing::{ImageMediaWindow, OriginalImageRequest},
     main_window::image_inspection::original_commands::OriginalImageCommands,
 };
 
@@ -57,23 +57,16 @@ impl SyndicTranscriptPanel {
             return;
         };
         let record = &capture.target.record;
-        let crate::syndic_transcript::ResidentContextMenuContentKind::ImageMarker(marker) =
-            record.content_kind
-        else {
+        if !record.content_kind.is_image() {
             return;
-        };
-        let demand = (|| {
-            Some(ImageSourceDemand::TranscriptMarker {
-                thread_id: record.source.view_id.0.parse().ok()?,
-                entry: record.source.transcript_entry?,
-                projection_id: record.projection_id.0.parse().ok()?,
-                projection_revision: beryl_model::ProjectionRevision::new(
-                    record.projection_revision.0,
-                )
-                .ok()?,
-                marker,
-            })
-        })();
+        }
+        let demand = record.image_demand();
+        let mut original = OriginalImageCommands::new(self.quote_state.image_media.clone(), demand);
+        if let crate::syndic_transcript::ResidentContextMenuContentKind::GeneratedImage(image) =
+            record.content_kind
+        {
+            original.set_generated(image, demand);
+        }
         self.quote_state.image_commands = Some(DirectImageCommands {
             target: capture.target.clone(),
             activation: capture.activation,
@@ -81,10 +74,43 @@ impl SyndicTranscriptPanel {
             origin: origin.clone(),
             fallback,
             effect_started: false,
-            original: OriginalImageCommands::new(self.quote_state.image_media.clone(), demand),
+            original,
         });
         if let Some(commands) = self.quote_state.image_commands.as_mut() {
             commands.original.poll(cx);
+        }
+    }
+    pub(super) fn refresh_generated_image_commands(&mut self, window: &Window) {
+        let Some(target) = self
+            .quote_state
+            .turn
+            .as_ref()
+            .map(|capture| &capture.target)
+        else {
+            return;
+        };
+        let Some(target) = self.refreshed_generated_image_target(target, window) else {
+            return;
+        };
+        let snapshot = self.host.shared_snapshot();
+        if let Some(capture) = self.quote_state.turn.as_mut() {
+            capture.target = target.clone();
+            capture.activation = snapshot.activation_revision;
+        }
+        if let Some((origin, _)) = self.quote_state.marker_origin.as_mut() {
+            *origin = target.clone();
+        }
+        self.quote_state.anchor = self.image_marker_bounds(&target.record.record_id, window);
+        if let Some(commands) = self.quote_state.image_commands.as_mut() {
+            commands.target = target.clone();
+            commands.activation = snapshot.activation_revision;
+            if let crate::syndic_transcript::ResidentContextMenuContentKind::GeneratedImage(image) =
+                target.record.content_kind
+            {
+                commands
+                    .original
+                    .set_generated(image, target.record.image_demand());
+            }
         }
     }
     fn image_original_current(&self, window: &Window) -> bool {
@@ -136,6 +162,7 @@ impl SyndicTranscriptPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.refresh_generated_image_commands(window);
         if !self.transcript_menu_current(window) || !self.image_original_current(window) {
             return;
         }

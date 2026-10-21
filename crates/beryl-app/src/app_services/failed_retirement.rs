@@ -57,14 +57,13 @@ impl ProcessServiceOwner {
         drop(graph.restore_lifetime.take());
         let cas = graph.cas.take().expect("complete graph CAS");
         let generation = cas.service_generation();
-        let retired = match cas.retire_for_recovery(generation) {
+        match cas.retire_for_recovery(generation) {
             Ok(retired) => {
                 let (_, owned_home) = retired.into_parts();
                 assert!(
                     owned_home.is_none(),
                     "graph CAS cannot own its borrowed home"
                 );
-                true
             }
             Err(CasRetirementFailure::Rejected(cas)) => {
                 graph.cas = Some(*cas);
@@ -73,9 +72,11 @@ impl ProcessServiceOwner {
             }
             Err(CasRetirementFailure::Disposal(failure)) => {
                 self.failed_retirement = Some(failure);
-                false
+                self.closing_graph = Some(graph);
+                return Err(AppServiceCloseError::PersistentFailure);
             }
-        };
+        }
+        let generated_media = graph.join_generated_media_retirement();
         let handoff = graph.handoff.as_mut().expect("graph handoff").shutdown();
         drop(graph.handoff.take());
         if let Some(activity) = graph.activity.take() {
@@ -97,9 +98,7 @@ impl ProcessServiceOwner {
         self.finish_catalog_query_close()?;
         settled_handoff(handoff, home_generation)?;
         custody?;
-        if !retired {
-            return Err(AppServiceCloseError::PersistentFailure);
-        }
+        generated_media?;
         if self.failed_close.is_some() {
             return Err(AppServiceCloseError::Home);
         }

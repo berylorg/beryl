@@ -6,6 +6,10 @@ generated-media admission/references and repair-media participants.
 
 ## Ordinary Generated Media
 
+Generated admission reads return a distinct `ConcurrentChange` when the Asset revision advances
+during the bounded proof read. Callers defer and recheck through their existing mutation wake;
+target or metadata disagreement remains `Rejected` and is not treated as ordinary read drift.
+
 The [generated finalization contract](../../../doc/systems/image-assets/generated-finalization.md)
 owns cross-domain source and publication semantics. AssetState owns one dedicated
 `generated-media-admissions` family, keyspace V1 and record V1, within its existing asset domain.

@@ -547,6 +547,26 @@ completed older generations remain coherent history. Terminal closure freezes so
 a visible item advances the finalized frontier. Operational items may advance after freezing because
 they own no transcript projection.
 
+The source is explicitly Text or GeneratedResource. Only Text owns content-backed parsing,
+byte frontiers, stable-prefix counters, parser checkpoints and stable-EOF state. A generated source
+binds the canonical item revision and its exact resource ID, independently of resource revision,
+fingerprint and admission disposition. Its completed set has one projection and zero parser-created
+resources; it creates no projection-resource ownership index. Its payload explicitly names the
+generated resource rather than using Empty. Resource metadata remains owned by the canonical item.
+
+`PublishGeneratedResourceProjection::new(item_id, expected_item_revision, resource_id, generation)`
+is exposed through current and domain-revision-qualified storage mutation APIs. One guarded bounded
+command authenticates GeneratedMedia ownership, the exact item revision and next generation,
+absence of a conflicting text build or equivalent current set, and immutable projection reuse.
+It publishes the projection, one generation-owned membership row, completed set and current head
+atomically, reserving one record in each of those four existing families. Interrupted or uncertain
+publication uses the ordinary command reconciliation boundary. Completed older sets remain coherent.
+Generated occurrence revision and ordinal are 1. Lifecycle facts are freshly authenticated by App
+under selected head/thread and whole bounded-read Home revision fences, while the stable occurrence survives completion, freezing,
+admission, unavailability and inherited views. Resource-only resolution creates no structural set.
+Frozen-frontier advancement requires the exact current generated set; absence leaves ordinary
+bounded finalization responsible. Selectedness checks also apply when the origin has detached.
+
 Selected transcript construction publishes coherent saved item projections across the captured
 item frontier, including live narrative snapshots. The finalized-item frontier and history
 completeness remain independent terminal integrity facts. A current transcript generation binds
@@ -832,6 +852,13 @@ owns the composed lifecycle. Syndic owns generated-source records and the pendin
 specified by the [V7 schema](design-schema-v7.md). Resource birth, source/index insertion and
 sequence allocation share its capture command. Completion attaches the immutable completed source
 event; ordinary freeze may advance item/content revisions without changing that source identity.
+
+Ordinary dispatch activation may also carry the actual loaded owner's descriptive
+GeneratedSourceIncarnation. Its execution-snapshot association is created atomically with that new
+snapshot in the generated-source family, and cannot be backfilled or replaced. Source capture
+copies that immutable optional fact. Proofs authenticate the copy; preparation requires its
+presence, and absent provenance permits only LostSourceAuthority resolution. The identity grants
+no file access; App/backend must authenticate their actual original owner separately.
 
 A bounded typed source-proof read joins resource, item, historical dispatch snapshot, active CAS
 turn and source-event evidence. Its AwaitingCompletion branch authenticates the initial event and

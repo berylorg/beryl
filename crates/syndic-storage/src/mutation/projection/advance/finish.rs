@@ -23,7 +23,7 @@ impl AdvanceBuildRecords {
         output_digest: [u8; 32],
     ) -> Result<(), SyndicMutationError> {
         let source = item
-            .projection_source()
+            .projection_text_source()
             .ok_or(SyndicMutationError::ProjectionBuildConflict)?;
         if finished {
             if checkpoint.consumed_source_bytes() != self.build.source_bytes()

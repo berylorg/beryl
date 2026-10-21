@@ -193,9 +193,25 @@ pub(crate) struct TranscriptImageMarker {
     pub(crate) marker: syndic_storage::ComposerImageMarker,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct TranscriptGeneratedImage {
+    pub(crate) resource_id: beryl_model::SyndicResourceId,
+    pub(crate) resource_revision: beryl_model::ProjectionRevision,
+    pub(crate) source_fingerprint: [u8; 32],
+    pub(crate) lifecycle: TranscriptGeneratedImageLifecycle,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TranscriptGeneratedImageLifecycle {
+    Pending,
+    Admitted(beryl_model::AssetId),
+    Unavailable(beryl_model::GeneratedMediaUnavailableReason),
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ProjectionPayload {
     ImageMarker(TranscriptImageMarker),
+    GeneratedImage(TranscriptGeneratedImage),
     NarrativePending {
         source: std::sync::Arc<syndic_storage::ProjectionPayload>,
     },

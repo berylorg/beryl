@@ -18,6 +18,7 @@ pub(crate) struct ItemEffect {
     projection_build: Option<ItemProjectionBuildRecord>,
     projection_head: Option<ItemProjectionHeadRecord>,
     provider_build: SyndicItemId,
+    generated_source: Option<crate::generated_media::CaptureEffect>,
 }
 
 impl ItemEffect {
@@ -56,6 +57,7 @@ impl ItemEffect {
             projection_build: None,
             projection_head: None,
             provider_build: item.id(),
+            generated_source: None,
             item,
         }
     }
@@ -69,6 +71,13 @@ impl ItemEffect {
         self.projection_head = head;
     }
 
+    pub(super) fn set_generated_source(
+        &mut self,
+        source: Option<crate::generated_media::CaptureEffect>,
+    ) {
+        self.generated_source = source;
+    }
+
     pub(in crate::mutation::live::event) const fn item(&self) -> &CanonicalItemRecord {
         &self.item
     }
@@ -78,6 +87,9 @@ impl ItemEffect {
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), SyndicMutationError> {
         mutations.put::<ContentManifestsCodec>(&self.manifest.id(), &self.manifest)?;
+        if let Some(source) = self.generated_source {
+            source.contribute(mutations)?;
+        }
         if let Some(resource) = &self.resource {
             mutations.put::<ResourcesCodec>(&resource.id(), resource)?;
         }

@@ -116,7 +116,10 @@ fn activation_reconciles_prior_then_exact_and_reopens_cleanly() {
         turn,
         loaded_generation(40, 41),
         timestamp(5),
-    );
+    )
+    .with_generated_source_incarnation(Some(
+        beryl_model::GeneratedSourceIncarnation::from_bytes([0x47; 32]),
+    ));
     assert_eq!(
         storage
             .binding_activation_status(&store, &activation, point_limit())
@@ -137,6 +140,25 @@ fn activation_reconciles_prior_then_exact_and_reopens_cleanly() {
         .execution_snapshot(&store, snapshot, point_limit())
         .unwrap()
         .unwrap();
+    for incarnation in [
+        None,
+        Some(beryl_model::GeneratedSourceIncarnation::from_bytes(
+            [0x48; 32],
+        )),
+    ] {
+        assert_eq!(
+            storage
+                .binding_activation_status(
+                    &store,
+                    &activation
+                        .clone()
+                        .with_generated_source_incarnation(incarnation),
+                    point_limit()
+                )
+                .unwrap(),
+            BindingPublicationStatus::Collision
+        );
+    }
     assert_eq!(
         immutable_snapshot.activation_gate_revision(),
         current_gate_revision(&store, &storage, thread)

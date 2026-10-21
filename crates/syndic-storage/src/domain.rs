@@ -7,6 +7,9 @@ use beryl_home_store::{
 };
 use beryl_model::DomainRevision;
 
+use crate::generated_media::codec::{
+    PendingCodec as PendingGeneratedMediaCodec, SourcesCodec as GeneratedMediaSourcesCodec,
+};
 use crate::resource_structure::codec as structure;
 use crate::{codec::*, draft_piece::*, error::SyndicValidationError};
 
@@ -110,8 +113,10 @@ const V7_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
     RecordFamily::new::<structure::TableCellsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<structure::TableColumnsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<structure::SourceAnchorsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<GeneratedMediaSourcesCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<PendingGeneratedMediaCodec>(KeyspaceSchemaVersion::new(1)),
 ];
-const _: [(); 99] = [(); V7_FAMILIES.len()];
+const _: [(); 101] = [(); V7_FAMILIES.len()];
 
 #[cfg(feature = "test-faults")]
 pub(crate) fn v7_family_names() -> impl Iterator<Item = &'static str> {
@@ -150,6 +155,8 @@ impl StorageDomain for SyndicDomain {
             };
         }
         classify!(ThreadsCodec);
+        classify!(GeneratedMediaSourcesCodec);
+        classify!(PendingGeneratedMediaCodec);
         classify!(ImageLabelAuthorityHeadsCodec);
         classify!(DraftImageLabelProtectionHeadsCodec);
         classify!(ThreadExecutionsCodec);

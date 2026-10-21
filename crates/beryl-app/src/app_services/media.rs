@@ -67,11 +67,21 @@ impl ProcessServiceOwner {
 }
 
 impl PublishedAppServices {
+    pub(super) fn begin_generated_media_retirement(&self) {
+        if let Some(generated) = &self.generated_media { generated.begin_retirement(); }
+    }
+
+    pub(super) fn join_generated_media_retirement(&mut self) -> Result<(), crate::image_processing::GeneratedMediaCoordinatorError> {
+        if let Some(generated) = &mut self.generated_media { generated.join_retirement()?; }
+        drop(self.generated_media.take());
+        Ok(())
+    }
     pub(crate) fn media_attachment(&self) -> Option<Arc<ImageMediaAttachment>> {
         self.media.clone()
     }
 
     pub(super) fn retire_media(&self) -> ImageResourceDrain {
+        self.begin_generated_media_retirement();
         self.media
             .as_ref()
             .map_or(ImageResourceDrain::Drained, |attachment| {

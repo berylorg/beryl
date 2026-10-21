@@ -289,6 +289,7 @@ impl ConnectionRegistryAuthority {
         command: &crate::cas_projection::persistent_failure::LiveCommandPermit,
         seed: &mut RawLoadedLeaseSeed,
     ) -> Result<Option<()>, ProjectionCoordinatorError> {
+        let _change = self.work_boundary.begin_change();
         let _gate = self.lock()?;
         if self.is_retired() {
             return Ok(None);
@@ -311,6 +312,7 @@ impl ConnectionRegistryAuthority {
         command: &crate::cas_projection::persistent_failure::LiveCommandPermit,
         seed: &mut RawLoadedLeaseSeed,
     ) -> Result<Option<ExistingSubscription>, ProjectionCoordinatorError> {
+        let _change = self.work_boundary.begin_change();
         let _gate = self.lock()?;
         if self.is_retired() {
             return Ok(None);

@@ -41,6 +41,7 @@ fn validate_records(
     sidecars: Option<&SidecarVerifier<'_>>,
 ) -> Result<(), AssetValidationError> {
     validate_metadata(reader, sidecars)?;
+    super::generated_media::validate(reader)?;
     validate_manifests(reader)?;
     validate_completion_evidence(reader)?;
     validate_all_entries(reader)?;

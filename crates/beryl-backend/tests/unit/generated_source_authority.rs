@@ -31,6 +31,7 @@ impl OrderedTurnStreamSink for ObserveClose {
 fn authority(thread: &str) -> Arc<LoadedSourceAuthority> {
     Arc::new(LoadedSourceAuthority {
         thread: CasThreadId::new(thread).unwrap(),
+        incarnation: GeneratedSourceIncarnation::from_bytes([7; 32]),
         live: AtomicBool::new(true),
     })
 }
@@ -76,13 +77,18 @@ fn replacing_a_loaded_projection_irrevocably_retires_all_prior_proof_clones() {
         CasThreadId::new("loaded").unwrap(),
     )
     .into_loaded();
-    session.register_generated_loaded_source(&mut loaded);
+    let first = authority("loaded");
+    loaded.generated_source_authority = Some(first.clone());
+    session.generated_loaded_source = Some(first.clone());
     let old = loaded.clone();
-    let first = old.generated_source_authority.as_ref().unwrap().clone();
+    assert_eq!(old.generated_source_incarnation(), Some(first.incarnation));
     session.register_generated_loaded_source(&mut loaded);
-    let current = loaded.generated_source_authority.as_ref().unwrap().clone();
-    assert!(!Arc::ptr_eq(&first, &current));
     assert!(!first.live.load(Ordering::Acquire));
+    assert_eq!(loaded.generated_source_incarnation(), None);
+    assert_eq!(old.generated_source_incarnation(), None);
+    let current = authority("loaded");
+    loaded.generated_source_authority = Some(current.clone());
+    session.generated_loaded_source = Some(current.clone());
     assert!(current.live.load(Ordering::Acquire));
     session.retire_generated_thread(&CasThreadId::new("other").unwrap());
     assert!(current.live.load(Ordering::Acquire));
@@ -95,6 +101,31 @@ fn replacing_a_loaded_projection_irrevocably_retires_all_prior_proof_clones() {
             .live
             .load(Ordering::Acquire)
     );
+}
+
+#[test]
+fn entropy_failure_never_publishes_partially_filled_incarnation() {
+    let thread = CasThreadId::new("loaded").unwrap();
+    assert!(mint_loaded_source(thread.clone(), |bytes| {
+        bytes.fill(9);
+        Err(())
+    }).is_none());
+    let first = mint_loaded_source(thread.clone(), getrandom::fill).unwrap();
+    let second = mint_loaded_source(thread, getrandom::fill).unwrap();
+    assert_ne!(first.incarnation, second.incarnation);
+}
+
+#[cfg(feature = "lifecycle-test-support")]
+#[test]
+fn lifecycle_loaded_session_never_mints_generated_source_authority() {
+    let mut session = ManagedBackendSession::unsupported_streamed_input_gate_for_lifecycle_test().unwrap();
+    let mut loaded = crate::thread_lineage::fresh_idle_thread_for_lifecycle_test(
+        CasThreadId::new("loaded").unwrap(),
+    ).into_loaded();
+    assert_eq!(loaded.generated_source_incarnation(), None);
+    session.register_generated_loaded_source(&mut loaded);
+    assert_eq!(loaded.generated_source_incarnation(), None);
+    assert!(session.generated_loaded_source.is_none());
 }
 
 #[test]

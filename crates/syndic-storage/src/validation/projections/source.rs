@@ -350,7 +350,7 @@ pub(super) fn validate_projection_snapshot(
         item.kind(),
         CanonicalItemKind::UserInput | CanonicalItemKind::DiscussionHandoff
     ) {
-        if item.projection_source() != Some(source) {
+        if item.projection_text_source() != Some(source) {
             return invariant("user projection source changed across canonical revisions");
         }
         let ProjectionTextSource::Composer(content) = source else {
@@ -382,6 +382,24 @@ pub(super) fn validate_projection_snapshot(
         return invariant("provider projection source snapshot disagrees");
     }
     Ok(frame.stream_state().is_complete())
+}
+
+pub(super) fn validate_generated_projection_snapshot(
+    reader: &DomainReader<'_, SyndicDomain>,
+    item: &crate::CanonicalItemRecord,
+    revision: ProjectionRevision,
+) -> Result<(), SyndicValidationError> {
+    if revision > item.revision()
+        || item.provider_kind() != ProviderItemKind::StandaloneImageGeneration
+    {
+        return invariant("generated projection source revision or kind disagrees");
+    }
+    let ordinal = source_event_ordinal_for_revision(item, revision)?;
+    let frame = indexed_frame(reader, item, ordinal)?;
+    if frame.frame().item_kind() != ProviderItemKind::StandaloneImageGeneration {
+        return invariant("generated projection source frame kind disagrees");
+    }
+    Ok(())
 }
 
 fn source_event_ordinal_for_revision(

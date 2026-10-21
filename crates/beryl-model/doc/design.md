@@ -38,6 +38,16 @@ Provide shared pure-data identities and values used across Beryl packages withou
 
 ## Thread And Presentation Values
 
+`GeneratedMediaUnavailableReason` is the shared closed pure value used by generated-resource
+storage and cross-domain command correlation. Codes are Missing `0`, Changed `1`, Oversized `2`,
+Unsupported `3`, Unreadable `4`, ProducerFailed `5`, LostSourceAuthority `6` and MalformedOutput `7`.
+Its numeric code grants no classification or publication authority; consuming owners authenticate
+the applicable evidence and own persisted encodings.
+
+`GeneratedSourceIncarnation` transports exactly thirty-two descriptive bytes identifying one
+original loaded source. This crate neither mints the identity nor grants authority from it;
+backend owns minting and live validity, while Syndic owns its immutable dispatch association.
+
 - Stable Syndic thread, turn, draft, draft-marker, content, item, accepted-input, retry-record, transcript-projection, resource, and execution-snapshot identities may cross package boundaries without making this crate the owner of their stored record schemas.
 - `SyndicContentId` is the stable 128-bit lookup identity derived from an exact chunk-chain digest. `SyndicContentDigest` retains the complete 256-bit comparison authority so a truncated-identity collision is rejected rather than aliased.
 - Idle submission preserves one exact 128-bit identity payload while changing its typed identity

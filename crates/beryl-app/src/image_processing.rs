@@ -1,4 +1,5 @@
 mod config;
+mod generated;
 mod png_rows;
 mod png_source;
 mod process;
@@ -22,6 +23,9 @@ mod tests {
 }
 
 pub(crate) use config::{MediaResourceConfiguration, MediaResourceLimits};
+pub(crate) use generated::{GeneratedMediaCoordinator, GeneratedMediaCoordinatorError};
+#[cfg(feature = "test-faults")]
+pub use generated::qualification as generated_media_qualification;
 pub(crate) use png_rows::decode_png_into;
 pub(crate) use png_source::{PngPreflight, preflight_png};
 pub(crate) use process::{

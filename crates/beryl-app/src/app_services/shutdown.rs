@@ -12,6 +12,8 @@ use crate::{
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum AppServiceCloseError {
     #[error(transparent)]
+    GeneratedMedia(#[from] crate::image_processing::GeneratedMediaCoordinatorError),
+    #[error(transparent)]
     Media(#[from] ImageMediaError),
     #[error("image source workers or native resources have not drained")]
     MediaPending,
@@ -301,6 +303,7 @@ impl ProcessServiceOwner {
                 return Err(AppServiceCloseError::CasClosePending);
             }
         };
+        let generated_media = graph.join_generated_media_retirement();
         graph.attention.close();
         let custody = self.require_settled_custody();
         let home = graph.home.take().expect("graph home").close();
@@ -312,6 +315,7 @@ impl ProcessServiceOwner {
             return Err(error.into());
         }
         custody?;
+        generated_media?;
         match closed {
             ProjectionConnectionServiceCloseOutcome::Closed => {}
             ProjectionConnectionServiceCloseOutcome::PersistentFailure(_) => {

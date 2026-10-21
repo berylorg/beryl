@@ -8,6 +8,7 @@ use crate::{
 };
 
 pub(crate) struct PreparedRecoveryAppServices {
+    pub(super) generated_media: Option<crate::image_processing::GeneratedMediaCoordinator>,
     pub(super) media: Option<Arc<ImageMediaAttachment>>,
     pub(super) settings: Option<crate::settings_service::PreparedSettingsService>,
     pub(super) cas: Option<PreparedRecoveryCasServices>,
@@ -201,6 +202,7 @@ impl PreparedRecoveryAppServices {
         cancellation: &CommandCancellation,
     ) -> Result<Self, RecoveryAppServicePreparationFailure> {
         let mut prepared = Self {
+            generated_media: None,
             media: None,
             settings: Some(settings),
             cas: Some(cas),
@@ -282,6 +284,8 @@ impl PreparedRecoveryAppServices {
     }
 
     fn join_ancillary_services(&mut self) {
+        if let Some(generated) = &self.generated_media { generated.begin_retirement(); }
+        drop(self.generated_media.take());
         if let Some(media) = self.media.take() {
             media.retire();
         }

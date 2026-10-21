@@ -44,7 +44,7 @@ impl AdvanceBuildMutation {
         let source_is_immutable =
             super::lifecycle::validate_projection_source(reader, &item, build.source())?;
         if item.revision() != build.source_item_revision()
-            || item.projection_source() != Some(build.source())
+            || item.projection_text_source() != Some(build.source())
         {
             return Err(SyndicMutationError::ProjectionBuildConflict);
         }

@@ -381,7 +381,7 @@ impl SyndicTranscriptPanel {
         }) {
             let bounds = group.bounds.get()?;
             for part in group.record.authored_parts() {
-                if matches!(part.kind, ResidentPresentationRecordKind::ImageMarker(_))
+                if part.image_label().is_some()
                     && let Some(marker) = group.marker_bounds(&part.id)
                     && marker.contains(&position)
                 {
@@ -501,7 +501,7 @@ impl SyndicTranscriptPanel {
                 return None;
             }
             let start = if index == start_index { start } else { 0 };
-            if matches!(part.kind, ResidentPresentationRecordKind::ImageMarker(_)) {
+            if part.image_label().is_some() {
                 let end = if index == end_index { end } else { 1 };
                 if start > end || end > 1 {
                     return None;

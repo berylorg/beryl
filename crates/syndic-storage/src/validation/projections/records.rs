@@ -23,14 +23,20 @@ pub(super) fn validate(
         if item.turn_id() != projection.turn_id() {
             return invariant("projection turn disagrees with source item");
         }
+        if let ProjectionPayload::GeneratedResource { resource_id } = projection.payload() {
+            return super::generated::validate_projection(reader, &item, projection, *resource_id);
+        }
         let source = item
-            .projection_source()
+            .projection_text_source()
             .ok_or(SyndicValidationError::Invariant(
                 "projection source item omitted projection text",
             ))?;
         let source_bytes = source.logical_utf8_bytes();
         match projection.payload() {
             ProjectionPayload::Empty => {}
+            ProjectionPayload::GeneratedResource { .. } => {
+                unreachable!("generated projection checked above")
+            }
             ProjectionPayload::InlineMarkdown {
                 source_range,
                 source,

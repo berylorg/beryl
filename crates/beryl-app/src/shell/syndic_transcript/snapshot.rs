@@ -89,6 +89,43 @@ pub(crate) struct ResidentPresentationRecord {
 }
 
 impl ResidentPresentationRecord {
+    pub(crate) fn image_label(&self) -> Option<String> {
+        match self.kind {
+            ResidentPresentationRecordKind::ImageMarker(marker) => {
+                Some(format!("Image {}", marker.marker.label()))
+            }
+            ResidentPresentationRecordKind::GeneratedImage(_) => Some("Generated image".into()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn same_image_occurrence(&self, other: &Self) -> bool {
+        if self.id != other.id {
+            return false;
+        }
+        match (&self.kind, &other.kind) {
+            (
+                ResidentPresentationRecordKind::GeneratedImage(left),
+                ResidentPresentationRecordKind::GeneratedImage(right),
+            ) => {
+                let (
+                    ResidentRecordSource::Syndic(left_source),
+                    ResidentRecordSource::Syndic(right_source),
+                ) = (&self.provenance.source, &other.provenance.source)
+                else {
+                    return false;
+                };
+                left.resource_id == right.resource_id
+                    && left_source.view_id == right_source.view_id
+                    && left_source.position == right_source.position
+                    && left_source.turn_id == right_source.turn_id
+                    && left_source.item_id == right_source.item_id
+                    && self.provenance.projection_id == other.provenance.projection_id
+            }
+            _ => self == other,
+        }
+    }
+
     pub(crate) fn authored_parts(&self) -> &[Self] {
         match &self.kind {
             ResidentPresentationRecordKind::AuthoredInlineParts { parts } => parts,
@@ -110,6 +147,7 @@ pub(crate) enum ResidentPresentationRecordKind {
         parts: std::sync::Arc<[ResidentPresentationRecord]>,
     },
     ImageMarker(super::provider::TranscriptImageMarker),
+    GeneratedImage(super::provider::TranscriptGeneratedImage),
     NarrativePending {
         source: std::sync::Arc<syndic_storage::ProjectionPayload>,
     },

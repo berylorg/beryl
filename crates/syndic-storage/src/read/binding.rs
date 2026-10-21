@@ -1,3 +1,7 @@
+use crate::generated_media::{
+    SourceValue,
+    codec::{SourceKey, SourcesFamily},
+};
 use beryl_home_store::{HomeCandidateRecoveryAccess, HomeStore};
 
 use crate::{
@@ -101,6 +105,7 @@ impl SyndicStorage {
             })?;
             let membership =
                 self.cas_thread_binding_membership(store, usable.cas_thread_id(), revision, limit)?;
+            let source_owner = self.generated_point::<SourcesFamily>(store, SourceKey::Owner(request.snapshot_id()))?;
             match self.classify_binding_publication(
                 store,
                 request.thread_id(),
@@ -114,6 +119,7 @@ impl SyndicStorage {
                         if snapshot
                             .as_ref()
                             .is_some_and(|stored| stored == &expected_snapshot)
+                            && source_owner == request.generated_source_incarnation().map(SourceValue::Owner)
                             && turn_state.as_ref().is_some_and(|state| {
                                 state.revision() >= next_state_revision
                                     && matches!(state.dispatch_provenance(),
@@ -155,6 +161,7 @@ impl SyndicStorage {
                     };
                     Ok(
                         if snapshot.is_none()
+                            && source_owner.is_none()
                             && safe_provenance
                             && turn_state.as_ref().is_some_and(|state| {
                                 state.revision() == request.expected_state_revision()

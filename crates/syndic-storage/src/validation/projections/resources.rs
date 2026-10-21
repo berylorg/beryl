@@ -51,11 +51,11 @@ pub(super) fn validate_metadata(
                 .ok_or(SyndicValidationError::Invariant(
                     "text resource omitted its text source",
                 ))?;
-        let current_source = item
-            .projection_source()
-            .ok_or(SyndicValidationError::Invariant(
-                "text resource owner is not projectable",
-            ))?;
+        let current_source =
+            item.projection_text_source()
+                .ok_or(SyndicValidationError::Invariant(
+                    "text resource owner is not projectable",
+                ))?;
         if !stored_source.can_extend(current_source) {
             return invariant("text resource backing disagrees with its source item");
         }

@@ -499,7 +499,7 @@ impl SyndicStorage {
                 )
             }
             CanonicalItemKind::AssistantMessage(_) => {
-                let source = item.projection_source().ok_or(
+                let source = item.projection_text_source().ok_or(
                     RecoveryProjectionError::UnsupportedHistory {
                         reason: "assistant item omitted provider narrative",
                     },

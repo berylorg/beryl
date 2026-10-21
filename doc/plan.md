@@ -12,55 +12,18 @@ atomic outcomes and original custody. Independent review accepted the complete b
 99 distinct cases and the normal production desktop check pass;
 [qualification](audits/command-pair-qualification.md).
 
-# Phase 813: Deliver Generated-Media Finalization (wip)
+# Phase 813: Deliver Generated-Media Finalization (finished)
 
-After source readiness, settle actual savedPath output through durable sidecar admission and
-atomic same-resource publication, preserving provider lifecycle and original uncertainty custody.
-Mount generated-resource markers through explicit prepared lifecycle facts and the existing shared
-rendition/original-command owners; qualify the complete visible and durable outcome.
-
-Authority: [generated finalization](systems/image-assets/generated-finalization.md), its accepted
-[architecture review](audits/generated-media-finalization-architecture.md), State's Asset contract,
-Syndic's history/V7 schema and App's image-processing/GUI contracts. Authenticated source reading
-is accepted in `cfaeb77e`; this phase's production entry point is ordinary standalone image capture
-and its service-owned convergence, including fresh-service reconstruction.
-
-- Capture source ownership and an increasing pending-index identity atomically from resource
-  birth, including unfinished producers; bind immutable completion evidence separately from
-  ordinary item/content freeze. Supply bounded opaque Awaiting/Completed source proofs, reused
-  saved-path extraction, high-water discovery and checked unavailable classifications.
-- Add exact durable Prepared/Published Asset evidence and the dedicated generated-resource
-  reference. Compose preparation, publication and unavailable absence validation through checked
-  one-Asset/one-Syndic Home commands, preserving metadata reuse, revisions and original uncertainty
-  custody. Register only implemented families; preserve the closed 105-family Syndic target.
-- Mount one fixed service coordinator with bounded fair discovery, queue/workers/pages and shared
-  source-stage leases. Join real original runtime/loaded authority; distinguish Busy from proven
-  loss. Bind every admission cursor's returned PNG header, close original readers before stage
-  drain and release I/O custody before writer work. Resume exact Prepared evidence through fresh
-  handles; replacement never adopts old tasks, sessions or unresolved Home outcomes.
-- Mount generated-resource lifecycle facts through bounded transcript preparation and stable
-  readonly-image occurrences. Preserve the same marker/menu/preview/focus through Pending,
-  Admitted and Unavailable, use the shared rendition/original-command owners and never fabricate
-  authored marker IDs, labels or byte ranges.
-- Qualify the complete capture-to-visible durable result, unfinished/replacement convergence,
-  fair saturation, PNG mutation/header/EOF refusal, deduplication, split/mismatched participants,
-  acknowledgement loss, stale presentation/focus and complete queue/page/source/worker drain.
-  Obtain independent persistent-state, lifecycle and GUI review; reconcile canonical inputs and
-  reclaim exact owned fixtures before acceptance. Sustained stress still requires coordination.
-
-Depends on the preceding required-command-pair capability. No adapter is authorized or needed.
-
-Resumable partial work is unqualified and uncommitted: State changed `asset.rs`, `lib.rs` and
-`asset/validate.rs`, adding `asset/generated_media.rs`, its `codec.rs` and five codec cases in
-`tests/generated_media_codec.rs`. Family/validation/read wiring exists, no mutation participants;
-codec/value visibility still needs compilation. Syndic has only unconnected draft
-`src/generated_media.rs` and `src/generated_media/codec.rs`; their module scaffold is incomplete
-and no capture/proof/index/registration path changed. Current Syndic inventory is 99 implemented
-families; adding the two generated families yields 101, while four unimplemented repair families
-remain excluded from the closed 105-family target. Never register placeholders to fill that gap.
-No generated-finalization Cargo/native check or temporary execution resource was created. All workers stopped.
-Root retains shared contracts, App integration/docs and the single canonical Cargo/native lane.
-Preserve unrelated skill/memory and concurrent composer edits; no installation is authorized.
+Accepted complete ordinary generated-output capture, original-source incarnation, durable
+Prepared/Published admission, bounded service convergence and explicit non-text resource projection.
+One stable occurrence survives completion, freezing, admission and unavailable settlement; legal
+inherited views authenticate the same original/rendition. Text parsing retains its typed source.
+Independent review and correction closure accepted the complete boundary. State's thirty focused
+cases, backend's seven authority cases, all six new projection cases, sixty-four storage/text
+regressions, the affected App/provider/mounted cohort and all eight real native cases pass.
+The sole cancellation regression is closed by thirty-one passing correction checks. Normal desktop
+check passes; all 187 owned source/test inputs match canonical. No manifest or dependency changed.
+[Qualification and limits](audits/generated-media-finalization-qualification.md).
 
 # Phase 814: Complete Background Title Maintenance (pending)
 

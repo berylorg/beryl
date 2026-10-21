@@ -131,14 +131,18 @@ impl SyndicTranscriptPanel {
                     None => Some("Checking the exact finalized assistant source."),
                 }
             },
-            edit: self.quote_state.turn.is_some(),
-            edit_reason,
-            image: self.quote_state.turn.as_ref().is_some_and(|capture| {
-                matches!(
+            edit: self.quote_state.turn.as_ref().is_some_and(|capture| {
+                !matches!(
                     capture.target.record.content_kind,
-                    crate::syndic_transcript::ResidentContextMenuContentKind::ImageMarker(_)
+                    crate::syndic_transcript::ResidentContextMenuContentKind::GeneratedImage(_)
                 )
             }),
+            edit_reason,
+            image: self
+                .quote_state
+                .turn
+                .as_ref()
+                .is_some_and(|capture| capture.target.record.content_kind.is_image()),
         }
     }
 
@@ -146,6 +150,14 @@ impl SyndicTranscriptPanel {
         let Some(capture) = &self.quote_state.turn else {
             return false;
         };
+        if matches!(
+            capture.target.record.content_kind,
+            crate::syndic_transcript::ResidentContextMenuContentKind::GeneratedImage(_)
+        ) {
+            return self
+                .refreshed_generated_image_target(&capture.target, window)
+                .is_some();
+        }
         let snapshot = self.host.shared_snapshot();
         self.character_geometry_current(window)
             && snapshot.activation_revision == capture.activation
@@ -323,10 +335,7 @@ impl SyndicTranscriptPanel {
             && self.transcript_menu_current(window)
             && self.quote_state.turn.as_ref().is_some_and(|capture| {
                 capture.target.record.record_id == *record
-                    && matches!(
-                        capture.target.record.content_kind,
-                        crate::syndic_transcript::ResidentContextMenuContentKind::ImageMarker(_)
-                    )
+                    && capture.target.record.content_kind.is_image()
             })
         {
             return;
@@ -452,7 +461,11 @@ impl SyndicTranscriptPanel {
         let turn = match target_outcome {
             super::super::ResidentContextMenuOutcome::Targeted(target)
                 if self.host.context_menu_narrative_kind(&target)
-                    == Some(TranscriptNarrativeKind::UserInput) =>
+                    == Some(TranscriptNarrativeKind::UserInput)
+                    || matches!(
+                        target.record.content_kind,
+                        crate::syndic_transcript::ResidentContextMenuContentKind::GeneratedImage(_)
+                    ) =>
             {
                 Some(TurnCapture {
                     target,
@@ -519,12 +532,13 @@ impl SyndicTranscriptPanel {
             return;
         };
         let marker_bounds = turn.as_ref().and_then(|capture| {
-            matches!(
-                capture.target.record.content_kind,
-                crate::syndic_transcript::ResidentContextMenuContentKind::ImageMarker(_)
-            )
-            .then(|| self.image_marker_bounds(&capture.target.record.record_id, window))
-            .flatten()
+            capture
+                .target
+                .record
+                .content_kind
+                .is_image()
+                .then(|| self.image_marker_bounds(&capture.target.record.record_id, window))
+                .flatten()
         });
         self.quote_state.marker_origin = turn
             .as_ref()
@@ -622,6 +636,7 @@ impl SyndicTranscriptPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
+        self.refresh_generated_image_commands(window);
         self.poll_image_original_commands(window, cx);
         if self.initial_history_loading || self.quote_state.popup.is_none() {
             return self.image_original_feedback(window);
@@ -633,6 +648,7 @@ impl SyndicTranscriptPanel {
             return None;
         }
         let rows = self.transcript_menu_rows();
+        self.quote_state.popup.as_mut()?.reconcile(&rows);
         Some(widget::render_static(
             self.quote_state.popup.as_ref()?,
             self.quote_state.anchor?,
@@ -732,6 +748,7 @@ fn quote_input(
     window: &mut Window,
     cx: &mut Context<SyndicTranscriptPanel>,
 ) {
+    panel.refresh_generated_image_commands(window);
     if !panel.transcript_menu_current(window) {
         panel.invalidate_transcript_menu();
         panel.close_quote_menu(window);

@@ -94,6 +94,8 @@ pub(crate) struct AppServiceConfiguration {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum AppServiceOpenError {
+    #[error(transparent)]
+    GeneratedMedia(#[from] crate::image_processing::GeneratedMediaCoordinatorError),
     #[error("the process image resource domain is unavailable")]
     MediaDomainUnavailable,
     #[error("the process image configuration changed")]
@@ -220,6 +222,7 @@ pub(crate) struct ProcessServiceOwner {
 }
 
 pub(crate) struct PublishedAppServices {
+    generated_media: Option<crate::image_processing::GeneratedMediaCoordinator>,
     media: Option<Arc<ImageMediaAttachment>>,
     prepared_settings: Option<crate::settings_service::PreparedSettingsService>,
     settings: Option<Arc<crate::settings_service::SettingsService>>,
@@ -453,9 +456,7 @@ impl PublishedAppServices {
     }
 
     fn join_components(&mut self) {
-        if let Some(media) = self.media.take() {
-            media.retire();
-        }
+        self.begin_generated_media_retirement();
         let _ = self.retire_settings();
         drop(self.catalog_query.take());
         drop(self.catalog_source.take());
@@ -474,6 +475,8 @@ impl PublishedAppServices {
             theme.retire();
         }
         drop(self.cas.take());
+        drop(self.generated_media.take());
+        if let Some(media) = self.media.take() { media.retire(); }
         self.attention.close();
     }
 }

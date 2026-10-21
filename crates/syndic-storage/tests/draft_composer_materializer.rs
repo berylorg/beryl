@@ -1066,7 +1066,7 @@ fn multi_page_utf8_source_reopens_at_every_durable_frontier() {
 #[test]
 fn corrupt_build_mapping_manifest_and_output_are_rejected() {
     let names = syndic_v7_family_names();
-    assert_eq!(names.len(), 99);
+    assert_eq!(names.len(), 101);
     assert_eq!(names[86], "draft-piece-build-mapping");
     assert_eq!(names[0], "threads");
     assert_eq!(names[1], "image-label-authority-heads");

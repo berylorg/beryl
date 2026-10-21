@@ -343,6 +343,24 @@ pub(super) fn converge_item_projection(
         .map_or(ItemProjectionGeneration::FIRST, |head| {
             head.generation().checked_next().unwrap()
         });
+    if let Some(resource) = item
+        .projection_source()
+        .and_then(|source| source.resource_id())
+    {
+        accept_clean(
+            store.execute_current(storage.current_publish_generated_resource_projection(
+                syndic_storage::PublishGeneratedResourceProjection::new(
+                    item_id,
+                    item.revision(),
+                    resource,
+                    generation,
+                ),
+            )),
+            "generated resource projection publication",
+            receipts,
+        );
+        return;
+    }
     accept_clean(
         store.execute_current(storage.current_start_item_projection_build(
             StartItemProjectionBuild::new(item_id, item.revision(), generation),

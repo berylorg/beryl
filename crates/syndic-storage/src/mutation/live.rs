@@ -362,6 +362,8 @@ impl DomainMutation<SyndicDomain> for LiveSourceEventMutation {
         )?;
         reservation.reserve_records::<ContentManifestsCodec>(1)?;
         reservation.reserve_records::<ResourcesCodec>(1)?;
+        reservation.reserve_records::<crate::generated_media::codec::SourcesCodec>(2)?;
+        reservation.reserve_records::<crate::generated_media::codec::PendingCodec>(1)?;
         reservation.reserve_records::<CanonicalItemsCodec>(1)?;
         reservation.reserve_records::<TurnItemsCodec>(1)?;
         reservation.reserve_records::<ItemSourceEventsCodec>(1)?;

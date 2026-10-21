@@ -175,7 +175,7 @@ fn item_content_is_settled(
         }
         None => None,
     };
-    let projection_is_settled = match item.projection_source() {
+    let projection_is_settled = match item.projection_text_source() {
         Some(ProjectionTextSource::Composer(content)) => {
             let Some(manifest) = point::<ContentManifestsFamily>(reader, &content.id())? else {
                 return Ok(false);

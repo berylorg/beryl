@@ -137,6 +137,7 @@ impl RuntimeInterestOwner {
                 config,
                 scheduler_signal,
                 enrollments,
+                generated_wake: std::sync::OnceLock::new(),
             }),
         }
     }
@@ -316,6 +317,7 @@ impl RuntimeInterestOwner {
                 state.runtimes.insert(
                     runtime_id,
                     RuntimeEntry {
+                        generated_source: None,
                         failed_runtime: None,
                         activity: Arc::clone(&activity),
                         spec,
@@ -523,7 +525,8 @@ impl RuntimeInterestOwner {
                 .collect::<Vec<_>>()
         };
         for (id, attempt, mut owner) in owners {
-            let clean = owner.retire().is_ok();
+            let clean = owner.retire().is_ok()
+                && generated_source::source_drained_after_retirement(&self.shared, id, attempt);
             let mut state = self.shared.lock();
             let entry = state
                 .runtimes

@@ -177,11 +177,11 @@ impl ReplaySequence {
                 )
             }
             CanonicalItemKind::AssistantMessage(_) => {
-                let source = item
-                    .projection_source()
-                    .ok_or(SyndicValidationError::Invariant(
-                        "context replay assistant narrative missing",
-                    ))?;
+                let source =
+                    item.projection_text_source()
+                        .ok_or(SyndicValidationError::Invariant(
+                            "context replay assistant narrative missing",
+                        ))?;
                 let content = item
                     .provider_content()
                     .ok_or(SyndicValidationError::Invariant(

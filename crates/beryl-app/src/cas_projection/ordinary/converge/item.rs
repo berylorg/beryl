@@ -247,7 +247,7 @@ fn exact_projection_manifest_after_freeze(
     before: &snapshot::CanonicalSnapshot,
     after: &snapshot::CanonicalSnapshot,
 ) -> bool {
-    match before.item.projection_source() {
+    match before.item.projection_text_source() {
         Some(ProjectionTextSource::ProviderNarrative(_)) => {
             before.projection_manifest == before.provider_manifest
                 && after.projection_manifest == after.provider_manifest
@@ -310,10 +310,21 @@ fn validate_projection_source(
     current: &snapshot::ProjectionSnapshot,
     source: &snapshot::CanonicalSnapshot,
 ) -> Result<(), OrdinaryTurnExecutionError> {
+    let exact_backing = match &current.backing {
+        snapshot::ProjectionBacking::Text(manifest) => {
+            source.projection_manifest.as_ref() == Some(manifest)
+                && manifest.lifecycle().is_immutable()
+                && source.resource.is_none()
+        }
+        snapshot::ProjectionBacking::GeneratedResource(resource) => {
+            source.resource.as_ref().is_some_and(|source| {
+                source.id() == resource.id() && source.item_id() == resource.item_id()
+            }) && source.projection_manifest.is_none()
+        }
+    };
     if current.item != source.item
         || current.provider_manifest != source.provider_manifest
-        || source.projection_manifest.as_ref() != Some(&current.projection_manifest)
-        || !current.projection_manifest.lifecycle().is_immutable()
+        || !exact_backing
     {
         return Err(OrdinaryTurnExecutionError::Invariant(
             "terminal item projection source changed",

@@ -44,7 +44,8 @@ pub(super) fn validate_stable(
         validate_projection_source(
             reader,
             &projection,
-            item.projection_source()
+            item.projection_text_source()
+                .map(crate::ItemProjectionSource::Text)
                 .ok_or(SyndicValidationError::Invariant(
                     "stable projection source item omitted projection text",
                 ))?,
@@ -78,7 +79,9 @@ fn finish_stable_item_frontier(
         ItemProjectionSetKey::first_for_item(item),
         ItemProjectionSetKey::last_for_item(item),
         |_, set| {
-            declared = declared.max(set.stable_projection_count());
+            if let Some(text) = set.text_state() {
+                declared = declared.max(text.stable_projection_count());
+            }
             Ok(())
         },
     )?;
@@ -116,9 +119,13 @@ pub(super) fn validate_generation_suffixes(
                 },
                 "item-projection suffix owner set is missing",
             )?;
-            expected = set.stable_projection_count().checked_add(1).ok_or(
-                SyndicValidationError::Invariant("item-projection suffix frontier exhausted"),
-            )?;
+            expected = set
+                .text_state()
+                .map_or(0, |text| text.stable_projection_count())
+                .checked_add(1)
+                .ok_or(SyndicValidationError::Invariant(
+                    "item-projection suffix frontier exhausted",
+                ))?;
             observed = 0;
         }
         if key.item != index.item_id()
@@ -155,7 +162,7 @@ pub(super) fn validate_generation_suffixes(
 fn generation_source(
     reader: &DomainReader<'_, SyndicDomain>,
     key: &ItemProjectionKey,
-) -> Result<crate::ProjectionTextSource, SyndicValidationError> {
+) -> Result<crate::ItemProjectionSource, SyndicValidationError> {
     let owner = ItemProjectionSetKey {
         item: key.item,
         generation: key.generation,
@@ -174,9 +181,23 @@ fn generation_source(
 fn validate_projection_source(
     reader: &DomainReader<'_, SyndicDomain>,
     projection: &crate::ProjectionRecord,
-    source: crate::ProjectionTextSource,
+    source: crate::ItemProjectionSource,
 ) -> Result<(), SyndicValidationError> {
+    if let crate::ItemProjectionSource::GeneratedResource(resource_id) = source {
+        let item = require::<CanonicalItemsFamily>(
+            reader,
+            &projection.item_id(),
+            "generated projection canonical item is missing",
+        )?;
+        return super::generated::validate_projection(reader, &item, projection, resource_id);
+    }
+    let source = source.text().ok_or(SyndicValidationError::Invariant(
+        "text projection source is missing",
+    ))?;
     match projection.payload() {
+        ProjectionPayload::GeneratedResource { .. } => {
+            return invariant("text source owns a generated projection");
+        }
         ProjectionPayload::Empty => {
             if source.logical_utf8_bytes() != 0 {
                 return invariant("empty projection has nonempty generation source");
@@ -230,10 +251,10 @@ fn finish_item_projection_generation(
     if point::<ItemProjectionBuildsFamily>(reader, &key)?.is_some() {
         return invariant("item projection generation has both set and build state");
     }
-    if set
-        .projection_count()
-        .checked_sub(set.stable_projection_count())
-        != Some(observed)
+    if set.projection_count().checked_sub(
+        set.text_state()
+            .map_or(0, |text| text.stable_projection_count()),
+    ) != Some(observed)
     {
         return invariant("item projection generation suffix frontier disagrees");
     }

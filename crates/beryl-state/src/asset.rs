@@ -20,6 +20,7 @@ mod digest;
 mod draft_marker_label_readiness;
 mod error;
 mod footprint;
+mod generated_media;
 mod historical_input;
 mod historical_input_selection;
 mod marker_source;
@@ -45,6 +46,10 @@ pub use error::{
 pub use footprint::{
     accepted_input_to_submitted_item_owner_transfer_max_footprint,
     draft_to_submitted_item_owner_transfer_max_footprint,
+};
+pub use generated_media::{
+    GeneratedMediaAdmission, GeneratedMediaCommandFootprint, GeneratedMediaError, GeneratedMediaFacts,
+    GeneratedMediaLifecycle, GeneratedMediaPreparation, GeneratedMediaTarget,
 };
 pub use historical_input::{AssetHistoricalInputError, HistoricalInputMarkerProofProtocolV1};
 #[cfg(feature = "test-faults")]
@@ -92,6 +97,7 @@ const ASSET_FAMILIES: &[RecordFamily<AssetDomain>] = &[
     RecordFamily::new::<AssetReferenceMarkerCodec>(KeyspaceSchemaVersion::new(3)),
     RecordFamily::new::<AssetReferenceLabelFirstCodec>(KeyspaceSchemaVersion::new(3)),
     RecordFamily::new::<AssetOwnerHeadCodec>(KeyspaceSchemaVersion::new(3)),
+    RecordFamily::new::<generated_media::GeneratedMediaCodec>(KeyspaceSchemaVersion::new(1)),
 ];
 
 pub(crate) struct AssetDomain;
@@ -128,6 +134,10 @@ impl StorageDomain for AssetDomain {
     ) -> Result<DomainReconciliation, Self::ValidationError> {
         let mut classification = crate::reconciliation::ReconciliationClassification::new();
         crate::reconciliation::classify_records::<Self, AssetMetadataCodec>(
+            reader,
+            &mut classification,
+        )?;
+        crate::reconciliation::classify_records::<Self, generated_media::GeneratedMediaCodec>(
             reader,
             &mut classification,
         )?;

@@ -45,10 +45,10 @@ pub(super) fn measure(
                 _ => NarrativeBlockStyle::Paragraph,
             })
         }).unwrap_or(NarrativeBlockStyle::Paragraph);
-        let focuses = parts.iter().enumerate().filter(|(_, part)| matches!(part.kind, ResidentPresentationRecordKind::ImageMarker(_)))
+        let focuses = parts.iter().enumerate().filter(|(_, part)| part.image_label().is_some())
             .map(|(index, part)| {
-                let old = previous.iter().find(|old| old.record == *record)
-                    .and_then(|old| old.focuses.iter().find(|(old_index, _)| old.record.authored_parts()[*old_index] == *part))
+                let old = previous.iter().find(|old| old.record.same_image_occurrence(record))
+                    .and_then(|old| old.focuses.iter().find(|(old_index, _)| old.record.authored_parts()[*old_index].same_image_occurrence(part)))
                     .map(|(_, focus)| focus.clone());
                 (index, old.unwrap_or_else(|| cx.focus_handle()))
             }).collect();
@@ -60,7 +60,7 @@ pub(super) fn measure(
     if let Some(layout) = &geometry.layout { return (Some(f32::from(layout.height) + 16.0), 1); }
     geometry.refused |= parts.iter().any(|part| matches!(part.kind, ResidentPresentationRecordKind::NarrativeUnavailable { .. }));
     if geometry.refused || parts.iter().any(|part| !matches!(part.kind,
-        ResidentPresentationRecordKind::NarrativeReady { .. } | ResidentPresentationRecordKind::ImageMarker(_))) {
+        ResidentPresentationRecordKind::NarrativeReady { .. } | ResidentPresentationRecordKind::ImageMarker(_) | ResidentPresentationRecordKind::GeneratedImage(_))) {
         return (Some(36.0), 1);
     }
     let allowance = host.inline_parts_layout_allowance(record);
@@ -135,7 +135,12 @@ pub(super) fn render(geometry: &InlinePartsGeometry, ranges: &[(ResidentPresenta
     }
     for (index, bounds) in &layout.markers {
         let part = &geometry.record.authored_parts()[*index];
-        let ResidentPresentationRecordKind::ImageMarker(marker) = part.kind else { continue };
+        let Some(label) = part.image_label() else { continue };
+        let selector = match part.kind {
+            ResidentPresentationRecordKind::ImageMarker(marker) => format!("transcript-image-marker:{}", marker.marker.marker_id()),
+            ResidentPresentationRecordKind::GeneratedImage(image) => format!("transcript-generated-image:{}", image.resource_id),
+            _ => continue,
+        };
         let id = part.id.clone();
         let Some((_, focus)) = geometry.focuses.iter().find(|(part, _)| part == index) else { continue };
         let focus = focus.clone();
@@ -147,8 +152,8 @@ pub(super) fn render(geometry: &InlinePartsGeometry, ranges: &[(ResidentPresenta
         let menu_focus = focus.clone();
         let selected = ranges.iter().any(|(id, range)| id == &part.id && range == &(0..1));
         let colors = geometry.marker;
-        element = element.child(div().id(SharedString::from(format!("transcript-inline-marker:{}", marker.marker.marker_id())))
-            .debug_selector(|| format!("transcript-image-marker:{}", marker.marker.marker_id()))
+        element = element.child(div().id(SharedString::from(selector.clone()))
+            .debug_selector(move || selector.clone())
             .absolute().left(bounds.origin.x + px(geometry.block.indent)).top(bounds.origin.y).w(bounds.size.width).h(bounds.size.height)
             .px(px(5.0)).py(px(1.0)).border_1().border_color(colors.foreground).rounded(px(5.0))
             .bg(if selected { colors.selected_background } else { colors.background }).text_color(if selected {colors.selected_foreground} else {colors.foreground}).text_size(px(12.0))
@@ -182,12 +187,19 @@ pub(super) fn render(geometry: &InlinePartsGeometry, ranges: &[(ResidentPresenta
                 window.focus(&menu_focus);
                 panel.open_record_menu(&id, event.position, window, cx); cx.stop_propagation();
             }))
-            .child(format!("Image {}", marker.marker.label())));
+            .child(label));
     }
     element.into_any_element()
 }
 
 impl SyndicTranscriptPanel {
+    pub(in super) fn can_refresh_generated_images(&self, next: &SyndicTranscriptHost) -> bool {
+        let snapshot = next.shared_snapshot();
+        self.inline_parts_geometry.iter().any(|geometry| {
+            matches!(geometry.record.kind, ResidentPresentationRecordKind::GeneratedImage(_))
+                && snapshot.records.iter().any(|record| geometry.record.same_image_occurrence(record))
+        })
+    }
     #[cfg(test)]
     pub(crate) fn image_marker_inspection_diagnostic_for_test(&self, id: &ResidentPresentationRecordId, window: &Window) -> String {
         format!("marker={id:?}, bounds={:?}, serial={}, pending={:?}, fallback={}, focused={}", self.image_marker_bounds(id, window), self.image_inspection_serial, self.image_inspection_pending, self.image_marker_focus_fallback.is_some(), self.image_marker_focus_handle(id).is_some_and(|focus| focus.is_focused(window)))
@@ -232,6 +244,9 @@ impl SyndicTranscriptPanel {
     }
 
     pub(crate) fn image_marker_inspection_current(&self, event: &ImageMarkerInspectionRequested, window: &Window) -> bool {
+        if matches!(event.target.record.content_kind, super::super::ResidentContextMenuContentKind::GeneratedImage(_)) {
+            return self.refreshed_image_marker_inspection(event, window).is_some();
+        }
         let snapshot = self.host.shared_snapshot();
         self.image_inspection_pending == Some(event.request)
             && snapshot.activation_revision == event.activation
@@ -240,6 +255,32 @@ impl SyndicTranscriptPanel {
             && matches!(event.target.record.content_kind, super::super::ResidentContextMenuContentKind::ImageMarker(_))
             && self.image_marker_bounds(&event.target.record.record_id, window) == Some(event.bounds)
             && self.last_frame_window.as_ref().is_some_and(|frame| resident_context_menu_frame_loss(&snapshot, frame, &event.target).is_none())
+    }
+
+    pub(crate) fn refreshed_image_marker_inspection(&self, event: &ImageMarkerInspectionRequested,
+        window: &Window) -> Option<ImageMarkerInspectionRequested> {
+        if self.image_inspection_pending != Some(event.request) { return None; }
+        let target = self.refreshed_generated_image_target(&event.target, window)?;
+        let snapshot = self.host.shared_snapshot();
+        let mut refreshed = event.clone();
+        refreshed.bounds = self.image_marker_bounds(&target.record.record_id, window)?;
+        refreshed.focus = self.image_marker_focus_handle(&target.record.record_id)?;
+        refreshed.target = target;
+        refreshed.activation = snapshot.activation_revision;
+        refreshed.presentation = snapshot.presentation_revision;
+        Some(refreshed)
+    }
+
+    pub(in super) fn refreshed_generated_image_target(&self, target: &ResidentTranscriptContextMenuTarget,
+        window: &Window) -> Option<ResidentTranscriptContextMenuTarget> {
+        self.image_marker_bounds(&target.record.record_id, window)?;
+        let snapshot = self.published_snapshot.as_ref()?;
+        let frame = self.last_frame_window.as_ref()?;
+        let command = resident_context_menu_command_for_realized_record_id(snapshot, frame, &target.record.record_id).ok()?;
+        let part = snapshot.records.iter().find_map(|record| record.authored_part(&target.record.record_id))?;
+        let record = super::super::context_menu::resident_context_menu_record(part, command.record).ok()?;
+        if !target.record.same_generated_occurrence(&record) { return None; }
+        Some(ResidentTranscriptContextMenuTarget::new(snapshot.presentation_revision, record))
     }
 
     pub(crate) fn finish_image_marker_inspection(&mut self, request: u64) {

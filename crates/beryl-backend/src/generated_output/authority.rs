@@ -53,13 +53,16 @@ impl crate::OrderedTurnStreamSink for LoadedSourceSink<'_> {
 }
 impl ManagedBackendSession {
     pub(crate) fn register_generated_loaded_source(&mut self, loaded: &mut LoadedThreadSession) {
-        if let Some(previous) = self.generated_loaded_source.take() {
-            previous.live.store(false, Ordering::Release);
+        self.retire_generated_loaded_source();
+        loaded.generated_source_authority = None;
+        if !self.generated_profile_is_live()
+            || !matches!(self.managed_launch_provenance, Some(ManagedLaunchProvenance::Production(_)))
+        {
+            return;
         }
-        let authority = Arc::new(LoadedSourceAuthority {
-            thread: loaded.thread_id().clone(),
-            live: AtomicBool::new(true),
-        });
+        let Some(authority) = mint_loaded_source(loaded.thread_id().clone(), getrandom::fill) else {
+            return;
+        };
         loaded.generated_source_authority = Some(authority.clone());
         self.generated_loaded_source = Some(authority);
     }
@@ -109,4 +112,17 @@ impl ManagedBackendSession {
             target,
         })
     }
+}
+
+fn mint_loaded_source<E>(
+    thread: CasThreadId,
+    fill: impl FnOnce(&mut [u8]) -> Result<(), E>,
+) -> Option<Arc<LoadedSourceAuthority>> {
+    let mut bytes = [0; 32];
+    fill(&mut bytes).ok()?;
+    Some(Arc::new(LoadedSourceAuthority {
+        thread,
+        incarnation: GeneratedSourceIncarnation::from_bytes(bytes),
+        live: AtomicBool::new(true),
+    }))
 }

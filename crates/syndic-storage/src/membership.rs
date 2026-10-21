@@ -19,7 +19,10 @@ pub(crate) fn point(
     if ordinal.get() > set.projection_count() {
         return Ok(None);
     }
-    if ordinal.get() <= set.stable_projection_count() {
+    if set
+        .text_state()
+        .is_some_and(|text| ordinal.get() <= text.stable_projection_count())
+    {
         return reader
             .point::<ExactCodec<StableItemProjectionsFamily>>(
                 &StableItemProjectionKey {

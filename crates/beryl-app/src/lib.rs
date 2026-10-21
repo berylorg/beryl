@@ -220,6 +220,8 @@ mod dynamic_tool_namespace;
 mod exit_session;
 pub mod input_admission;
 mod image_processing;
+#[cfg(feature = "test-faults")]
+pub use image_processing::generated_media_qualification;
 pub mod lifecycle_attention;
 mod lifecycle_dynamic_tools;
 pub mod main_window;

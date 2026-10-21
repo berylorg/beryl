@@ -3,6 +3,8 @@ use crate::cas_projection::CasRetirementFailure;
 use crate::discussion_settlement::coordinator::HandoffCoordinatorError;
 use beryl_home_store::{HomeGeneration, HomeHealthState, HomeRecoveryCandidate, HomeRecoveryError};
 
+mod generated;
+
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum RetiredHomeRecoveryError {
     #[error("recovery candidate construction was cancelled")]
@@ -372,43 +374,6 @@ impl ProcessServiceOwner {
                 self.failed_retirement = Some(failure);
             }
         }
-        let handoff = graph.handoff.as_mut().expect("graph handoff").shutdown();
-        drop(graph.handoff.take());
-        if let Some(activity) = graph.activity.take() {
-            activity.retire();
-        }
-        retirement.marker = graph.marker.take();
-        if let Some(marker) = retirement.marker.as_ref() {
-            marker.retire_home_generation();
-        }
-        drop(graph.theme.take());
-        if let Some(mut theme) = graph.loaded_theme.take() {
-            theme.retire();
-        }
-        graph.attention.close();
-        retirement.home = graph.home.take();
-        drop(retirement.graph.take());
-        let handoff = failed_retirement::settled_handoff(handoff, expected);
-        let exact_failed_home = retirement.home.as_ref().is_some_and(|home| {
-            let health = home.health();
-            health.state() == HomeHealthState::Failed && health.generation() == Some(expected)
-        });
-        if exact_failed_home
-            && matches!(
-                &handoff,
-                Err(HandoffCoordinatorError::Read(
-                    beryl_home_store::ReadError::Storage { .. }
-                )) | Err(HandoffCoordinatorError::Page(
-                    beryl_state::DurableJobReadError::Read(
-                        beryl_home_store::ReadError::Storage { .. }
-                    )
-                ))
-            )
-        {
-            retirement.joined_handoff_read_failure = handoff.err();
-        } else {
-            retirement.failure = handoff.err().map(AppServiceCloseError::from);
-        }
         #[cfg(feature = "test-faults")]
         if std::mem::take(&mut self.fail_shutdown_completion) {
             retirement.failure = Some(AppServiceCloseError::PersistentFailure);
@@ -431,6 +396,11 @@ impl ProcessServiceOwner {
             .is_some_and(|failure| failure.retry_disposal())
         {
             self.failed_retirement = None;
+        }
+        if self.failed_retirement.is_none()
+            && retirement.graph.as_ref().is_some_and(|graph| graph.cas.is_none())
+        {
+            retirement.finish_components(expected);
         }
         if retirement.graph.is_some()
             || retirement.home.is_none()

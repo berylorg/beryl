@@ -153,6 +153,7 @@ fn with_native_core(run: impl FnOnce(Arc<ProcessCore>) + 'static) {
                 })
                 .unwrap();
             let core = Arc::new(ProcessCore {
+                generated_capacity: Arc::new(signal::ChangeEvent::default()),
                 original_capacity: Arc::new(original::OriginalCapacityEvent::new(limits)),
                 native_progress: Arc::new(signal::NativeProgress::default()),
                 domain,

@@ -304,6 +304,13 @@ pub struct LoadedCasProjection {
 }
 
 impl LoadedCasProjection {
+    pub(in crate::cas_projection) fn generated_source_incarnation(
+        &self,
+    ) -> Result<Option<beryl_model::GeneratedSourceIncarnation>, super::ProjectionExecutionError> {
+        self.lease.as_ref().ok_or(super::ProjectionCoordinatorError::ProjectionWorkerStopped)?
+            .generated_source_incarnation()
+    }
+
     pub(super) fn new(
         coordinator: &CasProjectionCoordinator,
         syndic_thread_id: SyndicThreadId,

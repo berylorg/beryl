@@ -229,6 +229,7 @@ impl PublishUnboundBinding {
 /// Exact immutable inputs for activating the pending selected turn on a valid binding.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ActivateBinding {
+    generated_source_incarnation: Option<beryl_model::GeneratedSourceIncarnation>,
     context_classification: Option<crate::ContextBindingClassification>,
     context_provenance_valid: bool,
     thread_id: SyndicThreadId,
@@ -316,6 +317,20 @@ impl CancelBindingActivation {
 }
 
 impl ActivateBinding {
+    pub fn with_generated_source_incarnation(
+        mut self,
+        incarnation: Option<beryl_model::GeneratedSourceIncarnation>,
+    ) -> Self {
+        self.generated_source_incarnation = incarnation;
+        self
+    }
+
+    pub const fn generated_source_incarnation(
+        &self,
+    ) -> Option<beryl_model::GeneratedSourceIncarnation> {
+        self.generated_source_incarnation
+    }
+
     pub fn with_context_classification(
         mut self,
         classification: crate::ContextBindingClassification,
@@ -339,6 +354,7 @@ impl ActivateBinding {
         Self {
             context_classification: None,
             context_provenance_valid: false,
+            generated_source_incarnation: None,
             thread_id,
             expected_binding_revision,
             expected_gate_revision,

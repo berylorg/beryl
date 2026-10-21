@@ -31,6 +31,7 @@ pub(super) fn run(
         Ok(result) => result,
         Err(_) => (false, Some(RuntimeFailure::WorkerPanicked)),
     };
+    if !clean { generated_source::fail_response(&shared, runtime_id, attempt); }
     let mut state = shared.lock();
     let mut reclaimable = false;
     let mut retirement_released = false;
@@ -56,11 +57,12 @@ pub(super) fn run(
         shared.wake_preparation();
     }
     shared.changed.notify_all();
+    shared.wake_generated();
     clean
 }
 
 fn run_inner(
-    shared: &RuntimeInterestShared,
+    shared: &Arc<RuntimeInterestShared>,
     runtime_id: RuntimeId,
     attempt: u64,
     launch: Box<dyn FnOnce() -> Result<Box<dyn RunningRuntime>, RuntimeLaunchFailure> + Send>,
@@ -120,12 +122,15 @@ fn run_inner(
                         });
                     }
                     shared.changed.notify_all();
+                    shared.wake_generated();
                 }
             }
             Err(_) => failure = Some(RuntimeFailure::IdentityExhausted),
         }
     }
     while failure.is_none() {
+        generated_source::process_request(shared, runtime_id, attempt, runtime.as_mut());
+        generated_source::source_drained(shared, runtime_id, attempt);
         let state = shared.lock();
         if !wanted(shared, &state, runtime_id, attempt) {
             break;
@@ -158,7 +163,16 @@ fn run_inner(
         }
         shared.changed.notify_all();
     }
-    match runtime.retire() {
+    shared.wake_generated();
+    generated_source::refuse_pending(shared, runtime_id, attempt);
+    let mut retirement = runtime.retire();
+    while !generated_source::source_drained(shared, runtime_id, attempt) {
+        let state = shared.lock();
+        drop(shared.changed.wait_timeout(state, HEALTH_POLL_INTERVAL)
+            .unwrap_or_else(|poison| poison.into_inner()));
+        if retirement.is_err() { retirement = runtime.retire(); }
+    }
+    match retirement {
         Ok(()) => {
             *owner = None;
             (true, failure)

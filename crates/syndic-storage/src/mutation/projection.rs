@@ -1,9 +1,11 @@
 mod advance;
+mod generated;
 mod lifecycle;
 mod materialize;
 pub(crate) mod parser;
 pub(crate) mod range;
 mod start;
+pub use generated::PublishGeneratedResourceProjection;
 
 use beryl_home_store::{CurrentDomainCommand, MutationContribution};
 use beryl_model::{DomainRevision, ProjectionRevision, SyndicItemId};
@@ -11,7 +13,9 @@ use beryl_model::{DomainRevision, ProjectionRevision, SyndicItemId};
 use crate::{ItemProjectionGeneration, SyndicStorage};
 
 pub(super) use lifecycle::invalidate_item_projection;
-pub(in crate::mutation) use lifecycle::validate_projection_source;
+pub(in crate::mutation) use lifecycle::{
+    validate_item_projection_source, validate_projection_source,
+};
 pub(crate) use materialize::materialize_output;
 
 /// Starts one caller-named bounded projection generation for an exact canonical item revision.

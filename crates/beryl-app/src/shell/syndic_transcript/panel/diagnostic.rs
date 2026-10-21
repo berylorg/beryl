@@ -71,7 +71,8 @@ impl SyndicTranscriptPanel {
 
 fn image_markers(record: &ResidentPresentationRecord) -> usize {
     match &record.kind {
-        ResidentPresentationRecordKind::ImageMarker(_) => 1,
+        ResidentPresentationRecordKind::ImageMarker(_)
+        | ResidentPresentationRecordKind::GeneratedImage(_) => 1,
         ResidentPresentationRecordKind::AuthoredInlineParts { parts } => parts
             .iter()
             .filter(|part| matches!(part.kind, ResidentPresentationRecordKind::ImageMarker(_)))
@@ -84,6 +85,7 @@ fn record_kind(kind: &ResidentPresentationRecordKind) -> &'static str {
     match kind {
         ResidentPresentationRecordKind::AuthoredInlineParts { .. } => "inline_parts",
         ResidentPresentationRecordKind::ImageMarker(_) => "image_marker",
+        ResidentPresentationRecordKind::GeneratedImage(_) => "generated_image",
         ResidentPresentationRecordKind::NarrativePending { .. } => "narrative_pending",
         ResidentPresentationRecordKind::NarrativeReady { .. } => "narrative_ready",
         ResidentPresentationRecordKind::NarrativeUnavailable { .. } => "narrative_unavailable",

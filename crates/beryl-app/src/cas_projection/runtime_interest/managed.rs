@@ -117,6 +117,18 @@ impl ManagedRuntime {
 }
 
 impl RunningRuntime for ManagedRuntime {
+    fn open_generated_source(
+        &mut self,
+        permit: beryl_backend::GeneratedOutputPermit,
+        path: &beryl_model::RuntimeNativePath,
+        allowance: beryl_backend::GeneratedReaderAllowance,
+        cancel: Arc<AtomicBool>,
+    ) -> Result<beryl_backend::GeneratedOutputSource, GeneratedRuntimeOpenFailure> {
+        self.server.as_mut().ok_or(GeneratedRuntimeOpenFailure::Refused(beryl_backend::GeneratedOutputError::LostSourceAuthority))?
+            .open_generated_output(permit, path, allowance, cancel)
+            .map_err(GeneratedRuntimeOpenFailure::Backend)
+    }
+
     fn connector(&self) -> Option<ManagedBackendClientConnector> {
         self.server
             .as_ref()

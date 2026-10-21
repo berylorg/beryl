@@ -18,6 +18,7 @@ pub(crate) struct ImageInspection {
     #[cfg(any(test, feature = "test-faults"))]
     painted: Rc<Cell<bool>>,
     wait: Option<(gpui::Task<()>, Rc<Cell<bool>>)>,
+    generated: Option<crate::syndic_transcript::TranscriptGeneratedImage>,
 }
 
 impl ImageInspection {
@@ -36,6 +37,28 @@ impl ImageInspection {
             #[cfg(any(test, feature = "test-faults"))]
             painted: Rc::new(Cell::new(false)),
             wait: None,
+            generated: None,
+        }
+    }
+
+    pub(crate) fn set_generated(
+        &mut self,
+        image: crate::syndic_transcript::TranscriptGeneratedImage,
+        demand: Option<ImageSourceDemand>,
+        media: Option<&ImageMediaWindow>,
+    ) {
+        if self.generated == Some(image) && self.demand == demand {
+            return;
+        }
+        if self.generated.is_some() || self.demand != demand {
+            *self = Self::new(media, demand);
+        }
+        self.generated = Some(image);
+        if matches!(
+            image.lifecycle,
+            crate::syndic_transcript::TranscriptGeneratedImageLifecycle::Pending
+        ) {
+            self.unavailable = false;
         }
     }
 
@@ -142,6 +165,16 @@ impl ImageInspection {
     }
 
     pub(crate) fn element(&self) -> AnyElement {
+        if self.generated.is_some_and(|image| {
+            matches!(
+                image.lifecycle,
+                crate::syndic_transcript::TranscriptGeneratedImageLifecycle::Pending
+            )
+        }) {
+            return div()
+                .child("The generated image is still being prepared.")
+                .into_any_element();
+        }
         if let Some(pin) = self.pin.clone() {
             let paint_failure = self.paint_failure.clone();
             #[cfg(any(test, feature = "test-faults"))]

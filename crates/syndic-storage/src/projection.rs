@@ -11,6 +11,7 @@ use crate::{
 
 const BLOCK_ID_V1: &[u8] = b"beryl/syndic/markdown-block/v1\0";
 const PROJECTION_ID_V1: &[u8] = b"beryl/syndic/projection/v1\0";
+const GENERATED_PROJECTION_ID_V1: &[u8] = b"beryl/syndic/generated-resource-projection/v1\0";
 const RESOURCE_ID_V1: &[u8] = b"beryl/syndic/resource/v1\0";
 const RESOURCE_CONTENT_DIGEST_V1: &[u8] = b"beryl/syndic/resource-content/v1\0";
 const ITEM_SET_DIGEST_V1: &[u8] = b"beryl/syndic/item-projection-set/v1\0";
@@ -54,9 +55,32 @@ pub(crate) fn projection_identity(
     )
 }
 
+pub(crate) fn generated_resource_projection_identity(
+    format: ProjectionFormatVersion,
+    item: SyndicItemId,
+    resource: SyndicResourceId,
+) -> (SyndicProjectionId, ProjectionRevision) {
+    let mut hash = Sha256::new();
+    hash.update(GENERATED_PROJECTION_ID_V1);
+    hash.update([format_tag(format)]);
+    hash.update(item.as_bytes());
+    hash.update(resource.as_bytes());
+    let digest: [u8; 32] = hash.finalize().into();
+    let mut id = [0_u8; 16];
+    id.copy_from_slice(&digest[..16]);
+    (
+        SyndicProjectionId::from_bytes(id),
+        ProjectionRevision::new(1).expect("initial projection revision"),
+    )
+}
+
 fn hash_projection_payload(hash: &mut Sha256, payload: &ProjectionPayload) {
     match payload {
         ProjectionPayload::Empty => hash.update([0]),
+        ProjectionPayload::GeneratedResource { resource_id } => {
+            hash.update([4]);
+            hash.update(resource_id.as_bytes());
+        }
         ProjectionPayload::InlineMarkdown {
             block_id,
             block_kind,

@@ -212,9 +212,55 @@ fn test_driver_command(operation: DriverOperation) -> DriverCommand {
 /// All normalized events remain owned by the connection driver and router.
 pub(in crate::cas_projection) struct ConnectionRequestSession<'a> {
     pub(super) backend: &'a mut ManagedBackendSession,
+    generated: &'a mut GeneratedSessionAuthority,
+}
+
+struct GeneratedSessionAuthority {
+    release: Option<beryl_backend::ManagedBackendReleaseAdmission>,
+    loaded: Option<LoadedThreadSession>,
 }
 
 impl ConnectionRequestSession<'_> {
+    pub(in crate::cas_projection) fn generated_source_incarnation(
+        &self,
+        key: &registry::LoadedThreadKey,
+        connection: registry::ConnectionGeneration,
+        owner: beryl_model::SyndicThreadId,
+        generation: beryl_model::CasLoadedSessionGeneration,
+    ) -> Result<Option<beryl_model::GeneratedSourceIncarnation>, ProjectionCoordinatorError> {
+        if !registry::generated_owner_is_current(key, connection, owner, generation)
+            .map_err(|_| ProjectionCoordinatorError::ProjectionWorkerStopped)?
+        {
+            return Err(ProjectionCoordinatorError::ProjectionWorkerStopped);
+        }
+        Ok(self.generated.release.as_ref().and_then(|_| self.generated.loaded.as_ref())
+            .filter(|loaded| loaded.thread_id() == &key.cas_thread_id)
+            .and_then(LoadedThreadSession::generated_source_incarnation))
+    }
+
+    fn authorize_generated_source(
+        &self,
+        key: &registry::LoadedThreadKey,
+        connection: registry::ConnectionGeneration,
+        owner: beryl_model::SyndicThreadId,
+        generation: beryl_model::CasLoadedSessionGeneration,
+        incarnation: beryl_model::GeneratedSourceIncarnation,
+        target: beryl_backend::GeneratedOutputTarget,
+    ) -> Result<beryl_backend::GeneratedOutputPermit, crate::cas_projection::GeneratedSourceEligibility> {
+        use crate::cas_projection::GeneratedSourceEligibility;
+        if !registry::generated_owner_is_current(key, connection, owner, generation)? {
+            return Err(GeneratedSourceEligibility::LostSourceAuthority);
+        }
+        let release = self.generated.release.as_ref().ok_or(GeneratedSourceEligibility::LostSourceAuthority)?;
+        let loaded = self.generated.loaded.as_ref().filter(|loaded| loaded.thread_id() == &key.cas_thread_id)
+            .ok_or(GeneratedSourceEligibility::LostSourceAuthority)?;
+        if loaded.generated_source_incarnation() != Some(incarnation) {
+            return Err(GeneratedSourceEligibility::LostSourceAuthority);
+        }
+        self.backend.authorize_generated_output(release, loaded, target)
+            .map_err(GeneratedSourceEligibility::from)
+    }
+
     pub(in crate::cas_projection) fn compact_exact_foreground_thread(
         &mut self,
         target: ExactForegroundThread,
@@ -267,8 +313,9 @@ impl ConnectionRequestSession<'_> {
         options: ThreadStartOptions,
         timeout: Duration,
     ) -> Result<FreshLoadedThreadSession, ManagedBackendError> {
-        self.backend
-            .start_thread_with_options(cwd, options, timeout)
+        let loaded = self.backend.start_thread_with_options(cwd, options, timeout)?;
+        self.generated.loaded = Some(loaded.loaded().clone());
+        Ok(loaded)
     }
 
     pub(in crate::cas_projection) fn resume_thread(
@@ -277,7 +324,9 @@ impl ConnectionRequestSession<'_> {
         options: &ThreadLoadOptions,
         timeout: Duration,
     ) -> Result<LoadedThreadSession, ManagedBackendError> {
-        self.backend.resume_thread(thread_id, options, timeout)
+        let loaded = self.backend.resume_thread(thread_id, options, timeout)?;
+        self.generated.loaded = Some(loaded.clone());
+        Ok(loaded)
     }
 
     pub(in crate::cas_projection) fn fork_thread(
@@ -286,7 +335,9 @@ impl ConnectionRequestSession<'_> {
         options: &ThreadLoadOptions,
         timeout: Duration,
     ) -> Result<FreshLoadedThreadSession, ManagedBackendError> {
-        self.backend.fork_thread(thread_id, options, timeout)
+        let loaded = self.backend.fork_thread(thread_id, options, timeout)?;
+        self.generated.loaded = Some(loaded.loaded().clone());
+        Ok(loaded)
     }
 
     pub(in crate::cas_projection) fn fork_thread_through_turn(
@@ -296,8 +347,9 @@ impl ConnectionRequestSession<'_> {
         options: &ThreadLoadOptions,
         timeout: Duration,
     ) -> Result<FreshLoadedThreadSession, ManagedBackendError> {
-        self.backend
-            .fork_thread_through_turn(thread_id, last_turn_id, options, timeout)
+        let loaded = self.backend.fork_thread_through_turn(thread_id, last_turn_id, options, timeout)?;
+        self.generated.loaded = Some(loaded.loaded().clone());
+        Ok(loaded)
     }
 
     pub(in crate::cas_projection) fn inject_thread_items(
@@ -583,6 +635,7 @@ impl DriverContext {
 }
 
 pub(super) struct ConnectionDriver {
+    work_boundary: crate::cas_projection::connection_work::ConnectionWorkBoundary,
     sender: FixedChannelSender<DriverCommand>,
     stop: Arc<AtomicBool>,
     handle: Mutex<Option<JoinHandle<()>>>,
@@ -599,14 +652,61 @@ impl std::fmt::Debug for ConnectionDriver {
 }
 
 impl ConnectionDriver {
+    pub(super) fn authorize_generated_source(
+        &self,
+        key: registry::LoadedThreadKey,
+        connection: registry::ConnectionGeneration,
+        owner: beryl_model::SyndicThreadId,
+        generation: beryl_model::CasLoadedSessionGeneration,
+        incarnation: beryl_model::GeneratedSourceIncarnation,
+        target: beryl_backend::GeneratedOutputTarget,
+    ) -> Result<beryl_backend::GeneratedOutputPermit, crate::cas_projection::GeneratedSourceEligibility> {
+        use crate::cas_projection::GeneratedSourceEligibility;
+        let attachment = self.forwarding_hub.current_attachment().map_err(GeneratedSourceEligibility::Internal)?;
+        let permit = attachment.commands.authorize().map_err(GeneratedSourceEligibility::from)?;
+        if self.stop.load(Ordering::Acquire) {
+            return Err(GeneratedSourceEligibility::LostSourceAuthority);
+        }
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let rejected = sender.clone();
+        let command = DriverCommand {
+            admitted_attachment: Some(attachment.identity),
+            permit,
+            operation: Box::new(move |session, context, permit| {
+                if context.admitted_attachment(&permit).is_err() {
+                    return DriverOperationDisposition::Rejected(DriverCommandNondispatch::WorkerUnavailable);
+                }
+                let result = session.authorize_generated_source(&key, connection, owner, generation, incarnation, target);
+                let _ = sender.send(result);
+                DriverOperationDisposition::Settled
+            }),
+            rejection: Box::new(move |_| { let _ = rejected.send(Err(GeneratedSourceEligibility::LostSourceAuthority)); }),
+        };
+        match self.sender.send_timeout(command, Duration::ZERO) {
+            Ok(()) => {}
+            Err(SendError::Full(command) | SendError::Timeout(command)) => {
+                self.work_boundary.await_generated_capacity();
+                match self.sender.send_timeout(command, Duration::ZERO) {
+                    Ok(()) => {}
+                    Err(SendError::Full(_) | SendError::Timeout(_)) => return Err(GeneratedSourceEligibility::Busy),
+                    Err(SendError::Closed(_)) => return Err(GeneratedSourceEligibility::LostSourceAuthority),
+                }
+            }
+            Err(SendError::Closed(_)) => return Err(GeneratedSourceEligibility::LostSourceAuthority),
+        }
+        receiver.recv().unwrap_or(Err(GeneratedSourceEligibility::LostSourceAuthority))
+    }
+
     pub(super) fn start(
         backend: ManagedBackendSession,
+        release_admission: Option<beryl_backend::ManagedBackendReleaseAdmission>,
         authority: Arc<ConnectionRegistryAuthority>,
         forwarding_hub: Arc<ForwardingHub>,
         worker: ProjectionWorkerPermit,
     ) -> Result<Self, ProjectionCoordinatorError> {
         let (sender, receiver) = connection_command_channel()?;
         let stop = Arc::new(AtomicBool::new(false));
+        let work_boundary = authority.work_boundary.clone();
         let context = DriverContext {
             authority,
             stop: Arc::clone(&stop),
@@ -614,11 +714,12 @@ impl ConnectionDriver {
         };
         let handle = std::thread::Builder::new()
             .name("beryl-cas-connection".to_string())
-            .spawn(move || run_driver(backend, receiver, context, worker))
+            .spawn(move || run_driver(backend, release_admission, receiver, context, worker))
             .map_err(|error| ProjectionCoordinatorError::ProjectionWorkerSpawn {
                 message: error.to_string(),
             })?;
         Ok(Self {
+            work_boundary,
             sender,
             stop,
             handle: Mutex::new(Some(handle)),
@@ -1222,6 +1323,7 @@ impl Drop for DriverWorkGuardPauseController {
 
 fn run_driver(
     backend: ManagedBackendSession,
+    release_admission: Option<beryl_backend::ManagedBackendReleaseAdmission>,
     receiver: FixedChannelReceiver<DriverCommand>,
     context: DriverContext,
     worker: ProjectionWorkerPermit,
@@ -1229,6 +1331,7 @@ fn run_driver(
     // Worker custody outlives retirement and disposal of the driver inputs, including unwind.
     let _worker = worker;
     let mut backend = backend;
+    let mut generated = GeneratedSessionAuthority { release: release_admission, loaded: None };
     let receiver = receiver;
     let context = context;
     let _retirement = DriverRetirementGuard { context: &context };
@@ -1250,6 +1353,7 @@ fn run_driver(
             if let Ok(initial) = attachment.commands.authorize() {
                 let mut requests = ConnectionRequestSession {
                     backend: &mut backend,
+                    generated: &mut generated,
                 };
                 if initial.is_current()
                     && !context.drain_approval_interruptions(&mut requests, &initial, None)
@@ -1273,6 +1377,7 @@ fn run_driver(
             }
             let mut requests = ConnectionRequestSession {
                 backend: &mut backend,
+                generated: &mut generated,
             };
             if dispatch_next_persistent_failure(
                 &mut requests,
@@ -1311,6 +1416,7 @@ fn run_driver(
         }
         match receiver.try_receive() {
             Ok(command) => {
+                context.authority.work_boundary.wake_generated_capacity();
                 if command.admitted_attachment != Some(attachment.identity)
                     || !command.permit.is_current()
                 {
@@ -1319,6 +1425,7 @@ fn run_driver(
                 }
                 let mut requests = ConnectionRequestSession {
                     backend: &mut backend,
+                    generated: &mut generated,
                 };
                 command.execute(&mut requests, &context);
             }
@@ -1341,6 +1448,7 @@ fn run_driver(
                     Ok(progress) => {
                         let mut requests = ConnectionRequestSession {
                             backend: &mut backend,
+                            generated: &mut generated,
                         };
                         if !context.drain_approval_interruptions(&mut requests, &poll_permit, None)
                         {
@@ -1353,6 +1461,7 @@ fn run_driver(
                     Err(ManagedBackendError::ApprovalTargetFailed { request, cause }) => {
                         let mut requests = ConnectionRequestSession {
                             backend: &mut backend,
+                            generated: &mut generated,
                         };
                         let _ = context.drain_approval_interruptions(
                             &mut requests,
@@ -1411,6 +1520,7 @@ struct DriverRetirementGuard<'a> {
 
 impl Drop for DriverRetirementGuard<'_> {
     fn drop(&mut self) {
+        self.context.authority.work_boundary.wake_generated_capacity();
         if let Ok(attachment) = self.context.attachment() {
             attachment.persistent_failure.driver_stopped();
             if attachment.commands.is_open() {

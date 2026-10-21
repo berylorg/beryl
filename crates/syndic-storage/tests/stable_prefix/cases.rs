@@ -47,15 +47,23 @@ fn live_closed_prefix_survives_resume_supersession_and_eof_promotion() {
     );
 
     let set_1 = finish_build(&store, &storage, fixture.item, generation_1);
-    assert_eq!(set_1.stable_projection_count(), 1);
+    assert_eq!(set_1.text_state().unwrap().stable_projection_count(), 1);
     assert_eq!(set_1.projection_count(), 2);
-    assert!(!set_1.stable_eof_resolved());
+    assert!(!set_1.text_state().unwrap().stable_eof_resolved());
     assert_eq!(
-        set_1.resume_checkpoint().consumed_source_bytes(),
+        set_1
+            .text_state()
+            .unwrap()
+            .resume_checkpoint()
+            .consumed_source_bytes(),
         initial.len() as u64
     );
     assert_eq!(
-        set_1.resume_checkpoint().closed_source_bytes(),
+        set_1
+            .text_state()
+            .unwrap()
+            .resume_checkpoint()
+            .closed_source_bytes(),
         "stable paragraph\n\n".len() as u64
     );
     let generation_1_records = read_generation(&store, &storage, fixture.item, generation_1);
@@ -84,7 +92,7 @@ fn live_closed_prefix_survives_resume_supersession_and_eof_promotion() {
     assert_eq!(resumed.projection_count(), 1);
     assert_eq!(
         resumed.phase().clone(),
-        ItemProjectionBuildPhase::Parsing(set_1.resume_checkpoint().clone())
+        ItemProjectionBuildPhase::Parsing(set_1.text_state().unwrap().resume_checkpoint().clone())
     );
     advance_build_once(&store, &storage, fixture.item, generation_2);
     let resumed_after_append = storage
@@ -134,9 +142,9 @@ fn live_closed_prefix_survives_resume_supersession_and_eof_promotion() {
     assert_eq!(replacement.projection_count(), 1);
     assert_eq!(replacement.output_digest(), superseded.output_digest());
     let set_3 = finish_build(&store, &storage, fixture.item, generation_3);
-    assert_eq!(set_3.stable_projection_count(), 1);
+    assert_eq!(set_3.text_state().unwrap().stable_projection_count(), 1);
     assert_eq!(set_3.projection_count(), 2);
-    assert!(!set_3.stable_eof_resolved());
+    assert!(!set_3.text_state().unwrap().stable_eof_resolved());
     let generation_3_records = read_generation(&store, &storage, fixture.item, generation_3);
     assert_eq!(
         generation_3_records[0].projection_id(),
@@ -172,13 +180,17 @@ fn live_closed_prefix_survives_resume_supersession_and_eof_promotion() {
     let generation_4 = generation_3.checked_next().unwrap();
     start_build(&store, &storage, fixture.item, generation_4);
     let set_4 = finish_build(&store, &storage, fixture.item, generation_4);
-    assert_eq!(set_4.stable_projection_count(), 2);
+    assert_eq!(set_4.text_state().unwrap().stable_projection_count(), 2);
     assert_eq!(set_4.projection_count(), 2);
-    assert!(set_4.stable_eof_resolved());
-    assert_eq!(set_4.stable_digest(), set_4.digest());
+    assert!(set_4.text_state().unwrap().stable_eof_resolved());
+    assert_eq!(set_4.text_state().unwrap().stable_digest(), set_4.digest());
     assert_eq!(
-        set_4.resume_checkpoint().closed_source_bytes(),
-        set_4.source_bytes()
+        set_4
+            .text_state()
+            .unwrap()
+            .resume_checkpoint()
+            .closed_source_bytes(),
+        set_4.text_state().unwrap().source_bytes()
     );
     let generation_4_records = read_generation(&store, &storage, fixture.item, generation_4);
     assert_eq!(

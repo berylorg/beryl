@@ -112,6 +112,7 @@ pub(crate) struct TranscriptAttachmentSourceIdentity {
     placement: TranscriptActivationPlacement,
     title: beryl_state::CatalogResolvedTitle,
     lineage: syndic_storage::ThreadLineageHead,
+    generated_presentation: [u8; 32],
 }
 
 impl PreparedTranscriptAttachment {
@@ -132,6 +133,7 @@ impl PreparedTranscriptAttachment {
             placement: self.request.placement,
             title: self.title.clone(),
             lineage: self.lineage.clone(),
+            generated_presentation: generated_presentation_fingerprint(&self.activation),
         }
     }
 }
@@ -154,6 +156,14 @@ impl TranscriptAttachmentSourceIdentity {
         self.authority == prepared.authority
     }
 
+    pub(crate) fn matches_presentation(&self, prepared: &PreparedTranscriptAttachment) -> bool {
+        self.matches_authority(prepared)
+            && self.range == prepared.range
+            && self.placement == prepared.request.placement
+            && self.generated_presentation
+                == generated_presentation_fingerprint(&prepared.activation)
+    }
+
     pub(crate) fn matches_selected_metadata(
         &self,
         prepared: &PreparedTranscriptAttachment,
@@ -162,6 +172,43 @@ impl TranscriptAttachmentSourceIdentity {
             && self.title == prepared.title
             && self.lineage == prepared.lineage
     }
+}
+
+fn generated_presentation_fingerprint(activation: &PreparedTranscriptActivation) -> [u8; 32] {
+    use crate::syndic_transcript::{
+        ProjectionPayload, TranscriptGeneratedImageLifecycle, TranscriptProviderResponseKind,
+    };
+    use sha2::{Digest, Sha256};
+
+    let mut digest = Sha256::new();
+    digest.update(b"beryl-generated-presentation-v1\0");
+    if let Some(TranscriptProviderResponseKind::ProjectionRecords(records)) =
+        &activation.projection_records_response
+    {
+        for record in &records.records {
+            let ProjectionPayload::GeneratedImage(image) = record.payload else {
+                continue;
+            };
+            digest.update((record.id.0.len() as u64).to_be_bytes());
+            digest.update(record.id.0.as_bytes());
+            digest.update(record.revision.0.to_be_bytes());
+            digest.update(image.resource_id.as_bytes());
+            digest.update(image.resource_revision.get().to_be_bytes());
+            digest.update(image.source_fingerprint);
+            match image.lifecycle {
+                TranscriptGeneratedImageLifecycle::Pending => digest.update([0]),
+                TranscriptGeneratedImageLifecycle::Admitted(asset) => {
+                    digest.update([1]);
+                    digest.update(asset.digest());
+                    digest.update(asset.length().get().to_be_bytes());
+                }
+                TranscriptGeneratedImageLifecycle::Unavailable(reason) => {
+                    digest.update([2, reason.code()])
+                }
+            }
+        }
+    }
+    digest.finalize().into()
 }
 
 #[derive(Clone)]

@@ -46,6 +46,7 @@ pub(in crate::cas_projection) struct ProjectionConnection {
     runtime_id: RuntimeId,
     process_generation: CasProcessGeneration,
     process_fact: ConnectionProcessFact,
+    generated_source_service: crate::cas_projection::ProjectionServiceGeneration,
     runtime_interest_source: crate::cas_projection::service_config::ConnectionRuntimeInterestSource,
     cut_worker_source: crate::cas_projection::service_config::ConnectionWorkerRetentionSource,
     original_router: std::sync::Weak<EventRouter>,
@@ -80,6 +81,44 @@ impl std::fmt::Debug for ProjectionConnection {
 }
 
 impl ProjectionConnection {
+    pub(in crate::cas_projection) fn generated_source_belongs_to(
+        &self,
+        service: crate::cas_projection::ProjectionServiceGeneration,
+    ) -> bool {
+        self.generated_source_service == service && !self.is_retired()
+    }
+
+    pub(in crate::cas_projection) fn generated_source_connection_generation(&self) -> ConnectionGeneration {
+        self.authority.generation
+    }
+
+    pub(in crate::cas_projection) fn authorize_generated_source(
+        &self,
+        key: LoadedThreadKey,
+        owner: SyndicThreadId,
+        generation: CasLoadedSessionGeneration,
+        incarnation: beryl_model::GeneratedSourceIncarnation,
+        target: beryl_backend::GeneratedOutputTarget,
+    ) -> Result<beryl_backend::GeneratedOutputPermit, crate::cas_projection::GeneratedSourceEligibility> {
+        use crate::cas_projection::GeneratedSourceEligibility;
+        let first = self.runtime.try_lock();
+        let runtime = match first {
+            Err(std::sync::TryLockError::WouldBlock) => {
+                self.authority.work_boundary.await_generated_capacity();
+                self.runtime.try_lock()
+            }
+            other => other,
+        }.map_err(|error| match error {
+            std::sync::TryLockError::WouldBlock => GeneratedSourceEligibility::Busy,
+            std::sync::TryLockError::Poisoned(_) => GeneratedSourceEligibility::Backend(beryl_backend::GeneratedOutputError::Protocol),
+        })?;
+        let result = runtime.as_ref().ok_or(GeneratedSourceEligibility::LostSourceAuthority)?.driver
+            .authorize_generated_source(key, self.authority.generation, owner, generation, incarnation, target);
+        drop(runtime);
+        self.authority.work_boundary.wake_generated_capacity();
+        result
+    }
+
     pub(in crate::cas_projection) fn admit_ordinary_execution(
         &self,
     ) -> Result<
@@ -223,6 +262,7 @@ impl ProjectionConnection {
     #[allow(clippy::too_many_arguments)]
     pub(in crate::cas_projection) fn new(
         mut backend: ManagedBackendSession,
+        release_admission: Option<beryl_backend::ManagedBackendReleaseAdmission>,
         runtime_id: RuntimeId,
         process_generation: CasProcessGeneration,
         home: Arc<HomeServiceReference>,
@@ -344,6 +384,7 @@ impl ProjectionConnection {
         let driver_permit = worker_permits.take_driver();
         let driver = match ConnectionDriver::start(
             backend,
+            release_admission,
             Arc::clone(&authority),
             Arc::clone(&forwarding_hub),
             driver_permit,
@@ -362,6 +403,7 @@ impl ProjectionConnection {
             runtime_id,
             process_generation,
             process_fact,
+            generated_source_service: commands.service_generation(),
             runtime_interest_source,
             cut_worker_source,
             original_router: Arc::downgrade(&router),
@@ -1161,6 +1203,7 @@ impl ProjectionConnection {
         &self,
         operation: impl FnOnce(&ConnectionRuntime) -> Result<T, ProjectionCoordinatorError>,
     ) -> Result<T, ProjectionCoordinatorError> {
+        let _change = self.authority.work_boundary.begin_change();
         let runtime =
             self.runtime
                 .lock()

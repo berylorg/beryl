@@ -44,7 +44,7 @@ fn candidate_history_metadata_preserves_exact_values_bounds_and_generation_fence
         ResourceKind::Attachment,
         "text/plain",
         ResourceBacking::TextRange {
-            source: item.projection_source().unwrap(),
+            source: item.projection_text_source().unwrap(),
             range: ProjectionSourceRange::new(0, 9).unwrap(),
         },
         [50; 32],
@@ -85,7 +85,7 @@ fn candidate_history_metadata_preserves_exact_values_bounds_and_generation_fence
         ProjectionRevision::new(1).unwrap(),
         ProjectionFormatVersion::V1,
         item.revision(),
-        item.projection_source().unwrap(),
+        item.projection_text_source().unwrap(),
         0,
         0,
         0,

@@ -49,7 +49,7 @@ pub(crate) struct Fixture {
     directory: tempfile::TempDir,
     pub(crate) state: BerylState,
     pub(crate) storage: SyndicStorage,
-    faults: beryl_home_store::test_faults::FaultController,
+    pub(crate) faults: beryl_home_store::test_faults::FaultController,
     enrollments: beryl_app::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations,
 }
 

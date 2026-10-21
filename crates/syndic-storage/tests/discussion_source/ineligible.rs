@@ -185,7 +185,7 @@ fn transcript_entry_cannot_substitute_for_current_projection_membership() {
         .item_projection_set(&fixture.store, source.item_id(), head.generation(), limit())
         .unwrap()
         .unwrap();
-    assert!(projection.ordinal().get() <= set.stable_projection_count());
+    assert!(projection.ordinal().get() <= set.text_state().unwrap().stable_projection_count());
     commit(
         &fixture.store,
         fixture.storage.clone(),

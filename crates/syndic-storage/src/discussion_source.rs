@@ -208,30 +208,32 @@ fn authenticate(
     {
         return invalid("discussion projection membership is not current");
     }
-    let (member_id, member_revision) =
-        if projection.ordinal().get() <= set.stable_projection_count() {
-            let member = read.point::<StableItemProjectionsFamily>(&StableItemProjectionKey {
-                item: item.id(),
-                ordinal: projection.ordinal(),
-            })?;
-            if member.item_id() != item.id() || member.ordinal() != projection.ordinal() {
-                return invalid("discussion stable projection membership disagrees");
-            }
-            (member.projection_id(), member.projection_revision())
-        } else {
-            let member = read.point::<ItemProjectionsFamily>(&ItemProjectionKey {
-                item: item.id(),
-                generation: set.generation(),
-                ordinal: projection.ordinal(),
-            })?;
-            if member.item_id() != item.id()
-                || member.generation() != set.generation()
-                || member.ordinal() != projection.ordinal()
-            {
-                return invalid("discussion projection membership disagrees");
-            }
-            (member.projection_id(), member.projection_revision())
-        };
+    let (member_id, member_revision) = if set
+        .text_state()
+        .is_some_and(|text| projection.ordinal().get() <= text.stable_projection_count())
+    {
+        let member = read.point::<StableItemProjectionsFamily>(&StableItemProjectionKey {
+            item: item.id(),
+            ordinal: projection.ordinal(),
+        })?;
+        if member.item_id() != item.id() || member.ordinal() != projection.ordinal() {
+            return invalid("discussion stable projection membership disagrees");
+        }
+        (member.projection_id(), member.projection_revision())
+    } else {
+        let member = read.point::<ItemProjectionsFamily>(&ItemProjectionKey {
+            item: item.id(),
+            generation: set.generation(),
+            ordinal: projection.ordinal(),
+        })?;
+        if member.item_id() != item.id()
+            || member.generation() != set.generation()
+            || member.ordinal() != projection.ordinal()
+        {
+            return invalid("discussion projection membership disagrees");
+        }
+        (member.projection_id(), member.projection_revision())
+    };
     if member_id != projection.id() || member_revision != projection.revision() {
         return invalid("discussion projection member identity disagrees");
     }
@@ -242,7 +244,7 @@ fn authenticate(
             "discussion projection has no selectable text",
         ))?;
     let text_source = item
-        .projection_source()
+        .projection_text_source()
         .ok_or(DiscussionSourceError::Ineligible(
             "discussion source has no text",
         ))?;

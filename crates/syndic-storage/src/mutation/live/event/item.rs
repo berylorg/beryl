@@ -86,6 +86,13 @@ pub(super) fn publish_item_frame(
         narrative_completion.is_some_and(ProviderNarrativeCompletionDisposition::is_mismatch);
     let history_became_blocking =
         became_history_blocking(build.prior(), frame, completion_mismatch);
+    let generated_source = crate::generated_media::CaptureEffect::prepare(
+        reader,
+        event,
+        thread_id,
+        &canonical.item,
+        canonical.resource.is_some(),
+    )?;
     let mut effect = ItemEffect::new(
         canonical.item,
         source,
@@ -95,6 +102,7 @@ pub(super) fn publish_item_frame(
         canonical.resource,
     );
     effect.set_projection_invalidation(canonical.projection_build, canonical.projection_head);
+    effect.set_generated_source(generated_source);
     Ok(PublishedItemFrame {
         effect,
         added_item: canonical.added_item,
@@ -367,12 +375,14 @@ fn validate_current_presentation(
         | ProviderItemKind::ContextCompaction => CanonicalItemPresentation::Activity,
         ProviderItemKind::StandaloneImageGeneration => {
             let resource_id = generated_media_resource_id(thread_id, item.turn_id(), item.id());
-            let expected_resource = ResourceMetadataRecord::pending_generated_media(
-                resource_id,
-                ProjectionRevision::new(1).expect("first generated resource revision"),
-                item.id(),
-            );
-            if required::<ResourcesFamily>(reader, &resource_id)? != expected_resource {
+            let resource = required::<ResourcesFamily>(reader, &resource_id)?;
+            if resource.id() != resource_id
+                || resource.item_id() != item.id()
+                || !matches!(
+                    resource.backing(),
+                    crate::ResourceBacking::GeneratedMedia(_)
+                )
+            {
                 return Err(SyndicMutationError::CanonicalItemConflict);
             }
             CanonicalItemPresentation::GeneratedMedia { resource_id }

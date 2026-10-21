@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     num::NonZeroUsize,
-    sync::{Arc, Condvar, Mutex, MutexGuard},
+    sync::{Arc, Condvar, Mutex, MutexGuard, atomic::AtomicBool},
     thread::JoinHandle,
     time::Duration,
 };
@@ -15,6 +15,9 @@ use super::persistent_failure::LiveCommandAuthorizer;
 mod activity;
 mod activity_read;
 mod managed;
+mod generated_source;
+pub(in crate::cas_projection) use generated_source::GeneratedRuntimeOwner;
+pub(crate) use generated_source::{GeneratedRuntimeSource, GeneratedSourceCloseFailure, GeneratedSourceOpenFailure};
 mod model_read;
 mod owner;
 mod retry;
@@ -313,9 +316,13 @@ struct RuntimeInterestShared {
     config: RuntimeInterestConfig,
     enrollments: crate::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations,
     scheduler_signal: super::accepted_input_scheduler::AcceptedInputSchedulerSignal,
+    generated_wake: std::sync::OnceLock<std::task::Waker>,
 }
 
 impl RuntimeInterestShared {
+    fn wake_generated(&self) {
+        if let Some(wake) = self.generated_wake.get() { wake.wake_by_ref(); }
+    }
     fn wake_preparation(&self) {
         if self.commands.is_open() {
             self.scheduler_signal
@@ -365,6 +372,7 @@ impl RuntimeInterestState {
 }
 
 struct RuntimeEntry {
+    generated_source: Option<Arc<generated_source::GeneratedRuntimeSlot>>,
     failed_runtime: Option<Box<dyn RunningRuntime>>,
     activity: Arc<Mutex<activity::RuntimeActivityState>>,
     failed_acquisition: Option<super::acquisition::ProjectionAcquisition>,
@@ -391,12 +399,32 @@ struct RuntimeRetryTarget {
 }
 
 trait RunningRuntime: Send {
+    fn open_generated_source(
+        &mut self,
+        _permit: beryl_backend::GeneratedOutputPermit,
+        _path: &beryl_model::RuntimeNativePath,
+        _allowance: beryl_backend::GeneratedReaderAllowance,
+        _cancel: Arc<AtomicBool>,
+    ) -> Result<beryl_backend::GeneratedOutputSource, GeneratedRuntimeOpenFailure> {
+        Err(GeneratedRuntimeOpenFailure::Refused(beryl_backend::GeneratedOutputError::Unsupported))
+    }
     fn connector(&self) -> Option<ManagedBackendClientConnector> {
         None
     }
     fn process_generation(&self) -> CasProcessGeneration;
     fn poll_health(&mut self) -> Result<(), RuntimeFailure>;
     fn retire(&mut self) -> Result<(), RuntimeFailure>;
+}
+
+enum GeneratedRuntimeOpenFailure {
+    Refused(beryl_backend::GeneratedOutputError),
+    Backend(beryl_backend::GeneratedOutputOpenFailure),
+}
+
+impl GeneratedRuntimeOpenFailure {
+    fn into_parts(self) -> (beryl_backend::GeneratedOutputError, Option<beryl_backend::GeneratedOutputSource>) {
+        match self { Self::Refused(error) => (error, None), Self::Backend(failure) => failure.into_parts() }
+    }
 }
 
 struct RuntimeLaunchFailure {

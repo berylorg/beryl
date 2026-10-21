@@ -21,6 +21,9 @@ use std::{
 mod catalog_query_lifecycle;
 #[path = "app_services/catalog_source_lifecycle.rs"]
 mod catalog_source_lifecycle;
+#[cfg(target_os = "windows")]
+#[path = "app_services/generated_media.rs"]
+mod generated_media;
 #[path = "app_services/committed_first_conversation.rs"]
 #[cfg(target_os = "windows")]
 mod committed_first_conversation;

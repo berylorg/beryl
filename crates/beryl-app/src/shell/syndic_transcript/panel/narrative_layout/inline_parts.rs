@@ -22,9 +22,12 @@ pub(in super::super) struct InlinePartsPreparation {
 }
 
 fn object(record: &ResidentPresentationRecord) -> Option<(StreamingObjectId, StreamingObjectOrder)> {
-    let ResidentPresentationRecordKind::ImageMarker(marker) = record.kind else { return None };
-    Some((StreamingObjectId(u128::from_be_bytes(*marker.marker.marker_id().as_bytes())),
-        StreamingObjectOrder(u128::from(marker.marker_ordinal.get()))))
+    match record.kind {
+        ResidentPresentationRecordKind::ImageMarker(marker) => Some((StreamingObjectId(u128::from_be_bytes(*marker.marker.marker_id().as_bytes())),
+            StreamingObjectOrder(u128::from(marker.marker_ordinal.get())))),
+        ResidentPresentationRecordKind::GeneratedImage(image) => Some((StreamingObjectId(u128::from_be_bytes(*image.resource_id.as_bytes())), StreamingObjectOrder(1))),
+        _ => None,
+    }
 }
 
 fn next_object(parts: &[ResidentPresentationRecord], start: usize) -> Option<(StreamingObjectId, StreamingObjectOrder)> {
@@ -118,7 +121,7 @@ impl InlinePartsPreparation {
                     self.spans.push((self.part, self.base, self.started..self.stream.admissions.len()));
                     self.base = self.base.checked_add(prepared.display().len()).ok_or(StreamingLayoutError::InvalidSegment)?;
                 }
-                ResidentPresentationRecordKind::ImageMarker(marker) => {
+                ResidentPresentationRecordKind::ImageMarker(_) | ResidentPresentationRecordKind::GeneratedImage(_) => {
                     let (id, order) = object(&parts[self.part]).unwrap();
                     let (ordinal, leading) = self.stream.next_input();
                     let gap = next_object(parts, self.part + 1).map_or_else(
@@ -126,7 +129,7 @@ impl InlinePartsPreparation {
                         |(next_id, next_order)| StreamingObjectGap::between(id, order, next_id, next_order),
                     );
                     let trailing = StreamingLayoutPosition::with_gap(self.base as u64, gap);
-                    let label: gpui::SharedString = format!("Image {}", marker.marker.label()).into();
+                    let label: gpui::SharedString = parts[self.part].image_label().unwrap().into();
                     let mut run = block.text.run(label.len());
                     run.font.weight = gpui::FontWeight::SEMIBOLD;
                     run.color = gpui::rgb(0x94a3b8).into();

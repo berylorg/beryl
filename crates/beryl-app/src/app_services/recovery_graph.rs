@@ -272,12 +272,19 @@ impl ProcessServiceOwner {
                 .services
                 .as_mut()
                 .expect("prepared recovery services");
-            let (candidate, _) = services
+            let (candidate, cas) = services
                 .cas
                 .as_mut()
                 .expect("prepared recovery CAS")
                 .app_preparation_parts()
                 .ok_or(AppServiceOpenError::HandoffUnavailable)?;
+            let generated = crate::image_processing::GeneratedMediaCoordinator::prepare(
+                Arc::new(candidate.service_reference()), prepared.syndic.clone(),
+                prepared.state.assets(), cas.generated_source_authority(), process.clone(),
+                cas.catalog_source_start_gate(),
+            )?;
+            cas.install_generated_media_waker(generated.waker());
+            services.generated_media = Some(generated);
             let source = ImageSourceProvider::prepare_recovery(
                 candidate,
                 prepared.syndic.clone(),

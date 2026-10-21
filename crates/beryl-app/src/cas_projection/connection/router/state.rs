@@ -373,10 +373,7 @@ impl EventRouter {
     ) {
         if let Ok(mut state) = self.state.lock() {
             let _ = command.commit_if_current(|| {
-                if state.retired.is_none() && state.persistent_failure.is_none() {
-                    state.quiet_poll_count = state.quiet_poll_count.saturating_add(1);
-                    advance_revision(&mut state);
-                }
+                state.record_quiet_poll();
             });
         }
     }

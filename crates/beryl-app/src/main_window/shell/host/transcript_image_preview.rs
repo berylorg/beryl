@@ -81,6 +81,30 @@ pub(super) fn subscribe(
 }
 
 impl MainWindowShellRoot {
+    fn refresh_transcript_generated_image(&mut self, window: &Window, cx: &Context<Self>) {
+        let Some(preview) = self.transcript_image_preview.as_mut() else {
+            return;
+        };
+        if preview.source != self.running_threads.transcript {
+            return;
+        }
+        if let Some(origin) = preview
+            .source
+            .read(cx)
+            .refreshed_image_marker_inspection(&preview.origin, window)
+        {
+            preview.origin = origin;
+        }
+        if let ResidentContextMenuContentKind::GeneratedImage(image) =
+            preview.origin.target.record.content_kind
+        {
+            let demand = transcript_image_demand(&preview.origin);
+            preview
+                .inspection
+                .set_generated(image, demand, self.image_media_window.as_deref());
+            preview.commands.original.set_generated(image, demand);
+        }
+    }
     pub(super) fn sync_image_media_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         #[cfg(target_os = "windows")]
         let attachment = crate::running_owner::RunningProcessOwner::mounted_owner(cx)
@@ -238,6 +262,7 @@ impl MainWindowShellRoot {
         self.running_threads.transcript.update(cx, |panel, _| {
             panel.set_image_marker_focus_fallback(fallback)
         });
+        self.refresh_transcript_generated_image(window, cx);
         if self
             .transcript_image_preview
             .as_ref()
@@ -270,12 +295,7 @@ impl MainWindowShellRoot {
         let anchor_bounds = preview.commands.anchor_bounds.clone();
         let anchor_focus = preview.commands.anchor_focus.clone();
         let feedback = preview.commands.original.feedback;
-        let ResidentContextMenuContentKind::ImageMarker(marker) =
-            preview.origin.target.record.content_kind
-        else {
-            return None;
-        };
-        let label = format!("Image {}", marker.marker.label());
+        let label = preview.origin.target.record.content_kind.image_label()?;
         let close = preview.close.clone();
         let viewport = window.viewport_size();
         Some(
@@ -437,6 +457,7 @@ fn transcript_original_menu_event(
     window: &mut Window,
     cx: &mut Context<MainWindowShellRoot>,
 ) {
+    root.refresh_transcript_generated_image(window, cx);
     let current = root
         .transcript_image_preview
         .as_ref()
@@ -461,18 +482,5 @@ fn transcript_original_menu_event(
 fn transcript_image_demand(
     event: &ImageMarkerInspectionRequested,
 ) -> Option<crate::image_processing::ImageSourceDemand> {
-    let record = &event.target.record;
-    let ResidentContextMenuContentKind::ImageMarker(marker) = record.content_kind else {
-        return None;
-    };
-    Some(
-        crate::image_processing::ImageSourceDemand::TranscriptMarker {
-            thread_id: record.source.view_id.0.parse().ok()?,
-            entry: record.source.transcript_entry?,
-            projection_id: record.projection_id.0.parse().ok()?,
-            projection_revision: beryl_model::ProjectionRevision::new(record.projection_revision.0)
-                .ok()?,
-            marker,
-        },
-    )
+    event.target.record.image_demand()
 }

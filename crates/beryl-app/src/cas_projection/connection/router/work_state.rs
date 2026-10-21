@@ -56,6 +56,15 @@ impl RouterWorkState {
 }
 
 impl<'a> RouterWorkStateGuard<'a> {
+    pub(super) fn record_quiet_poll(&mut self) {
+        let state = self.state.as_mut().expect("router guard owns its source mutex");
+        if state.retired.is_none() && state.persistent_failure.is_none() {
+            self.change.get_or_insert_with(|| self.boundary.begin_quiet_change());
+            state.quiet_poll_count = state.quiet_poll_count.saturating_add(1);
+            super::state::advance_revision(state);
+        }
+    }
+
     pub(super) fn wait_timeout(
         mut self,
         changed: &Condvar,

@@ -95,6 +95,22 @@ impl RawLoadedLeaseSeed {
 }
 
 impl LoadedProjectionLease {
+    pub(in crate::cas_projection) fn generated_source_incarnation(
+        &self,
+    ) -> Result<Option<beryl_model::GeneratedSourceIncarnation>, crate::cas_projection::ProjectionExecutionError> {
+        if !self.is_live()? {
+            return Err(ProjectionCoordinatorError::ProjectionWorkerStopped.into());
+        }
+        let key = self.key.clone();
+        let connection = self.connection.authority.generation;
+        let owner = self.owner;
+        let generation = self.generation;
+        let result = self.connection.call(move |session| {
+            Ok(session.generated_source_incarnation(&key, connection, owner, generation))
+        })?;
+        Ok(result?)
+    }
+
     pub(in crate::cas_projection) fn bind_context(
         &self,
         previous: Option<beryl_model::BindingRevision>,

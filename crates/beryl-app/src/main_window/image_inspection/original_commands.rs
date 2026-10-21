@@ -25,6 +25,7 @@ pub(crate) struct OriginalImageCommands {
     picker: Option<Picker>,
     published: Option<Rc<Cell<Option<Result<(), OriginalImageFailure>>>>>,
     pub(crate) feedback: &'static str,
+    generated: Option<crate::syndic_transcript::TranscriptGeneratedImage>,
 }
 struct Picker {
     result: Rc<Cell<Option<PickerResult>>>,
@@ -52,12 +53,35 @@ impl OriginalImageCommands {
             picker: None,
             published: None,
             feedback: "",
+            generated: None,
         }
+    }
+    pub(crate) fn set_generated(
+        &mut self,
+        image: crate::syndic_transcript::TranscriptGeneratedImage,
+        demand: Option<ImageSourceDemand>,
+    ) {
+        if self.generated == Some(image) && self.demand == demand {
+            return;
+        }
+        *self = Self::new(self.media.clone(), demand);
+        self.generated = Some(image);
     }
     pub(crate) fn picker_pending(&self) -> bool {
         self.picker.is_some()
     }
     pub(crate) fn reason(&self, command: OriginalImageRequest) -> Option<&'static str> {
+        if let Some(image) = self.generated {
+            match image.lifecycle {
+                crate::syndic_transcript::TranscriptGeneratedImageLifecycle::Pending => {
+                    return Some("The generated image is still being prepared.");
+                }
+                crate::syndic_transcript::TranscriptGeneratedImageLifecycle::Unavailable(_) => {
+                    return Some("The generated image is locally unavailable.");
+                }
+                crate::syndic_transcript::TranscriptGeneratedImageLifecycle::Admitted(_) => {}
+            }
+        }
         if self.active.is_some() || self.published.is_some() {
             return Some(if self.operation == OriginalImageRequest::Availability {
                 "Checking the exact original image."
@@ -83,6 +107,14 @@ impl OriginalImageCommands {
         }
     }
     pub(crate) fn poll<T: 'static>(&mut self, cx: &mut Context<T>) {
+        if self.generated.is_some_and(|image| {
+            !matches!(
+                image.lifecycle,
+                crate::syndic_transcript::TranscriptGeneratedImageLifecycle::Admitted(_)
+            )
+        }) {
+            return;
+        }
         if let Some(result) = self.published.as_ref().and_then(|result| result.take()) {
             self.published = None;
             self.complete(result);

@@ -301,6 +301,28 @@ pub(in crate::cas_projection) fn contains_exact(
     }))
 }
 
+pub(in crate::cas_projection) fn generated_owner_is_current(
+    key: &LoadedThreadKey,
+    connection: ConnectionGeneration,
+    owner: SyndicThreadId,
+    generation: CasLoadedSessionGeneration,
+) -> Result<bool, crate::cas_projection::GeneratedSourceEligibility> {
+    use crate::cas_projection::GeneratedSourceEligibility;
+    let state = match registry().lock() {
+        Ok(state) => state,
+        Err(_) => {
+            return Err(GeneratedSourceEligibility::Backend(beryl_backend::GeneratedOutputError::Protocol));
+        }
+    };
+    Ok(generation.process() == key.process_generation
+        && state.entries.get(key).is_some_and(|entry| {
+            entry.connection == connection
+                && entry.owner == owner
+                && entry.generation == generation.thread()
+                && !entry.leases.is_empty()
+        }))
+}
+
 pub(in crate::cas_projection) fn try_with_exact_lease<T>(
     key: &LoadedThreadKey,
     connection: ConnectionGeneration,

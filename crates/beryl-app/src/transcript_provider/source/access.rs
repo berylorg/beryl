@@ -29,6 +29,39 @@ macro_rules! point_read {
 }
 
 impl ActivationReadSource<'_> {
+    pub(super) fn home_revision(
+        &self,
+        cancelled: &AtomicBool,
+    ) -> Result<beryl_model::HomeRevision, TranscriptAttachmentError> {
+        let check_cancelled = || {
+            if cancelled.load(std::sync::atomic::Ordering::Acquire)
+                || matches!(self, Self::Candidate { cancellation, .. } if cancellation.is_cancelled())
+            {
+                Err(TranscriptAttachmentError::Cancelled)
+            } else {
+                Ok(())
+            }
+        };
+        check_cancelled()?;
+        let revision = match self {
+            Self::Live(reader) => reader.home.home_revision(),
+            Self::Candidate { access, .. } => access.home_revision(),
+        };
+        check_cancelled()?;
+        revision.map_err(|_| TranscriptAttachmentError::Unavailable)
+    }
+
+    pub(super) fn generated_media_source(
+        &self,
+        resource: beryl_model::SyndicResourceId,
+    ) -> Result<Option<GeneratedMediaSourceProof>, SyndicReadError> {
+        match self {
+            Self::Live(reader) => reader.syndic.generated_media_source(&reader.home, resource),
+            Self::Candidate {
+                storage, access, ..
+            } => storage.generated_media_source_candidate(access, resource),
+        }
+    }
     point_read!(turn, turn_candidate, beryl_model::SyndicTurnId, TurnRecord);
     point_read!(
         draft,

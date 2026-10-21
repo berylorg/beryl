@@ -10,6 +10,30 @@ use crate::{
 
 use super::super::{MAX_INLINE_TEXT_BYTES, validate_text};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ItemProjectionSource {
+    Text(ProjectionTextSource),
+    GeneratedResource(SyndicResourceId),
+}
+
+impl ItemProjectionSource {
+    #[must_use]
+    pub const fn text(self) -> Option<ProjectionTextSource> {
+        match self {
+            Self::Text(source) => Some(source),
+            Self::GeneratedResource(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn resource_id(self) -> Option<SyndicResourceId> {
+        match self {
+            Self::Text(_) => None,
+            Self::GeneratedResource(resource) => Some(resource),
+        }
+    }
+}
+
 mod payload;
 
 pub use payload::ProjectionPayload;
@@ -226,14 +250,19 @@ pub struct ItemProjectionSetRecord {
     generation: ItemProjectionGeneration,
     format: ProjectionFormatVersion,
     source_item_revision: ProjectionRevision,
-    source: ProjectionTextSource,
+    source: ItemProjectionSource,
+    text_state: Option<TextItemProjectionState>,
+    projection_count: u64,
+    resource_count: u64,
+    digest: [u8; 32],
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TextItemProjectionState {
     source_bytes: u64,
     stable_projection_count: u64,
     stable_resource_count: u64,
     stable_digest: [u8; 32],
-    projection_count: u64,
-    resource_count: u64,
-    digest: [u8; 32],
     resume_checkpoint: MarkdownParserCheckpoint,
     stable_eof_resolved: bool,
 }
@@ -262,16 +291,40 @@ impl ItemProjectionSetRecord {
             generation,
             format,
             source_item_revision,
-            source,
-            source_bytes,
-            stable_projection_count,
-            stable_resource_count,
-            stable_digest,
+            source: ItemProjectionSource::Text(source),
+            text_state: Some(TextItemProjectionState {
+                source_bytes,
+                stable_projection_count,
+                stable_resource_count,
+                stable_digest,
+                resume_checkpoint,
+                stable_eof_resolved,
+            }),
             projection_count,
             resource_count,
             digest,
-            resume_checkpoint,
-            stable_eof_resolved,
+        }
+    }
+
+    #[must_use]
+    pub const fn generated_resource(
+        item_id: SyndicItemId,
+        generation: ItemProjectionGeneration,
+        format: ProjectionFormatVersion,
+        source_item_revision: ProjectionRevision,
+        resource_id: SyndicResourceId,
+        digest: [u8; 32],
+    ) -> Self {
+        Self {
+            item_id,
+            generation,
+            format,
+            source_item_revision,
+            source: ItemProjectionSource::GeneratedResource(resource_id),
+            text_state: None,
+            projection_count: 1,
+            resource_count: 0,
+            digest,
         }
     }
 
@@ -292,9 +345,30 @@ impl ItemProjectionSetRecord {
         self.source_item_revision
     }
     #[must_use]
-    pub const fn source(&self) -> ProjectionTextSource {
+    pub const fn source(&self) -> ItemProjectionSource {
         self.source
     }
+
+    #[must_use]
+    pub const fn text_state(&self) -> Option<&TextItemProjectionState> {
+        self.text_state.as_ref()
+    }
+
+    #[must_use]
+    pub const fn projection_count(&self) -> u64 {
+        self.projection_count
+    }
+    #[must_use]
+    pub const fn resource_count(&self) -> u64 {
+        self.resource_count
+    }
+    #[must_use]
+    pub const fn digest(&self) -> [u8; 32] {
+        self.digest
+    }
+}
+
+impl TextItemProjectionState {
     #[must_use]
     pub const fn source_bytes(&self) -> u64 {
         self.source_bytes
@@ -310,18 +384,6 @@ impl ItemProjectionSetRecord {
     #[must_use]
     pub const fn stable_digest(&self) -> [u8; 32] {
         self.stable_digest
-    }
-    #[must_use]
-    pub const fn projection_count(&self) -> u64 {
-        self.projection_count
-    }
-    #[must_use]
-    pub const fn resource_count(&self) -> u64 {
-        self.resource_count
-    }
-    #[must_use]
-    pub const fn digest(&self) -> [u8; 32] {
-        self.digest
     }
 
     #[must_use]

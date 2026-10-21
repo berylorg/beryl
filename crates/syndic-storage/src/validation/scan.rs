@@ -12,7 +12,7 @@ pub(crate) const PAGE_ITEMS: usize = 64;
 pub(crate) const PAGE_BYTES: usize = 32 * 1024 * 1024;
 const POINT_BYTES: usize = 512 * 1024;
 
-pub(super) fn scan<F: Family>(
+pub(crate) fn scan<F: Family>(
     reader: &DomainReader<'_, SyndicDomain>,
     inspect: impl FnMut(&F::Key, &F::Value) -> Result<(), SyndicValidationError>,
 ) -> Result<(), SyndicValidationError>
@@ -63,7 +63,7 @@ where
     }
 }
 
-pub(super) fn point<F: Family>(
+pub(crate) fn point<F: Family>(
     reader: &DomainReader<'_, SyndicDomain>,
     key: &F::Key,
 ) -> Result<Option<F::Value>, SyndicValidationError> {
@@ -75,7 +75,7 @@ pub(super) fn point<F: Family>(
         .map_err(Into::into)
 }
 
-pub(super) fn require<F: Family>(
+pub(crate) fn require<F: Family>(
     reader: &DomainReader<'_, SyndicDomain>,
     key: &F::Key,
     missing: &'static str,

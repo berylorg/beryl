@@ -7,7 +7,9 @@ use crate::{
 };
 
 mod composer_recall;
+mod generated_media;
 pub use composer_recall::*;
+pub use generated_media::*;
 
 pub fn lifecycle_compaction_settlement_fault_scope() -> beryl_home_store::test_faults::FaultScope {
     crate::mutation::lifecycle_compaction_settlement_fault_scope()

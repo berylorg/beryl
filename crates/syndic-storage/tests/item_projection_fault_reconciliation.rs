@@ -161,7 +161,7 @@ fn assert_recovered_state(
             assert_eq!(set.generation(), pending.generation);
             assert_eq!(set.projection_count(), 1);
             assert_eq!(set.resource_count(), 0);
-            assert!(set.stable_eof_resolved());
+            assert!(set.text_state().unwrap().stable_eof_resolved());
             assert_eq!(head.generation(), pending.generation);
             assert_eq!(head.lifecycle(), ProjectionLifecycle::Current);
 

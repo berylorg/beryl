@@ -147,6 +147,7 @@ impl ProjectionConnectionService {
         ));
         let mutation_observer =
             home.observe_mutations(std::task::Waker::from(Arc::clone(&mutation_wake)))?;
+        connections.work_boundary().install_generated_waker(mutation_wake.generated_waker());
         let stop_coordinator = Arc::new(StopCoordinator::new(
             &home,
             home.home_id(),

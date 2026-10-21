@@ -156,6 +156,12 @@ impl ThreadLoadOptions {
 }
 
 impl LoadedThreadSession {
+    pub fn generated_source_incarnation(&self) -> Option<beryl_model::GeneratedSourceIncarnation> {
+        self.generated_source_authority.as_ref()
+            .filter(|authority| authority.live.load(std::sync::atomic::Ordering::Acquire))
+            .map(|authority| authority.incarnation)
+    }
+
     #[must_use]
     pub const fn thread_id(&self) -> &CasThreadId {
         &self.thread_id
@@ -173,6 +179,11 @@ impl LoadedThreadSession {
 }
 
 impl FreshLoadedThreadSession {
+    #[must_use]
+    pub fn loaded(&self) -> &LoadedThreadSession {
+        &self.loaded
+    }
+
     pub(crate) fn generated_loaded_mut(&mut self) -> &mut LoadedThreadSession {
         &mut self.loaded
     }

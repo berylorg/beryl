@@ -11,7 +11,8 @@ mod refresh;
 mod start;
 
 use advance::AdvanceMutation;
-pub(super) use invalidate::{invalidate_transcript_projection, supersede_active_transcript_build};
+pub(crate) use invalidate::invalidate_transcript_projection;
+pub(super) use invalidate::supersede_active_transcript_build;
 pub(super) use refresh::{SelectedTranscriptStateEffect, refresh_selected_path_state};
 use start::StartMutation;
 

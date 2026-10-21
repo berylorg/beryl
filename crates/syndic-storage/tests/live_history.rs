@@ -6,6 +6,8 @@ mod activity_bounds;
 mod activity_corruption;
 #[path = "live_history/canonical.rs"]
 mod canonical;
+#[path = "live_history/generated_media.rs"]
+mod generated_media;
 #[path = "live_history/mismatch.rs"]
 mod mismatch;
 mod support;

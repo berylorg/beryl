@@ -3168,6 +3168,7 @@ fn projection_estimated_bytes(records: &[ProjectionRecord]) -> usize {
             ProjectionPayload::ImageMarker(_) => {
                 std::mem::size_of::<super::provider::TranscriptImageMarker>()
             }
+            ProjectionPayload::GeneratedImage(_) => std::mem::size_of::<super::provider::TranscriptGeneratedImage>(),
             ProjectionPayload::NarrativePending { source }
             | ProjectionPayload::NarrativeUnavailable { source, .. } => {
                 narrative_source_bytes(source)
@@ -3318,6 +3319,10 @@ fn presentation_record_for_projection(
             ResidentPresentationRecordKind::ImageMarker(*marker),
             std::mem::size_of::<super::provider::TranscriptImageMarker>(),
         ),
+        ProjectionPayload::GeneratedImage(image) => (
+            ResidentPresentationRecordKind::GeneratedImage(*image),
+            std::mem::size_of::<super::provider::TranscriptGeneratedImage>(),
+        ),
         ProjectionPayload::NarrativePending { source } => (
             ResidentPresentationRecordKind::NarrativePending {
                 source: source.clone(),
@@ -3385,6 +3390,10 @@ fn presentation_record_for_projection(
             &projection_record.payload,
             projection_record.provenance.block_id,
         ) {
+            (ProjectionPayload::GeneratedImage(image), _) => ResidentPresentationRecordId(format!(
+                "view:{}:projection:{}:resource:{}", projection_record.provenance.view_id.0,
+                projection_record.id.0, image.resource_id,
+            )),
             (ProjectionPayload::ImageMarker(marker), _) => ResidentPresentationRecordId(format!(
                 "view:{}:projection:{}:marker:{}",
                 projection_record.provenance.view_id.0,

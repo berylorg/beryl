@@ -34,6 +34,14 @@ pub(crate) enum CasPreparationError {
 }
 
 impl PreparedCasServices {
+    pub(crate) fn generated_source_authority(&self) -> crate::cas_projection::GeneratedSourceAuthority {
+        self.service.as_ref().expect("prepared CAS custody").generated_source_authority()
+    }
+
+    pub(crate) fn install_generated_media_waker(&self, waker: std::task::Waker) {
+        self.service.as_ref().expect("prepared CAS custody").install_generated_media_waker(waker);
+    }
+
     pub(crate) fn discussion_presentation_reader(
         &self,
     ) -> crate::discussion_presentation::DiscussionPresentationReader {

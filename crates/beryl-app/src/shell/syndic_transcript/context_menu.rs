@@ -82,6 +82,18 @@ pub(crate) struct ResidentHistoricalInputSource {
 }
 
 impl ResidentContextMenuRecord {
+    pub(crate) fn same_generated_occurrence(&self, other: &Self) -> bool {
+        matches!((&self.content_kind, &other.content_kind),
+            (ResidentContextMenuContentKind::GeneratedImage(left), ResidentContextMenuContentKind::GeneratedImage(right))
+            if left.resource_id == right.resource_id)
+            && self.record_id == other.record_id
+            && self.projection_id == other.projection_id
+            && self.source.view_id == other.source.view_id
+            && self.source.turn_id == other.source.turn_id
+            && self.source.item_id == other.source.item_id
+            && self.source.position == other.source.position
+    }
+
     pub(crate) fn historical_target(&self) -> Option<ResidentHistoricalInputSource> {
         let transcript = self.source.transcript_entry?;
         if self.source.position?.0 != transcript.position().get()
@@ -108,10 +120,24 @@ pub(crate) enum ResidentContextMenuContentKind {
     TextChunk,
     InlineTable,
     ImageMarker(super::provider::TranscriptImageMarker),
+    GeneratedImage(super::provider::TranscriptGeneratedImage),
     ResourceReference {
         resource_id: ResourceId,
         resource_kind: ResourceKind,
     },
+}
+
+impl ResidentContextMenuContentKind {
+    pub(crate) fn is_image(&self) -> bool {
+        matches!(self, Self::ImageMarker(_) | Self::GeneratedImage(_))
+    }
+    pub(crate) fn image_label(&self) -> Option<String> {
+        match self {
+            Self::ImageMarker(marker) => Some(format!("Image {}", marker.marker.label())),
+            Self::GeneratedImage(_) => Some("Generated image".into()),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -156,6 +182,9 @@ pub(crate) fn resident_context_menu_record(
     let content_kind = match &record.kind {
         ResidentPresentationRecordKind::ImageMarker(marker) => {
             ResidentContextMenuContentKind::ImageMarker(*marker)
+        }
+        ResidentPresentationRecordKind::GeneratedImage(image) => {
+            ResidentContextMenuContentKind::GeneratedImage(*image)
         }
         ResidentPresentationRecordKind::TextChunk { text, .. } if !text.is_empty() => {
             ResidentContextMenuContentKind::TextChunk
@@ -245,6 +274,15 @@ fn source_has_stable_context_menu_provenance(
     }
 
     match content_kind {
+        ResidentContextMenuContentKind::GeneratedImage(image) => {
+            source.transcript_entry.is_some()
+                && source
+                    .resource_id
+                    .as_ref()
+                    .is_some_and(|id| id.0 == image.resource_id.to_string())
+                && source.source_range.is_none()
+                && source.resource_range.is_none()
+        }
         ResidentContextMenuContentKind::ImageMarker(marker) => {
             source.transcript_entry.is_some()
                 && source.source_range.as_ref()

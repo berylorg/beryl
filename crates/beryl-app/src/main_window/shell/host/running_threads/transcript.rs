@@ -463,7 +463,7 @@ impl MainWindowShellRoot {
                             .running_threads
                             .transcript_source
                             .as_ref()
-                            .is_some_and(|identity| identity.matches_authority(&prepared))
+                            .is_some_and(|identity| identity.matches_presentation(&prepared))
                     {
                         if root
                             .running_threads

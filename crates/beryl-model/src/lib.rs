@@ -48,6 +48,7 @@
 
 mod asset;
 mod availability;
+mod generated_media;
 mod composer_recall;
 mod historical_input;
 mod ids;
@@ -67,6 +68,7 @@ pub use asset::{
     sequential_marker_digest_seed,
 };
 pub use availability::{Availability, UnavailableReason};
+pub use generated_media::{GeneratedMediaUnavailableReason, GeneratedSourceIncarnation};
 pub use composer_recall::{
     ComposerRecallMarkerAssociationV1, ComposerRecallMarkerPageV1, ComposerRecallSourceOwnerV1,
     composer_recall_marker_correlation,

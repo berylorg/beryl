@@ -62,6 +62,11 @@ pub use context_compaction::{
 mod error;
 mod execute;
 mod execution_error;
+mod generated_source;
+pub(crate) use generated_source::{
+    AuthorizedGeneratedSource, GeneratedRuntimeSource, GeneratedSourceAuthority,
+    GeneratedSourceCloseFailure, GeneratedSourceEligibility, GeneratedSourceOpenFailure,
+};
 pub(crate) mod initial_start;
 mod input_replay;
 mod live_source;

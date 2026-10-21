@@ -66,7 +66,7 @@ pub(in crate::mutation) fn supersede_active_transcript_build(
     superseded_build(build).map(Some)
 }
 
-pub(in crate::mutation) fn invalidate_transcript_projection(
+pub(crate) fn invalidate_transcript_projection(
     reader: &DomainReader<'_, SyndicDomain>,
     thread: &crate::ThreadRecord,
 ) -> Result<

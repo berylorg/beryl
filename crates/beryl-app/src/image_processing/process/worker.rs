@@ -99,6 +99,7 @@ impl Drop for SourceStageLease {
         state.path_slots -= 1;
         state.verification_slots -= 1;
         drop(state);
+        self.core.generated_capacity.notify();
         self.core.event.notify();
     }
 }

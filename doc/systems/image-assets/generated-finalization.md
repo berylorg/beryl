@@ -6,6 +6,15 @@ resource limits; terminal-turn repair retains its separate complete-snapshot pub
 
 ## Producer And Resource Evidence
 
+Syndic publishes an explicit generated-resource projection from resource birth, including unfinished
+output, through the existing bounded item-projection families. Its structural source is the exact
+canonical item revision and resource identity; it has no authored marker, text source, byte range or
+parser state. Completion and freezing may select a new structural set while retaining the immutable
+occurrence identity. Resource-only admission or unavailability preserves that set and refreshes
+freshly authenticated presentation facts. The Syndic history and V7 contracts own publication and
+canonical encoding. App dispatches text and generated construction explicitly and never routes
+generated output through Markdown parsing or treats Empty as a generated payload.
+
 The admitted producer is standalone `image_gen.imagegen` in CAS 0.146.0. Its authenticated
 `imageGeneration` item is distinct from a dynamic-tool result with a similar name, hosted Responses
 output or a path found in text. Inline base64 `result` remains structurally discarded at ingress.
@@ -26,7 +35,8 @@ exact source replay follows ordinary capture replay rules.
 The source fingerprint is SHA-256 over UTF-8 `beryl/generated-media-source/v1` followed by one NUL,
 producer-contract byte `1`, source-state byte `0` AwaitingCompletion or `1` CompletedSource,
 resource/thread/turn/item/execution-snapshot IDs as sixteen bytes each, selected source-event
-sequence as little-endian u64 and its thirty-two-byte source-event digest. AwaitingCompletion
+sequence as little-endian u64, its thirty-two-byte source-event digest, then the original-source
+presence byte and optional incarnation defined below. AwaitingCompletion
 selects the initial event; CompletedSource selects the completion event. Syndic derives that
 digest from its canonical bounded source-event encoding; callers do not authenticate a frame by
 supplying a digest.
@@ -40,7 +50,35 @@ and skips revised-prompt bodies. The returned path is at most 4,096 UTF-8 bytes.
 oversized, malformed or unsuccessful output produces a closed unavailable classification; no
 whole-frame value or fallback path is constructed.
 
+An unsuccessful completed producer observation classifies as ProducerFailed. Absent or empty
+saved-path output classifies as Missing; non-UTF-8, embedded-NUL, oversized or structurally malformed
+saved-path output classifies as MalformedOutput. Backend/file classifications apply only after a
+successful bounded path extraction. AwaitingCompletion permits only proven LostSourceAuthority
+terminalization and cannot borrow a completed-output classification.
+
 ## Original Source Ownership
+
+Each actual full-profile loaded backend source owns a fresh 256-bit random
+`GeneratedSourceIncarnation`, minted once from the platform random source and bound to that exact
+managed launch and opaque loaded-session authority. Randomness failure grants no generated-source
+authority; ordinary thread operation may continue. The value is descriptive correlation, carries
+no file capability, and is never reconstructed from counters, records or a provider frame.
+
+At real ordinary dispatch, App obtains this identity from the actual current loaded owner.
+Syndic atomically records its immutable execution-snapshot association in the activation command.
+The association survives target retirement, turn completion and service replacement. It cannot
+be attached later to an existing snapshot. Lifecycle-only sessions and snapshots without actual
+source authority have no association. Resource birth copies the exact optional association into
+its source record, and the source fingerprint appends a presence byte (`0` absent; `1` followed by
+the thirty-two incarnation bytes). Completion and replay cannot replace it. The canonical V7
+supplement owns the precise stored shape.
+
+Live source authorization requires a present historical incarnation equal to that of the actual
+current original loaded authority, in addition to the existing runtime, service, registry, process
+and session checks. Equal numeric generations across application restarts do not substitute.
+Missing historical provenance permits only LostSourceAuthority resolution unless exact durable
+Prepared evidence already exists; it cannot authorize file access or preparation. A later capture
+or replay through a new session cannot stamp its incarnation onto an old dispatch snapshot.
 
 Historical source evidence is descriptive. Opening producer bytes additionally requires fresh
 authority from the same published service's original managed process and loaded projection. No
@@ -170,6 +208,10 @@ entries cannot indefinitely insert ahead of an already eligible peer. Pages cont
 records and 65,536 encoded bytes; continuation advances over scanned entries, including skipped or
 already active work, without restarting on unrelated Syndic revisions. Every worker freshly
 authenticates its exact target before preparation or publication.
+
+Concurrent source/admission proof drift defers work through the existing mutation notification;
+it does not stop the cohort. Page deferral preserves the same finite sweep continuation and
+high-water. Target/metadata disagreement and genuine Home failures remain distinct from read drift.
 
 One coordinator belongs to each published Beryl service. The immutable media configuration supplies
 generated_media_queue_items (default eight), generated_media_worker_slots (default two) and

@@ -343,7 +343,7 @@ impl ProjectionAdmissionContext {
             ));
         }
         let connection =
-            self.finish_session_admission(backend, runtime_id, process_generation, prepared)?;
+            self.finish_session_admission(backend, Some(release_admission), runtime_id, process_generation, prepared)?;
         Ok(AdmittedProjectionSession::from_admitted_connection(
             connection,
         ))
@@ -384,7 +384,7 @@ impl ProjectionAdmissionContext {
                 )
             })?;
         let connection =
-            self.finish_session_admission(backend, runtime_id, process_generation, prepared)?;
+            self.finish_session_admission(backend, None, runtime_id, process_generation, prepared)?;
         Ok(AdmittedProjectionSession::from_admitted_connection(
             connection,
         ))
@@ -490,12 +490,14 @@ impl ProjectionAdmissionContext {
     fn finish_session_admission(
         &self,
         backend: ManagedBackendSession,
+        release_admission: Option<beryl_backend::ManagedBackendReleaseAdmission>,
         runtime_id: RuntimeId,
         process_generation: CasProcessGeneration,
         prepared: PreparedProjectionSessionAdmission,
     ) -> Result<Arc<ProjectionConnection>, ProjectionSessionAdmissionError> {
         let connection = ProjectionConnection::new(
             backend,
+            release_admission,
             runtime_id,
             process_generation,
             prepared.home,

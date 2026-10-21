@@ -321,9 +321,9 @@ impl StorageDomain for DifferentDeclaration {
 #[test]
 fn exact_companion_inventory_is_appended_and_matching_empty_families_reopen() {
     let names: Vec<_> = crate::domain::v7_family_names().collect();
-    assert_eq!(names.len(), 99);
+    assert_eq!(names.len(), 101);
     assert_eq!(
-        &names[89..],
+        &names[89..99],
         &[
             "resource-structure-builds",
             "resource-structure-progress",
@@ -343,7 +343,7 @@ fn exact_companion_inventory_is_appended_and_matching_empty_families_reopen() {
             .copied()
             .collect::<std::collections::BTreeSet<_>>()
             .len(),
-        99
+        101
     );
     let home = TestHome::new();
     let faults = FaultController::new();

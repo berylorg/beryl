@@ -13,13 +13,35 @@ change persisted bytes.
   uses record V3; `accepted-inputs` and `accepted-route-leaves` use record V4; `input-gates` uses
   record V5;
   `accepted-route-generations`, `accepted-order` and `turns` use record V3; `turn-states` uses record V4;
-  `threads`, `drafts`, `content-manifests`, `canonical-items`, and `execution-snapshots` use record V2.
+  `threads`, `drafts`, `content-manifests`, `canonical-items`, `execution-snapshots`, and
+  `item-projection-sets` use record V2.
   `draft-mutation-staging-pages`, `draft-piece-build-fragments`, `draft-piece-leaves`,
   `draft-marker-identity-index`, `draft-marker-order-commitments`, `draft-marker-seals`, and
   `draft-editor-candidate-sessions` also use record V2. `draft-piece-builds`,
   `draft-piece-build-progress`, and `draft-piece-settlements` use replacement record V6; every other
   V7 family uses record V1. V6 domain values and prior records in those three replaced families are
   rejected rather than accepted, migrated, dual-written, or adapted.
+- `item-projection-sets` V1 is rejected at the record-version boundary. V2 encodes the common
+  header `item16 || generation:u64BE || format:u8 || source_item_revision:u64BE`, followed by
+  source-kind `0` for Text or `1` for GeneratedResource. Text retains the existing complete
+  encoding from `ProjectionTextSource` through `stable_eof_resolved` after that tag. Generated
+  encodes only `resource16 || projection_count:u64BE || resource_count:u64BE || digest32`.
+  Its payload is exactly 98 bytes, projection count must be 1 and parser-created resource count
+  must be 0. No text source, byte frontier, stable-prefix counters, checkpoint or EOF field is
+  encoded for GeneratedResource. The existing family payload ceiling remains 65,536 bytes.
+  Unknown kinds, mismatched canonical source/payload, invalid counts and trailing bytes are rejected.
+- Projection payload tags 0 through 3 retain their existing meanings and byte shapes. Tag `4`
+  encodes GeneratedResource followed by its exact resource16, giving an 81-byte projection payload
+  including the existing 64-byte record header. Generated occurrence ID is the first 16 bytes of
+  SHA-256 over UTF-8 `beryl/syndic/generated-resource-projection/v1` followed by NUL, format:u8,
+  item16 and resource16. Format is 1, occurrence revision and ordinal are 1. Set digest is the
+  existing `advance_item_set_digest(empty_item_set_digest(), projection_id, revision1)` result.
+  The source binds item revision and resource identity only; resource revision, fingerprint,
+  admission disposition, view identity and set generation are excluded from occurrence identity.
+  One generation-owned item membership references that occurrence; generated resources retain
+  canonical ownership and do not enter the parser-created projection-resource index. These rules
+  replace text-only assumptions for generated sources without adding families or compatibility
+  decoding; the target remains 105 families, with only implemented families registered.
 - The Rust boundary values remain `DraftPieceBuildRecordV1`,
   `DraftPieceBuildProgressReceiptV1`, and `DraftPieceSettlementV1`. Those suffixes name their
   semantic API shapes; the enclosing family codec version is V6 and the digest domains are
@@ -94,21 +116,34 @@ Identities below are sixteen raw bytes and digests thirty-two. Payload integers 
 little-endian u64; the ordered pending-index key alone is unsigned big-endian u64. These are
 payload bytes before HomeStore's record-version envelope. All tags are exactly one byte.
 
-The primary family has two key forms. Key `0` selects one allocator containing the last allocated
+The primary family has three key forms. Key `0` selects one allocator containing the last allocated
 sequence as u64; absent means zero, and checked increment produces a nonzero never-reused sequence.
 Key `1` followed by resource ID selects its source record. Its payload is: allocated sequence;
 thread, turn, item and execution-snapshot IDs; producer-contract tag `1` (CAS 0.146.0 standalone
-image_gen); initial source-event sequence; then state tag `0` AwaitingCompletion or `1`
+image_gen); initial source-event sequence; original-source presence byte `0`, or `1` followed by its
+thirty-two-byte GeneratedSourceIncarnation; then state tag `0` AwaitingCompletion or `1`
 CompletedSource. CompletedSource appends the completion source-event sequence and completion-event
 digest. The completed sequence is not before the initial sequence. The digest is SHA-256 over
 UTF-8 `syndic/generated-source-event/v1` followed by one NUL and the canonical source-event
 payload bytes. Source-event encoding contains sealed frame references, not provider body bytes.
 
+Key `2` followed by execution-snapshot ID selects its original-source association; the payload is
+exactly the thirty-two incarnation bytes. Ordinary activation creates that association only in the
+same command that first creates the snapshot, using actual loaded-owner correlation supplied by
+App. Existing snapshots cannot gain or replace an association. No association is valid for a
+non-ordinary snapshot. Missing association is an explicit lack of original-source provenance.
+Resource birth copies its exact presence/value; source proofs and explicit validation require the
+copy to agree with the immutable association. This adds no family and leaves the closed inventory
+unchanged. The primary family maximum payload is 155 bytes and its maximum key remains 17 bytes.
+
 Resource birth writes its source record, allocator successor and pending entry atomically with
 the resource. Completion performs only the exact AwaitingCompletion-to-CompletedSource successor;
 an agreeing replay is unchanged, and differing completed evidence rejects. Source events must name
 that exact item/turn, admitted producer and historical execution snapshot. Ordinary freeze does
-not replace the completion locator or digest. Source records survive resource resolution.
+not replace the completion locator, digest or source incarnation. Source records and snapshot
+associations survive resource resolution. Activation includes its bounded association in ordinary
+reconciliation reservation and HomeStore's encoded batch accounting; no historical or per-resource
+scan occurs.
 
 The index key is the nonzero allocated sequence, and its value is exactly the resource ID. Every
 PendingAsset generated resource has exactly its matching source/index entry. Terminal Asset or

@@ -235,6 +235,15 @@
   bounded discovery and generated-marker contracts with independent architecture acceptance;
   [readiness and implementation boundaries](../../audits/generated-media-finalization-architecture.md).
 - [x] Enforced domain-owned [required command pairs](../../../crates/beryl-home-store/doc/design-atomic-commands.md#required-command-pairs) before generated-media publication; [qualification](../../audits/command-pair-qualification.md).
+- [x] Enforced the approved [original-source incarnation](../../systems/image-assets/generated-finalization.md#original-source-ownership)
+  through dispatch, capture and live authorization; equal-counter substitution, genuine original
+  access after target retirement and native superseding-load revocation are qualified.
+- [x] Resolved the [generated-resource projection gap](../../failures/generated-resource-projection.md)
+  through explicit non-text source/set/payload authority and bounded publication. Stable real
+  occurrences, frontier guards, selectedness, legal inheritance and typed text regression pass.
+- [x] Mounted original-source-qualified generated admission, durable Prepared/Published evidence,
+  bounded process-owned convergence and actual original/inherited transcript consumption;
+  [qualification](../../audits/generated-media-finalization-qualification.md).
 - [ ] Implement Beryl-home image admission for paste and generated output, content-addressed
   sidecars, labels, references, Host/WSL projection, and generated-output ownership.
 - [ ] Integrate bounded file reads, header parsing, on-demand thumbnails and tiles, decode workers,

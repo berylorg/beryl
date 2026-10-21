@@ -31,7 +31,7 @@ pub(super) fn validate(
 
         let mut expected_generation = ItemProjectionGeneration::FIRST;
         let mut previous_source_revision = None;
-        let mut projection_replay = ProjectionReplay::new(initial_source);
+        let mut projection_replay = initial_source.text().map(ProjectionReplay::new);
         let mut latest_set = None;
         let mut observed_generation = false;
 
@@ -66,13 +66,25 @@ pub(super) fn validate(
                     &mut previous_source_revision,
                     set.source_item_revision(),
                 )?;
-                let source_is_immutable = source::validate_projection_snapshot(
-                    reader,
-                    item,
-                    set.source_item_revision(),
-                    set.source(),
-                )?;
-                projection_replay.validate_set(reader, item, &set, source_is_immutable)?;
+                match set.source() {
+                    crate::ItemProjectionSource::Text(text_source) => {
+                        let source_is_immutable = source::validate_projection_snapshot(
+                            reader,
+                            item,
+                            set.source_item_revision(),
+                            text_source,
+                        )?;
+                        projection_replay
+                            .as_mut()
+                            .ok_or(SyndicValidationError::Invariant(
+                                "generated item owns a text projection set",
+                            ))?
+                            .validate_set(reader, item, &set, source_is_immutable)?;
+                    }
+                    crate::ItemProjectionSource::GeneratedResource(_) => {
+                        super::generated::validate_set(reader, item, &set)?
+                    }
+                }
                 latest_set = Some(set.generation());
                 next_set = read_next_set(reader, item.id(), Some(key.generation))?;
             } else {
@@ -94,7 +106,12 @@ pub(super) fn validate(
                     build.source_item_revision(),
                     build.source(),
                 )?;
-                projection_replay.validate_build(reader, item, &build)?;
+                projection_replay
+                    .as_mut()
+                    .ok_or(SyndicValidationError::Invariant(
+                        "generated item owns a text projection build",
+                    ))?
+                    .validate_build(reader, item, &build)?;
                 next_build = read_next_build(reader, item.id(), Some(key.generation))?;
             }
             observed_generation = true;
@@ -211,15 +228,21 @@ impl ProjectionReplay {
         set: &ItemProjectionSetRecord,
         source_is_immutable: bool,
     ) -> Result<(), SyndicValidationError> {
+        let text = set.text_state().ok_or(SyndicValidationError::Invariant(
+            "text replay set has no text state",
+        ))?;
+        let text_source = set.source().text().ok_or(SyndicValidationError::Invariant(
+            "text replay set has generated source",
+        ))?;
         if set.item_id() != item.id()
-            || set.source_bytes() != set.source().logical_utf8_bytes()
+            || text.source_bytes() != text_source.logical_utf8_bytes()
             || set.projection_count() == 0
-            || set.stable_projection_count() > set.projection_count()
-            || set.stable_resource_count() > set.resource_count()
+            || text.stable_projection_count() > set.projection_count()
+            || text.stable_resource_count() > set.resource_count()
         {
             return invariant("item projection set frontiers are invalid");
         }
-        if set.stable_eof_resolved() != source_is_immutable {
+        if text.stable_eof_resolved() != source_is_immutable {
             return invariant("item projection set EOF stability disagrees with its source");
         }
         self.replay_to(
@@ -228,22 +251,22 @@ impl ProjectionReplay {
             set.generation(),
             set.format(),
             set.source_item_revision(),
-            set.source(),
-            set.resume_checkpoint(),
-            set.stable_eof_resolved(),
+            text_source,
+            text.resume_checkpoint(),
+            text.stable_eof_resolved(),
         )?;
-        if self.projection_count != set.stable_projection_count()
-            || self.resource_count != set.stable_resource_count()
-            || self.digest != set.stable_digest()
+        if self.projection_count != text.stable_projection_count()
+            || self.resource_count != text.stable_resource_count()
+            || self.digest != text.stable_digest()
         {
             return invariant("item projection set stable replay disagrees");
         }
 
         let mut total = self.clone();
-        if set.stable_eof_resolved() {
-            if set.projection_count() != set.stable_projection_count()
-                || set.resource_count() != set.stable_resource_count()
-                || set.digest() != set.stable_digest()
+        if text.stable_eof_resolved() {
+            if set.projection_count() != text.stable_projection_count()
+                || set.resource_count() != text.stable_resource_count()
+                || set.digest() != text.stable_digest()
             {
                 return invariant("EOF-resolved item projection set owns a suffix");
             }
@@ -254,13 +277,13 @@ impl ProjectionReplay {
                 set.generation(),
                 set.format(),
                 set.source_item_revision(),
-                set.source(),
+                text_source,
                 Membership::Suffix(set.generation()),
             )?;
             if !finished {
                 return invariant("item projection set suffix does not begin at EOF");
             }
-            total.validate_finished(set.source_bytes())?;
+            total.validate_finished(text.source_bytes())?;
             if total.projection_count != set.projection_count()
                 || total.resource_count != set.resource_count()
                 || total.digest != set.digest()
@@ -384,7 +407,7 @@ impl ProjectionReplay {
             || build.source_bytes() != build.source().logical_utf8_bytes()
             || active
                 != (build.source_item_revision() == item.revision()
-                    && item.projection_source() == Some(build.source()))
+                    && item.projection_text_source() == Some(build.source()))
         {
             return invariant("item projection build source or lifecycle disagrees");
         }
