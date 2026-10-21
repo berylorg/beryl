@@ -231,7 +231,9 @@
 - [x] Mounted exact-original Copy/Save through the shared worker cohort, checked effect custody,
   atomic file publication and canonical focus, with independent acceptance of seventy distinct
   scoped App cases; [qualification and limits](../../audits/original-image-command-qualification.md).
-- [ ] Complete generated-output producer/resource/reference and atomic finalization contracts in the image system and owning State/Syndic/App designs before finalizer implementation.
+- [x] Established generated-output producer/source/resource/reference, atomic finalization,
+  bounded discovery and generated-marker contracts with independent architecture acceptance;
+  [readiness and implementation boundaries](../../audits/generated-media-finalization-architecture.md).
 - [ ] Implement Beryl-home image admission for paste and generated output, content-addressed
   sidecars, labels, references, Host/WSL projection, and generated-output ownership.
 - [ ] Integrate bounded file reads, header parsing, on-demand thumbnails and tiles, decode workers,

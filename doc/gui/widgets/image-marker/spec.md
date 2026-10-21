@@ -93,6 +93,12 @@ contextual request for that identity and intentionally closes any owner-supplied
 preview overlay anchored to it. This clears activation-pending, contextual-command-pending, and
 contextual-command-open. The widget does not remain realized solely as an offscreen anchor.
 
+A coherent owner-supplied media-lifecycle refresh for the same stable occurrence is not marker
+revision replacement. Pending may become admitted or unavailable without closing its anchored
+surface, moving focus or reissuing activation. The owner first cancels obsolete pre-election
+requests and supplies consistent replacement facts. Changing the occurrence or its source remains
+revision replacement and follows the closure rule above.
+
 # Layout
 
 The marker participates in surrounding inline layout as one indivisible range. Its label does not wrap internally, and the marker does not create a separate line unless ordinary line wrapping moves the whole atom.

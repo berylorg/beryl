@@ -40,6 +40,34 @@ credentials are installed. Paths and results follow transport-and-admission boun
 installation or caller script is allowed. A result is publishable only after complete joined
 disposal; canonical facts alone cannot admit a runtime or replace the production release proof.
 
+## Original-Namespace Generated-File Reader
+
+The backend-generated source capability may request a fixed reader from the original retained
+server supervision owner. This extends its closed supervisor protocol; it is not a filesystem
+observation launch. The request binds original launch nonce, live loaded source, resource/item
+correlation, a fresh sixteen-byte reader ID and one exact absolute POSIX path of at most 4,096
+UTF-8 bytes. The owner admits at most its configured generated-worker count, with no waiting
+path queue. A closed namespace or lost original authority refuses admission.
+
+The original namespace init creates the fixed reader child and installs its pidfd cleanup owner
+before fallible setup. The child receives original broker groups/GID/UID and filesystem context,
+drops credentials before opening the regular file and inherits only its necessary bounded read
+channel. It executes fixed Rust behavior, no caller command or path-discovered executable.
+
+Open, positional page request/response, cancel and close follow supervisor protocol V2. Each page
+request qualifies reader ID, next request sequence, offset and allowance; responses repeat those
+facts and report exact bytes, EOF or closed failure. The same open descriptor serves every pass.
+At most one request/page is outstanding per reader, with 8,192-byte data frames and framing scratch.
+The existing control pump continues independently of data consumption and prioritizes retirement
+between frames. A full page inbox never blocks stop/close or acquires another uncharged frame.
+
+Reader completion, a validated close receipt, child reaping and reader-channel drain are distinct
+facts. Complete source close requires that reader's positive close/reaping proof or the original
+namespace's positive closure proof; either path also joins/drains its channels. Loss, malformed
+responses, timeout or cancellation retains disposal-only reader/namespace custody until joined
+cleanup is proved. Namespace retirement cancels all its readers and closes their channels; source
+leases cannot outlive unproved native cleanup by being dropped or handed to replacement services.
+
 ## Disposal And Failure
 
 Disposal first requests root namespace retirement and consumes only original nonce/stage-matching

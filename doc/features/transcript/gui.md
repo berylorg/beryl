@@ -77,6 +77,21 @@ surface: activating that anchor opens a bounded built-in `anchored context menu`
 followed by `Save…` as command rows. The menu remains attached to the preview anchor and separate
 from the preview's close command.
 
+Generated-media resource references use the same readonly-inline `image marker` and canonical
+inspection/contextual surfaces. Their owner-supplied stable label is `Generated image`; their
+occurrence identity is the exact resource and projection occurrence, without allocating a draft
+marker or an `Image N` label. Prepared resource facts supply Pending, Admitted or Unavailable
+presentation even when no resource byte range or byte length exists. Pending/unavailable commands
+are visible, focusable and disabled according to the image feature; opening those surfaces requires
+no image-byte request.
+
+Pending-to-Admitted or Pending-to-Unavailable for that same exact realized occurrence refreshes
+its existing marker, open menu and preview coherently. It preserves label, anchor and current
+command focus; becoming enabled never activates a command. The owner cancels obsolete pre-election
+work and installs fresh admitted-source facts before making a byte request. Actual occurrence,
+projection-source or view supersession still closes anchored surfaces and returns focus under the
+existing origin/fallback contract. Geometry/focus state exists only for bounded realized rows.
+
 These placements are a feature-local composition of canonical widgets and introduce no new menu or
 image-control contract.
 

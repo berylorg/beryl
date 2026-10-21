@@ -1,5 +1,13 @@
 # Original Image Commands
 
+Generated-resource consumers use the same command/effect owner with a distinct owner-qualified
+resource demand. Authorization joins the exact admitted resource/projection occurrence and
+resource revision to its Published State resource-to-asset reference. It never invents a Syndic
+image-marker identity or infers eligibility from resident bytes. Pending and terminal Unavailable
+are explicit adapter inputs with their feature-owned disabled reasons; neither starts original
+availability/source work. A same-occurrence admission refresh cancels obsolete pre-election work
+before installing fresh demand, while already elected effects retain their existing custody.
+
 This supplement is normative under [design.md](design.md). The
 [image feature](../../features/image-assets/design.md) owns the command matrix and visible outcomes;
 this contract owns source/effect custody across App, Home and GPUI. It inherits the image system's

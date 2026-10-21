@@ -17,6 +17,47 @@ This supplement is normative only for its bounded backend provider-stream role a
 - `SubAgentActivity` is completion-only and remains distinct from ordinary paired start/completion. Structurally valid start evidence is emitted only as a typed lifecycle issue, never discarded as schema error or presented as an ordinary provider frame. A collab-agent spawn completion with accepted spawned-thread id and nickname emits one bounded compact subagent-label update; remaining notification fields discard.
 - Item-specific deltas retain only their exact expected item kind and bounded nonnegative protocol indices. A delta kind mismatch is not silently converted into another item. A size-unbounded string, list, object, or binary-excluded field is never an owned `String`, `Vec`, raw JSON, or `serde_json::Value` at this boundary.
 
+## Authenticated Generated-Output Files
+
+The [generated-media system contract](../../../doc/systems/image-assets/generated-finalization.md)
+owns output eligibility and durable publication. Backend supplies file access only from the exact
+original admitted managed launch and loaded-projection authority. Caller-supplied runtime/process
+IDs, historical records, equal generation numbers or a new session cannot construct this
+capability. The App source-proof join supplies the exact item/resource/path correlation; backend
+rechecks its live original launch and loaded-session fences before opening and during reads.
+
+The file source owns one regular file opened under the original producer's filesystem authority.
+Host paths use the existing absolute Host-native path policy, including supported UNC forms; WSL
+paths are absolute POSIX paths in that exact distribution. Relative resolution and project/root
+fallback are forbidden. Ordinary symlink/reparse following at the single open is allowed. Every
+cursor thereafter reads the same opened object; no later path resolution or replacement handle
+can fill a missing read. Zero length and representational exhaustion are typed unavailable.
+
+Host uses the retained File. WSL uses the fixed reader child/protocol in
+[native WSL supervision](design-wsl-supervision.md), inside the original namespace with the
+original ordinary broker credentials. It neither opens a host UNC view of Linux bytes nor starts
+another WSL helper/session. Source cursors are bounded ReadAt adapters with independent offsets;
+HomeStore's repeated digest/write/comparison passes begin at offset zero on that same file.
+Per-pass length, physical EOF and changed-content refusal are preserved. Cursors probe actual EOF
+at the captured length and refuse growth/shrinkage instead of synthesizing EOF from an offset.
+Open-handle identity alone is not
+an immutable-content claim.
+
+Each admitted coordinator worker owns at most one source, one outstanding page request and one
+reader result. WSL data frames contain at most 8,192 bytes; checked sequence/offset/length/EOF
+validation rejects replay, overflow, unsolicited or oversized data. The dispatcher retains at
+most one such page per reader and never waits for its consumer while processing supervision
+control. Fixed framing scratch remains at most 8,192 bytes per active reader. Reader cardinality
+is bounded by the admitted generated-worker configuration; no backend queue or thread per path
+exists independently of those reservations.
+
+The source retains original process/projection cleanup custody until close is proven. Host close
+releases the exact File; WSL close requires the matching reader-close/reaping proof or positive
+original-namespace closure proof, plus reader-channel drain in either case. Cancellation rejects further reads and requests that same close; transport loss or timeout
+retains a disposal-only original owner and cannot report closure or authorize another reader.
+Service replacement adopts neither this file nor its capability. Diagnostics expose identity,
+counts, lifecycle and redacted failure only, never source paths or image bytes.
+
 ## Ordered Controls, Dynamic Tools, and Backpressure
 
 - One provider-capable session offers controls, approvals, dynamic-tool arguments, and provider operations to one caller-supplied ordered sink at their exact read position. It exposes no independent receipt, generic drain, deferred raw FIFO, cloned envelope, or post-allocation schema check. While a fragment exchange waits, it reads no further transport byte; a valid sink progresses independently or returns typed cancellation, timeout, receiver loss, or closure.

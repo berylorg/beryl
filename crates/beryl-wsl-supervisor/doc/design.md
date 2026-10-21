@@ -89,15 +89,53 @@ It cannot exit after namespace closure while broker disposal remains unproved. P
 loss requests the same disposal; no stale PID/PGID is resolved. Kernel teardown exceeding a wait
 deadline remains pending with retained custody, not success.
 
+## Generated-File Readers
+
+Only the original server supervisor may request a reader inside its original live namespace.
+Init creates a fixed reader child and retains its pidfd before setup; the reader installs the
+ordinary broker's groups/GID/UID before opening the exact absolute POSIX path. It inherits only
+the necessary read channel, no caller executable, shell, arbitrary credentials or supervisory
+capability. Symlinks may resolve during that one open; the result must be a regular file. Every
+later positional read uses that same descriptor. The broker remains context-only and performs no
+filesystem read itself.
+
+Reader IDs are sixteen opaque bytes, fresh and nonzero within the original launch. Open carries
+reader ID and path; the path has the existing 4,096-byte bound. Opened repeats the ID and captured
+nonzero byte length as little-endian u64. A page request carries reader ID, nonzero strictly next
+sequence (little-endian u64), offset (little-endian u64) and allowance (little-endian u32,
+1..=8,192). Its response repeats ID/sequence/offset, has a little-endian u32 byte count, exact bytes
+and EOF byte `0` or `1`. Count cannot exceed allowance; offset/count addition is checked and no
+byte may exceed captured length. An EOF observation must agree with that length and comes from an
+actual file read, never offset comparison or clamping. A request at captured length performs the
+physical EOF probe; extra bytes or premature EOF report Changed. Failed requests
+carry a closed error tag instead of partial success. Unknown reader, repeated/skipped sequence,
+overflow, unsolicited data or malformed response fails that original read operation.
+
+There is at most one outstanding request and 8,192-byte data frame per reader. The backend supplies
+its validated generated-worker allowance before reader admission; exhaustion refuses without a
+path queue. Per-reader framing scratch is at most 8,192 bytes. Data delivery uses bounded separate
+reader inboxes and the existing nonblocking control pump: a consumer-held page cannot block stop,
+cancel, namespace closure or control processing. Pending control frames retain their existing
+eight-frame cap; control takes priority between bounded data frames. No reader thread/process or
+frame is created without the corresponding admitted reader slot.
+
+Cancel and close name the exact reader and next sequence. The original owner requests termination
+and retains pidfd/channel custody until exact child reaping and complete channel drain. The
+reader-closed event distinguishes normal completion from cancellation/failure and is emitted only
+after that proof. Positive original-namespace closure independently proves all its reader children
+closed; channels still drain/join before source release. A lost event or transport does not prove close; the original namespace owner
+retains disposal-only custody and may retry its exact cleanup. Existing namespace retirement
+includes every reader. No new launcher, pid enumeration or adopted file/process supplies proof.
+
 ## Control Contract And Bounds
 
-Protocol version 1 uses a 48-byte header: eight-byte `BRYLWSL1` magic, little-endian u16 version,
+Protocol version 2 uses a 48-byte header: eight-byte `BRYLWSL2` magic, little-endian u16 version,
 u16 closed frame tag, u32 payload length and the original 32-byte launch nonce. Payloads are at
 most 128 KiB. Incremental readers use at most 8 KiB scratch space and reject unknown versions,
 tags, invalid lengths, nonce mismatch, trailing data or illegal stage transitions.
 
-Requests are closed initialization, server launch, executable/directory/home observation, stop
-and broker close. Server launch carries the backend-constructed CLI arguments; observations
+Requests are closed initialization, server launch, executable/directory/home observation,
+generated-file open/read/cancel/close, stop and broker close. Server launch carries the backend-constructed CLI arguments; observations
 execute fixed Rust filesystem behavior after credential drop, never caller scripts. Paths retain
 at most 4,096 UTF-8 bytes; groups at most 256; arguments at most 64; environment at most 128
 entries. Each argument/value retains at most 8,192 bytes and each environment name at most 256.
@@ -106,7 +144,7 @@ Environment values preserve native non-NUL bytes. Secret-bearing context is priv
 terminal release and excluded from logs; it does not transport Beryl's generated launch bearer.
 
 Events are readiness, workload-started, shutdown-pending, owned-namespace-closed,
-Linux-companions-closed and typed failure.
+Linux-companions-closed, generated-file opened/page/reader-closed and typed failure.
 A workload-started event requires positive credential/chdir/exec setup evidence; CLI stdout cannot
 forge it. The init confirms the exact child's ptrace exec event and detaches before publishing
 server startup; error-pipe EOF alone cannot prove exec after pre-exec child death. Fixed observations

@@ -27,6 +27,14 @@ retirement qualification. Original-command consumers read that supplement and th
 rules here; rendition preparation additionally reads the rendition contract. The image feature owns
 visible command availability, outcomes and focus; neither supplement changes that matrix.
 
+## Generated Finalization Contract
+
+[Generated media finalization](generated-finalization.md) is normative for ordinary producer/source
+proof, durable admission and generated-resource references, bounded discovery/coordinator lifetime,
+atomic resource resolution and composed acceptance. Read it with the pinned-release generated
+output admission and shared storage rules here. Terminal-turn repair keeps its separate immutable
+complete-snapshot publication contract.
+
 ## Runtime Resource Boundary
 
 - `doc/systems/bounded-resource-dataflow/design.md` owns the shared bounded-resource invariant and

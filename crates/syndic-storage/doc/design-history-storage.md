@@ -825,6 +825,44 @@ classifier as ordinary recovery. It preserves home/generation and selected-sourc
 dependent facts, provider-stop authentication and the distinction between drift and stable corruption.
 Its result guides exact fenced convergence only; publication and ordinary execution remain separate.
 
+## Ordinary Generated Media
+
+The [generated finalization contract](../../../doc/systems/image-assets/generated-finalization.md)
+owns the composed lifecycle. Syndic owns generated-source records and the pending-resource index
+specified by the [V7 schema](design-schema-v7.md). Resource birth, source/index insertion and
+sequence allocation share its capture command. Completion attaches the immutable completed source
+event; ordinary freeze may advance item/content revisions without changing that source identity.
+
+A bounded typed source-proof read joins resource, item, historical dispatch snapshot, active CAS
+turn and source-event evidence. Its AwaitingCompletion branch authenticates the initial event and
+ownership for pending/proven-lost-source classification only. Its CompletedSource branch also
+authenticates the sealed completion frame and extracts the exact saved-path field, including
+reused text, with a 4,096-byte result allowance. Only this branch can authorize file/Prepared work.
+It never decodes a whole provider frame or retains arbitrary revised prompts. Its opaque proof
+qualifies one source fingerprint; current revisions remain separate publication guards. Historical
+execution identities alone grant no live producer-file access.
+
+Pending discovery uses a never-reused increasing sequence and finite sweep high-water mark.
+Pages admit at most 256 entries and 65,536 encoded bytes, honor smaller caller limits and advance
+over scanned entries. Unrelated domain revisions do not invalidate/reset that cursor. Point reads
+reauthenticate eligibility before mutation. AwaitingCompletion entries remain discoverable after
+restart; they are not omitted because no completed frame exists.
+
+Generated preparation contributes only exact source/resource validation beside the matching Asset
+participant. Final admission composes one Syndic mutation with one Asset mutation: validate the
+same source and current PendingAsset resource, admit that same resource, remove its exact pending
+entry and apply bounded ordinary frontier/view/summary effects. An unavailable mutation instead
+requires the Asset absence witness, stores its closed resource reason and removes the same entry.
+Witness composition binds target IDs, source fingerprint, intended disposition and Asset facts.
+Missing/duplicate participants, stale expected revisions and mismatched source refuse the command.
+
+Provider lifecycle and source events remain unchanged. Unavailable is a terminal resource with
+history_complete false and the finalized-item frontier behind that item; existing terminal-history
+settlement can still release its ordinary gate. No provider end status or repair disposition is
+invented. Admitted-resource finalization advances at most the exact next eligible item and leaves
+further convergence to bounded existing work. Mutation/reconciliation performs no sidecar I/O,
+provider-frame traversal, sibling scan or unbounded selected-path rebuild.
+
 ## Privacy And Diagnostics
 
 Persisted provider observations retain normalized kinds, identifiers, timing, counters, digests, and

@@ -81,6 +81,11 @@ The preview does not provide image editing, file replacement, drag export, exter
 
 If the owner replaces the resource revision while the preview is open, the widget accepts only a coherent owner-supplied replacement state. It does not retain stale decoded content under a new identity.
 
+A same-occurrence media-lifecycle refresh preserves the existing preview and contextual-command
+focus. The owner replaces state coherently, cancels obsolete pre-election requests and starts
+admitted-source work only from its new qualified facts. Refresh does not activate a newly enabled
+command. Actual source/occurrence supersession follows the owner's anchored-surface close contract.
+
 # Layout
 
 The backdrop fills the owning OS-window overlay. The popup frame is centered and clamped inside that overlay with inset clearance from every edge.

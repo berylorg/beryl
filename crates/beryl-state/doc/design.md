@@ -23,7 +23,7 @@ This entry point governs these bounded normative supplements:
 - [Jobs and catalog state](design-jobs-catalog.md) owns durable-job valid state/transition records
   and compact catalog schema, normalization, indexes, and bounded query.
 - [Asset state](design-assets.md) owns Asset V3 metadata, references, sidecar proof, witnesses, and
-  repair participants.
+  generated-media admission/reference and repair participants.
 
 ## Public Boundary
 

@@ -43,6 +43,14 @@ window cannot instantiate another media budget.
 
 ## Typed Source And Request Boundary
 
+Generated resources arrive as bounded prepared lifecycle facts from the existing transcript
+source worker: exact resource/projection occurrence, source fingerprint, resource revision,
+Pending/Admitted/Unavailable state and stable owner label. Pending or unavailable metadata requires
+no byte length, resource range or resident byte response. It never enters an image-source queue.
+An admitted generated-resource demand is a distinct owner-qualified variant alongside authored
+markers; its source resolution authenticates the exact resource and Published State reference.
+Resource IDs do not become Syndic image-marker IDs or marker labels.
+
 Composer requests originate from the exact still-live candidate root, marker id and View operation.
 Transcript requests originate from its exact provider-authenticated media occurrence and resource
 revision. GUI adapters capture that compact demand from their prepared current presentation facts;
@@ -64,6 +72,54 @@ generation and rendition key. One bounded interest joins an existing exact-key f
 a queue descriptor. Completion rechecks all captured facts before mounting pixels; a new selected
 marker never receives an old request's result. Removing a presentation releases that interest even
 when other windows keep the shared flight alive. Results cannot retain retired editors or windows.
+
+## Generated Finalization Coordinator
+
+The [generated system contract](../../../doc/systems/image-assets/generated-finalization.md)
+owns durable source/admission/publication semantics. Each published service constructs one fresh
+coordinator before publication, with the immutable generated queue/worker/page configuration.
+Exactly its configured fixed worker cohort consumes compact per-resource queue descriptors.
+Current descriptors, active identities and completion slots share those bounded reservations;
+there is no per-resource task, window-owned service or retained completion history.
+
+Discovery holds one bounded page and one sweep cursor/high-water pair. Capture/resource and
+capacity notifications are coalesced; register before checking progress. A blocked/full/active
+entry advances discovery without reserving another flight. Stable sequence sweeps do not reset on
+unrelated domain changes. An unfinished producer with current original authority remains pending
+without monopolizing a worker; completed or lost sources can become eligible independently of
+selected windows or connection callbacks.
+
+Workers obtain the opaque Syndic source proof and at most one bounded saved-path value only after
+admission. Backend mints the original file capability from the actual current runtime/projection
+owners. Those owners, not equal persisted IDs, decide source eligibility. Restart/replacement first
+checks fresh durable Prepared evidence; lacking it and an authentic original source terminalizes
+the same resource as unavailable. No old source callback or handle crosses service replacement.
+
+Generated source/sidecar work shares the process media owner's existing path-preparation and
+sidecar-verification stage reservations. A private stage-only lease exposes those counters without
+another budget or GPUI access; the generated worker cohort remains separate from decoder workers.
+It allocates at most min(generated_media_page_bytes, sidecar_io_page_bytes) App I/O bytes per active
+source. Positional backend cursors read into that admitted page, with separately bounded native
+framing scratch; they do not retain a second App original-byte buffer. PNG preflight uses bounded
+header storage and never raster-decodes original admission. Every source cursor compares its
+actual returned header prefix with those validated facts, including the first Home digest pass;
+a separate earlier probe cannot authorize metadata for later changed bytes.
+
+HomeStore admission completes before source close and the bounded preparation command. Actual
+source close joins before its source/stage reservation can drain. Page/stage custody releases
+before writer work; only compact admitted facts and current-generation sidecar authority remain.
+The coordinator composes one Asset and one Syndic participant for each preparation/publication
+command; it does not combine two mutations from one domain or do source I/O under the writer.
+Indeterminate submission synchronously moves its original witness to the existing Home command
+coordinator before any caller cancellation or worker release. Reconciliation is not a new flight.
+
+Service retirement stops new discovery/admission, drops queued descriptors, cancels workers and
+joins original native readers and publication outcomes. Source leases drain before runtime/process
+disposal can be reported complete; coordinator custody drains before media attachment and Home
+disposal. Namespace retirement may itself prove reader closure under the backend contract.
+Unsettled cleanup retains the original owner/fence, never a guessed success. A fresh coordinator
+reconstructs only from durable pending-index/admission records and uses new generation-qualified
+handles. Elected Home publication keeps its existing outcome ownership through window closure.
 
 ## Decoder And Upload Dataflow
 
@@ -104,6 +160,23 @@ process retains access to its process media owner while graph services temporari
 worker, so foreground progress delivery survives graph retirement/replacement work.
 
 ## Feature Mounting And Focus
+
+One readonly-image occurrence type distinguishes an authored marker from a generated-resource
+occurrence. Generated identity retains the exact item/resource/projection occurrence separately
+from its changing resource revision and pending/completed source facts. Prepared media metadata
+comes through the existing bounded transcript source worker and payload budgets, independently of
+resident resource byte ranges. Pending and Unavailable remain activatable for canonical inspection
+or contextual commands without a byte response. They pass explicit admission-state/disabled-reason
+inputs to the shared adapters; demand=None is not used to conflate pending with locally unreadable.
+
+The same realized generated occurrence can refresh Pending to Admitted or Unavailable in its open
+preview/menu. Replace all lifecycle/source facts coherently, cancel obsolete pre-election work and
+retain current focus. Admitted then creates its new qualified resource source demand and ordinary
+availability/rendition interest; no state refresh activates a command. A different occurrence,
+source replacement, view/thread activation or unrealization follows the existing close and
+origin/realized-record/thread-selector fallback. Resource lifecycle refresh is not occurrence
+supersession. Geometry, focus handles and currentness facts are bounded to existing realized rows;
+they do not introduce a media registry or offscreen anchor retention.
 
 The existing composer marker menu and transcript inspection mounts consume Pending, Ready or local
 unavailable rendition facts for their same source identity. A Ready presentation holds the shared

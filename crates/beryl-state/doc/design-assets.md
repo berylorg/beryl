@@ -2,7 +2,46 @@
 
 This supplement is governed by [the `beryl-state` design](design.md) and normatively owns Asset V3
 metadata, staged references and owner heads, sidecar verification, proof-gated reads, witnesses,
-and repair-media participants.
+generated-media admission/references and repair-media participants.
+
+## Ordinary Generated Media
+
+The [generated finalization contract](../../../doc/systems/image-assets/generated-finalization.md)
+owns cross-domain source and publication semantics. AssetState owns one dedicated
+`generated-media-admissions` family, keyspace V1 and record V1, within its existing asset domain.
+It does not reuse marker-set owners or fabricate a marker, label or projection for a resource.
+
+The key is the exact sixteen-byte Syndic resource ID. Payload order is: thread, turn and item IDs
+(sixteen bytes each); source fingerprint (thirty-two bytes); AssetId version byte `1`, digest
+(thirty-two bytes) and nonzero length (little-endian u64); one-byte media-type length followed by
+at most 127 ASCII graphic bytes; dimension option byte `0`, or `1` followed by nonzero width and
+height as little-endian u32; lifecycle byte `1` Prepared or `2` Published; and nonzero record
+revision as little-endian u64. Prepared starts at revision one and Published is its checked
+successor. Trailing bytes, unsupported tags, wrong natural identity and malformed facts reject.
+The complete payload is at most 512 bytes. Existing Asset V3 metadata encoding remains unchanged.
+
+One generated preparation participant consumes matching current-generation admitted sidecar proof,
+creates or exactly reuses committed metadata and writes Prepared evidence. A matching Syndic
+validation participant is mandatory in that Home command. Existing creation/metadata revisions
+remain unchanged on reuse; present dimensions must agree with byte-derived facts, and absent
+optional dimensions remain absent. There is no ordinary metadata overwrite or AssetId-only proof.
+
+The final participant authenticates the exact Prepared record and source/Asset facts, then changes
+it to Published in the same command as Syndic's resource admission. Published is the dedicated
+resource-to-asset reference; its identity and source facts are immutable. A copied descriptor is
+not a proof. Fresh typed reads authenticate the record, metadata and expected resource fingerprint
+on the admitted Home snapshot and return opaque ordinary admission/reference evidence.
+
+Unavailable publication has a validation-only Asset participant proving that no usable Prepared
+or Published evidence exists. It advances no Asset domain revision. A raced preparation conflicts
+instead of authorizing a downgrade. Exact replay proves matching natural records; conflicting
+source, target or Asset facts refuse the operation. Installed indeterminate-command custody must
+settle through its original Home coordinator before an ordinary record read can guide new work.
+
+Each participant declares checked constant read/write/encoded-byte and reconciliation footprints.
+Metadata and admission/reference changes share one Asset participant, not two participants for the
+same domain. Preparation, publication, no-effect exact reuse, stale rejection and uncertainty keep
+their distinct outcomes. No participant opens a file or reads Syndic private records.
 
 ## Asset V3 and reference ownership
 

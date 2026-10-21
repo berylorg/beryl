@@ -1,7 +1,7 @@
 # V7 Persisted Schema
 
 This supplement is the sole authority for the persisted `syndic` byte format at schema V7. It owns
-the complete 74-primary plus 29-index family inventory, family and record versions, natural keys,
+the complete 75-primary plus 30-index family inventory, family and record versions, natural keys,
 canonical values, tags, integer encoding, digest preimages, decode rejection, public schema bounds,
 and structural proofs. The package entry point controls scope and rigor. No other supplement may
 change persisted bytes.
@@ -56,7 +56,8 @@ change persisted bytes.
   `terminal-repair-media-pages`, `canonical-items`,
   `activity-query-heads`, `item-projection-heads`, `item-projection-sets`,
   `item-projection-builds`, `transcript-view-heads`, `transcript-builds`, `projections`,
-  `resources`, `history-summaries`, `bindings`, `execution-snapshots`, and `active-cas-turns`,
+  `resources`, `history-summaries`, `bindings`, `execution-snapshots`, `active-cas-turns`,
+  `generated-media-sources`,
   `resource-structure-heads`, `resource-structure-builds`, `resource-structure-progress`,
   `resource-structure-pages`, and `resource-structure-roots`.
 - `draft-marker-identity-index`, `draft-marker-order-commitments`, `draft-marker-seals`,
@@ -72,18 +73,54 @@ change persisted bytes.
   receipt records. Marker-order commitments use tagged immutable internal-node and leaf records;
   marker seals use compact durable cursor/lifecycle records. Build progress instead requires its own append-only family so canonical proposal
   fragments remain the only values in `draft-piece-build-fragments`.
-- The 29 index V7 families are `draft-by-thread`, `thread-parent-index`,
+- The 30 index V7 families are `draft-by-thread`, `thread-parent-index`,
   `image-label-origin-spans`, `turn-children`, `accepted-order`, `accepted-route-generations`,
   `accepted-ready-sources`, `accepted-next-sources`, `non-idle-gate-sources`, `turn-items`, `activity-query-entries`,
   `activity-query-sources`, `item-source-events`, `cas-item-index`, `transcript-path-turns`,
   `transcript-view-entries`, `stable-item-projections`, `item-projections`,
   `projection-resources`, `binding-heads`, `cas-thread-index`, `cas-thread-bindings`,
   `cas-turn-index`, and `provider-observation-chunks`, `resource-code-lines`, `resource-table-rows`,
-  `resource-table-cells`, `resource-table-columns`, and `resource-source-anchors`.
-- The complete V7 inventory is exactly 74 primary plus 29 index families, or 103 total. Family names,
+  `resource-table-cells`, `resource-table-columns`, `resource-source-anchors`, and
+  `pending-generated-media-resources`.
+- The complete V7 inventory is exactly 75 primary plus 30 index families, or 105 total. Family names,
   natural key encodings, and the complete primary/index inventory are closed. A release
   registers exactly the implemented owned families it exposes and never registers an empty
   placeholder for an unimplemented family.
+
+### Generated Media Source Canonical Encoding
+
+`generated-media-sources` and `pending-generated-media-resources` use keyspace V1 and record V1.
+Identities below are sixteen raw bytes and digests thirty-two. Payload integers are unsigned
+little-endian u64; the ordered pending-index key alone is unsigned big-endian u64. These are
+payload bytes before HomeStore's record-version envelope. All tags are exactly one byte.
+
+The primary family has two key forms. Key `0` selects one allocator containing the last allocated
+sequence as u64; absent means zero, and checked increment produces a nonzero never-reused sequence.
+Key `1` followed by resource ID selects its source record. Its payload is: allocated sequence;
+thread, turn, item and execution-snapshot IDs; producer-contract tag `1` (CAS 0.146.0 standalone
+image_gen); initial source-event sequence; then state tag `0` AwaitingCompletion or `1`
+CompletedSource. CompletedSource appends the completion source-event sequence and completion-event
+digest. The completed sequence is not before the initial sequence. The digest is SHA-256 over
+UTF-8 `syndic/generated-source-event/v1` followed by one NUL and the canonical source-event
+payload bytes. Source-event encoding contains sealed frame references, not provider body bytes.
+
+Resource birth writes its source record, allocator successor and pending entry atomically with
+the resource. Completion performs only the exact AwaitingCompletion-to-CompletedSource successor;
+an agreeing replay is unchanged, and differing completed evidence rejects. Source events must name
+that exact item/turn, admitted producer and historical execution snapshot. Ordinary freeze does
+not replace the completion locator or digest. Source records survive resource resolution.
+
+The index key is the nonzero allocated sequence, and its value is exactly the resource ID. Every
+PendingAsset generated resource has exactly its matching source/index entry. Terminal Asset or
+Unavailable publication removes the index entry in the same command; it never reuses its sequence.
+Explicit validation checks the bidirectional resource/source/index association and allocator
+ceiling. Routine discovery uses finite captured high-water sweeps and point authentication, not a
+global-revision-bound traversal or a home-wide startup validation scan.
+
+The `resources` generated-unavailable reason tags are closed: `0` Missing, `1` Changed,
+`2` Oversized, `3` Unsupported, `4` Unreadable, `5` ProducerFailed, `6` LostSourceAuthority and
+`7` MalformedOutput. All preserve resource identity and provider outcome. Unknown tags, duplicate
+natural identities, zero/out-of-range sequences, malformed keys and trailing payload bytes reject.
 
 ### Resource Structure Companion Canonical Encoding
 
@@ -99,7 +136,7 @@ describe payload bytes before HomeStore's record-version envelope.
 
 #### Registration And Absence
 
-The complete target inventory is 103 families. A release registers only its implemented exact
+The complete target inventory is 105 families. A release registers only its implemented exact
 declaration; unimplemented terminal-repair and companion families are not empty placeholders.
 The package entry point and this inventory describe target authority, not an instruction to
 register an incomplete implementation. Required-domain declarations and codec registration change
@@ -684,7 +721,7 @@ reconciliation. It is durable acceptance evidence, not a persisted GUI history c
 input is backfilled or inferred from transcript records. Source reauthentication compares its full
 canonical receipt and source materialization/disposed-session closure, never a digest alone or
 current transcript/gate eligibility. Queue promotion preserves this receipt and its source identity.
-Existing record tags `0` through `4`, ordinary disposal bytes, the 103-family declaration and all
+Existing record tags `0` through `4`, ordinary disposal bytes, the family declaration and all
 existing keyspaces/record versions remain unchanged. Existing homes admit this extension without a
 family migration; only newly accepted inputs produce the new purpose-qualified receipt. An older
 ordinary disposal receipt remains valid disposal evidence but grants no ordinary recall authority.
