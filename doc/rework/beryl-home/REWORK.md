@@ -234,6 +234,7 @@
 - [x] Established generated-output producer/source/resource/reference, atomic finalization,
   bounded discovery and generated-marker contracts with independent architecture acceptance;
   [readiness and implementation boundaries](../../audits/generated-media-finalization-architecture.md).
+- [x] Enforced domain-owned [required command pairs](../../../crates/beryl-home-store/doc/design-atomic-commands.md#required-command-pairs) before generated-media publication; [qualification](../../audits/command-pair-qualification.md).
 - [ ] Implement Beryl-home image admission for paste and generated output, content-addressed
   sidecars, labels, references, Host/WSL projection, and generated-output ownership.
 - [ ] Integrate bounded file reads, header parsing, on-demand thumbnails and tiles, decode workers,

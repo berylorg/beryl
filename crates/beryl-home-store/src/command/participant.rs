@@ -5,8 +5,9 @@ use beryl_model::DomainRevision;
 use crate::{
     DomainReader, StorageDomain,
     command::{
-        DomainMutation, DomainValidator, MutationBuilder, MutationContribution, PendingMutation,
-        ReconciliationReservation, ReconciliationReservationOutput, ValidationContribution,
+        CommandPairRequirement, CommandParticipantKind, DomainMutation, DomainValidator,
+        MutationBuilder, MutationContribution, PendingMutation, ReconciliationReservation,
+        ReconciliationReservationOutput, ValidationContribution,
     },
     domain::{DomainOwnerId, RegisteredDomain, StoreInstanceId, callback::ErasedCallbackError},
 };
@@ -117,6 +118,7 @@ pub(crate) struct DomainMutationPlan {
     pub(crate) slot: usize,
     pub(crate) owner: DomainOwnerId,
     pub(crate) domain: &'static str,
+    pub(crate) command_pair: Option<CommandPairRequirement>,
     mutation: Box<dyn ErasedMutation>,
 }
 
@@ -163,6 +165,7 @@ pub(crate) struct DomainValidationPlan {
     pub(crate) slot: usize,
     pub(crate) owner: DomainOwnerId,
     pub(crate) domain: &'static str,
+    command_pair: Option<CommandPairRequirement>,
     validator: Box<dyn ErasedValidation>,
 }
 
@@ -172,11 +175,13 @@ pub(super) fn mutation_plan<D: StorageDomain, M: DomainMutation<D>>(
     owner: DomainOwnerId,
     mutation: M,
 ) -> DomainMutationPlan {
+    let command_pair = mutation.command_pair();
     DomainMutationPlan {
         store,
         slot,
         owner,
         domain: D::NAME,
+        command_pair,
         mutation: Box::new(TypedMutation::<D, M> {
             mutation,
             _typed: PhantomData,
@@ -190,11 +195,13 @@ pub(super) fn validation_plan<D: StorageDomain, V: DomainValidator<D>>(
     owner: DomainOwnerId,
     validator: V,
 ) -> DomainValidationPlan {
+    let command_pair = validator.command_pair();
     DomainValidationPlan {
         store,
         slot,
         owner,
         domain: D::NAME,
+        command_pair,
         validator: Box::new(TypedValidation::<D, V> {
             validator,
             _typed: PhantomData,
@@ -208,6 +215,27 @@ pub(crate) enum DomainParticipant {
 }
 
 impl DomainParticipant {
+    pub(crate) fn pair_participant(
+        &self,
+    ) -> (
+        &'static str,
+        CommandParticipantKind,
+        Option<CommandPairRequirement>,
+    ) {
+        match self {
+            Self::Mutation(contribution) => (
+                contribution.plan.domain,
+                CommandParticipantKind::Mutation,
+                contribution.plan.command_pair,
+            ),
+            Self::Validation(contribution) => (
+                contribution.plan.domain,
+                CommandParticipantKind::Validation,
+                contribution.plan.command_pair,
+            ),
+        }
+    }
+
     pub(crate) const fn store(&self) -> StoreInstanceId {
         match self {
             Self::Mutation(contribution) => contribution.plan.store,

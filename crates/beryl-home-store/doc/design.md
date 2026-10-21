@@ -52,7 +52,8 @@ are normative supplements governed by this design and only for their stated role
   unpublished candidates, structural lifecycle and health, same-home recovery, and whole-home
   scrub boundaries.
 - [Atomic commands](design-atomic-commands.md) owns command, result, receipt, durability,
-  preparation, reconciliation, free-space query, local-finalization, and operation-scope contracts.
+  preparation, required command pairs, reconciliation, free-space query, local-finalization, and
+  operation-scope contracts.
 - [Physical repositories](design-physical-repositories.md) owns physical installed-theme and
   sidecar file layout, publication ordering, evidence, watcher guarantees and detached temporary
   read backing.

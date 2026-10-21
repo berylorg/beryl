@@ -24,10 +24,13 @@ use crate::{
 };
 
 mod current_home;
+mod pair;
 mod participant;
 mod result;
 
 pub use current_home::CurrentHomeCommand;
+pub(crate) use pair::validate_command_pair;
+pub use pair::{CommandPairRequirement, CommandParticipantKind};
 pub(crate) use participant::{DomainMutationPlan, DomainParticipant, PreparedDomainMutation};
 use participant::{mutation_plan, validation_plan};
 pub(crate) use result::RetainedReconciliationDescriptor;
@@ -227,6 +230,10 @@ pub trait DomainMutation<D: StorageDomain>: Send + 'static {
     type Error: DomainCallbackError;
     type Prepared: Send + 'static;
 
+    fn command_pair(&self) -> Option<CommandPairRequirement> {
+        None
+    }
+
     fn prepare(self, reader: &DomainReader<'_, D>) -> Result<Self::Prepared, Self::Error>;
 
     /// Reserves the exact codec-family quotas that this mutation may change.
@@ -253,6 +260,10 @@ pub trait DomainMutation<D: StorageDomain>: Send + 'static {
 pub trait DomainValidator<D: StorageDomain>: Send + 'static {
     /// Domain-owned validation failure.
     type Error: DomainCallbackError;
+
+    fn command_pair(&self) -> Option<CommandPairRequirement> {
+        None
+    }
 
     /// Validates current authoritative state before any mutation batch is assembled.
     ///

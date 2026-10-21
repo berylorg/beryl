@@ -415,6 +415,8 @@ pub enum CommandError {
     CancelledBeforeAdmission,
     #[error("local command authority refused admission")]
     LocalAdmissionRejected,
+    #[error("command participants do not satisfy their required pair")]
+    InvalidCommandPair,
     /// The same thread attempted to enter this store's writer recursively.
     #[error("reentrant use of the same Beryl-home writer is forbidden")]
     ReentrantWriter,

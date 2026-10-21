@@ -6,7 +6,9 @@ use super::{
 use crate::{
     CommandError, CommandOutcome, ContributorCallbackStage, CurrentHomeCommand, HomeCommand,
     HomeGeneration, HomeStore, MutationContribution, ReadStage,
-    candidate_access::StoreOperationAccess, command::DomainParticipant, store::StoreGeneration,
+    candidate_access::StoreOperationAccess,
+    command::{CommandParticipantKind, DomainParticipant, validate_command_pair},
+    store::StoreGeneration,
 };
 
 impl HomeStore {
@@ -30,6 +32,15 @@ impl HomeStore {
         }
         if ActiveWriter::already_active(self.writer_id) {
             return not_committed(CommandError::ReentrantWriter);
+        }
+        if let Err(error) = validate_command_pair(command.commands.iter().map(|command| {
+            (
+                command.plan.domain,
+                CommandParticipantKind::Mutation,
+                command.plan.command_pair,
+            )
+        })) {
+            return not_committed(error);
         }
         let declarations = command
             .commands

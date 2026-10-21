@@ -111,12 +111,13 @@ pub use codec::{
 };
 pub use coherence::{HomeCoherenceError, HomeObservedCoherenceError};
 pub use command::{
-    CommandBuildError, CommandCancellation, CommandError, CommandOutcome, CommitReceipt,
-    CommitReceiptError, CommittedLocalFinalization, CommittedLocalFinalizationError,
-    ContributorCallbackStage, CurrentDomainCommand, CurrentHomeCommand, DomainMutation,
-    DomainValidator, HomeCommand, MutationBuildError, MutationBuilder, MutationContribution,
-    ReconciliationCustody, ReconciliationReservation, RevisionConflict, StorageCommitState,
-    StorageErrorClass, StorageResource, ValidationContribution,
+    CommandBuildError, CommandCancellation, CommandError, CommandOutcome, CommandPairRequirement,
+    CommandParticipantKind, CommitReceipt, CommitReceiptError, CommittedLocalFinalization,
+    CommittedLocalFinalizationError, ContributorCallbackStage, CurrentDomainCommand,
+    CurrentHomeCommand, DomainMutation, DomainValidator, HomeCommand, MutationBuildError,
+    MutationBuilder, MutationContribution, ReconciliationCustody, ReconciliationReservation,
+    RevisionConflict, StorageCommitState, StorageErrorClass, StorageResource,
+    ValidationContribution,
 };
 pub use domain::{
     DomainAttachmentAccessError, DomainAttachmentCapability, DomainCallbackError,

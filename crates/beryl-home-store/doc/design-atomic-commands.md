@@ -45,6 +45,51 @@ is governed by [the package design](design.md), including that design's engineer
   fit the configured Fjall `BatchCapacity`. Oversize fails before commit. Callers cannot hold a
   transaction or writer guard across asynchronous or external work.
 
+## Required Command Pairs
+
+`DomainMutation::command_pair` and `DomainValidator::command_pair` optionally declare one
+`CommandPairRequirement`. HomeStore captures it once while sealing the typed domain plan. The
+returned opaque contribution has no setter, extractor or conversion that can remove or replace
+the declaration. The callback is bounded, deterministic and free of reads or external effects.
+Ordinary participants declare none and retain their existing behavior.
+
+A requirement contains a fixed protocol and operation identity, one 32-byte correlation digest,
+the required peer's stable domain name and its expected `Mutation` or `Validation` kind. The public
+constructor selects protocol and operation through const-generic identifiers; both must be
+nonzero. HomeStore supplies the actual participant kind, live owner, store and slot from its sealed
+plan. A peer name names the registered logical domain; it cannot override the exact live owner and
+registration checks. Domain packages own the canonical digest and authenticate every represented
+fact during their ordinary writer-time preparation or validation. The digest is agreement evidence,
+not independent record, sidecar or publication authority.
+
+If any participant declares a pair, the complete command must contain exactly two distinct domains.
+Both must declare reciprocal peer names and expected actual kinds, equal protocol and operation
+identities and equal correlation digests. An unbound participant cannot stand in for a required
+peer. Missing, extra, nonreciprocal, invalid-identifier, different-operation, different-correlation
+or wrong-kind participation returns typed `InvalidCommandPair` with `NotCommitted`. Duplicate
+domain participation keeps its existing build error. HomeStore validates the shape before
+reconciliation reservation callbacks and again at serialized admission after ordinary live-owner,
+registration and revision fencing, before any participant preparation, local admission, assembly or
+physical write. Failed checks leave revisions, records and health unchanged.
+
+Single-domain and current-home commands retain the same sealed declaration through their existing
+conversion into the common writer boundary. A required pair cannot execute as a single-domain
+command; a current-home command can satisfy only a reciprocal mutation/mutation pair. Candidate
+access uses the same checks. Cancellation and reentry retain their existing precedence and
+classified outcomes. No check retries or acquires another domain reader for a callback.
+
+Pair metadata is fixed-size inline state per participant, with no retained registry, queue,
+callback history, dynamic digest payload or separate receipt. Accepted pairs use ordinary bounded
+mutation/reconciliation accounting, atomic commit, durability and original indeterminate custody.
+The declaration is consumed with the command and is not retained in the durable reconciliation
+descriptor: after admitted preparation, exact old/new record facts remain its complete outcome
+evidence. Read-only proof composition and first-acceptance successor authority are unchanged.
+
+Qualification covers each mismatch without callback invocation or writes; both mutation/validation
+orders, mutation/mutation success and receipts, a peer's semantic rejection, stale and foreign
+handles, current-command bypass refusal, cancellation, local-admission ordering, and ordinary
+commit/persist/acknowledgement-loss classification with original reconciliation custody.
+
 ## Mutation Observation And In-Memory Election
 
 - A caller-fenced `HomeCommand` may own one local admission predicate in addition to its typed

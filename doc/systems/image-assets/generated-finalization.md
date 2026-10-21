@@ -110,6 +110,28 @@ resumable evidence. Unselected evidence and sidecars are retained for future gar
 
 ## Atomic Resource Resolution
 
+Generated commands use HomeStore's reciprocal
+[required command pairs](../../../crates/beryl-home-store/doc/design-atomic-commands.md#required-command-pairs).
+The protocol identifier is `0x67656e6d65646961` (generated media V1); operation identifiers are
+`1` preparation, `2` publication and `3` unavailable resolution. State's `beryl-assets` domain and
+Syndic's `syndic` domain require each other. Preparation requires Asset mutation/Syndic validation;
+publication requires two mutations; unavailable resolution requires Asset validation/Syndic mutation.
+The generated APIs return already-bound opaque participants and never expose their private
+mutation or validation inputs for resealing without that requirement.
+
+Their correlation is SHA-256 over UTF-8 `beryl/generated-media-command/v1` followed by one NUL,
+operation as little-endian u64, resource/thread/turn/item IDs as sixteen bytes each, and the
+thirty-two-byte source fingerprint. Preparation and publication append AssetId digest (32 bytes),
+nonzero length (little-endian u64), media-type length (one byte) and its ASCII bytes, then dimension
+presence (`0` absent; `1` followed by width and height as nonzero little-endian u32).
+These are the effective committed metadata facts: exact metadata reuse with absent dimensions
+continues to name absent dimensions even when PNG preflight established dimensions. Each owner
+authenticates the facts it supplies against its operation inputs and writer-time records.
+Unavailable resolution instead appends its closed one-byte unavailable reason; it claims no Asset
+facts. Operation-specific digests cannot substitute for another operation. The bound declarations
+establish agreement only; exact source, revision, absence, Prepared and sidecar checks remain owned
+by the existing participants.
+
 One final HomeCommand composes one Asset participant and one Syndic participant. The Asset
 participant validates exact Prepared evidence and changes it to Published, creating the dedicated
 resource-to-asset reference. Syndic validates the same immutable source and current resource,

@@ -71,6 +71,7 @@ pub(super) fn command_failure_severity(error: &CommandError) -> Option<FailureSe
         CommandError::HealthGate(_)
         | CommandError::CancelledBeforeAdmission
         | CommandError::LocalAdmissionRejected
+        | CommandError::InvalidCommandPair
         | CommandError::ReentrantWriter
         | CommandError::EmptyCommand
         | CommandError::ValidationOnlyCommand

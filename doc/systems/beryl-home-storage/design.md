@@ -318,6 +318,13 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   participation by the same typed domain remains invalid across both roles. An ordinary mutation
   that emits no changes remains an error, so validation intent cannot hide an accidental empty
   write path.
+- Domain-owned mutations and validators may seal reciprocal required-command-pair declarations
+  through HomeStore's [atomic command boundary](../../../crates/beryl-home-store/doc/design-atomic-commands.md#required-command-pairs).
+  A bound command has exactly two live, distinct domains with matching operation-qualified facts
+  and reciprocal participant kinds. Neither domain can commit its bound operation alone; App
+  cannot strip a declaration from a returned contribution. The owning cross-package system defines
+  canonical correlation facts and each domain authenticates its own facts on the writer snapshot.
+  Read-only proof receipts do not become mutation authority.
 - Current-draft publication that changes marker ownership uses exactly one mutating Syndic
   participant and one Asset participant in the same command. Syndic's proof checks remain part of
   that one mutating participant's preparation; a second Syndic validation-only participant would

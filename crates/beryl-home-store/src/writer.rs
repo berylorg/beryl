@@ -7,8 +7,9 @@ use crate::{
     ContributorCallbackStage, CurrentDomainCommand, HomeCommand, MutationContribution, ReadError,
     ReadStage, ReconciliationCustody, RevisionConflict,
     command::{
-        DomainParticipant, MaterializedDomainDescriptor, MaterializedRecordDescriptor,
-        PendingAction, PendingMutation, PreparedDomainMutation, ReconciliationReservationOutput,
+        CommandParticipantKind, DomainParticipant, MaterializedDomainDescriptor,
+        MaterializedRecordDescriptor, PendingAction, PendingMutation, PreparedDomainMutation,
+        ReconciliationReservationOutput, validate_command_pair,
     },
     domain::{RegisteredDomain, StoreInstanceId},
     fault::FaultPoint,
@@ -154,6 +155,14 @@ impl HomeStore {
         if command.participants.is_empty() {
             return not_committed(CommandError::EmptyCommand);
         }
+        if let Err(error) = validate_command_pair(
+            command
+                .participants
+                .iter()
+                .map(DomainParticipant::pair_participant),
+        ) {
+            return not_committed(error);
+        }
         if !command
             .participants
             .iter()
@@ -206,6 +215,13 @@ impl HomeStore {
         }
         if ActiveWriter::already_active(self.writer_id) {
             return not_committed(CommandError::ReentrantWriter);
+        }
+        if let Err(error) = validate_command_pair([(
+            command.plan.domain,
+            CommandParticipantKind::Mutation,
+            command.plan.command_pair,
+        )]) {
+            return not_committed(error);
         }
         let reservation = match self.reserve_current_command(&command) {
             Ok(reservation) => reservation,
@@ -555,6 +571,7 @@ impl HomeStore {
                 });
             }
 
+            validate_command_pair(participants.iter().map(DomainParticipant::pair_participant))?;
             let mut mutations = Vec::with_capacity(mutation_count);
             for (participant, fenced) in participants.into_iter().zip(prepared) {
                 let domain_name = participant.domain();
