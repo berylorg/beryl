@@ -119,6 +119,61 @@ identity and disabled command reasons; rendition failure is independent of origi
 Copy and Save executors resolve their original source independently under their owning command
 contracts and never consume fitted pixels.
 
+## Original Command Adapter And Worker
+
+The [original-command system contract](../../../doc/systems/image-assets/original-commands.md)
+governs independent source and external-effect custody. App separates authenticated original
+metadata/sidecar access from rendition format, dimensions and decode admission. Both paths use the
+same exact `ImageSourceDemand` occurrence proof and current Home attachment; original commands
+cannot request an asset by id alone. Original Save uses the authenticated length as its bounded
+reader's exact source allowance, without inheriting a rendition length/pixel restriction.
+
+The media process owns one original-command reservation shared across availability, Copy and Save.
+Its fixed worker cohort services these jobs through the existing path/verification reservations;
+original jobs do not spawn a thread, decoder, independent executor pool or unbounded queue. The
+reservation remains held through a pending native picker and through any prepared output or effect
+result. Waiting native picker state holds no source service or file. Availability preparation
+returns only compact facts and releases its slot; a later command performs fresh authentication.
+When admission is busy, an already mounted adapter retains only its one current compact demand and
+may retry on the process's bounded capacity-change notification. It installs no timer, retained
+closure history or extra source queue, and retires that retry with its exact surface/request.
+
+Each visible image command surface owns one compact original request/result adapter alongside its
+independent rendition interest. Its identity binds the exact occurrence, attachment, window and
+surface revision. Original facts never derive from `Ready`, a rendition failure or a texture pin.
+Stale completion is discarded and charged work cancelled; a fresh surface requests its own facts.
+Prepared result state cannot retain a source file or expose a Home/native payload to GUI code.
+Workers retain no GUI entities or callbacks. All live request handles are weakly registered within
+the process's one bounded command slot and included in attachment drain.
+
+Copy prepares one complete supported encoded image only after its capacity checks, then transfers
+ownership to the foreground checked clipboard call without an uncharged clone. Save prepares its
+same-directory stage on a worker. Both use one explicit preparing/prepared/publishing/settled
+operation with a cancellation-versus-publication election. Foreground authorization requires the
+same live occurrence, surface and window, and a still-current attachment immediately before the
+election. The worker cannot infer election from a notification or a dropped reply. A rejected or
+dropped preparation cancels and drains; an elected effect retains its original completion until
+settled, even if its presentation closes. No failed or ambiguous effect is replayed automatically.
+
+Atomic destination-file mechanics are shared with the existing text-resource Save writer through
+a private worker-owned component: create-only same-directory stage, bounded writes, flush/sync,
+authorized replace or non-replacing publication, and explicit cleanup failure. The component owns
+no source, GUI, picker, command policy or cancellation election. Text and image adapters retain
+their own exact source and publication owners; neither exposes its source through another adapter.
+Existing text/table Save behavior and failure qualification remain required after this extraction.
+
+Composer preview, transcript preview and direct transcript image menus use the same original
+adapter and typed availability/outcome mapping. Preview commands are the existing feature-owned
+contextual anchor plus its bounded anchored menu, with Copy followed by Save; the direct transcript
+marker uses its bounded context menu. Inline placeholder text does not implement these placements.
+Their actual focusable controls capture the
+exact command anchor and a viable fallback before opening a surface or native picker. Disabled
+activation consumes the event and leaves focus on that disabled command. A live preview delegates
+focus to its child command surface/native picker while that flow is active, then returns to the
+same eligible anchor; a closed preview follows its captured origin/fallback. A stale completion
+cannot steal focus from a successor surface. Feedback is local to the exact command/image and
+does not change admitted identity, draft content or rendition state.
+
 ## Qualification
 
 Package tests exercise real authenticated source descriptors, queue deduplication, output-capacity

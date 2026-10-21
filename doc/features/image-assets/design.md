@@ -102,6 +102,9 @@ an admitted asset-backed result or a terminal unavailable result.
   remain eligible for its lifetime.
 - Activating any disabled Copy or `Save…` command performs no command and leaves focus on that
   disabled command, regardless of the disabled reason or media state.
+- While the exact original's availability is being checked, both commands remain visible and
+  focusable, disabled with a checking reason. This transient check never substitutes rendition
+  readiness for original readability. Completion updates only the same current command surface.
 - In generated-media `Pending`, Copy and `Save…` remain visible but disabled with the reason that
   the original image has not completed admission.
 - `Ready` is an `Admitted` presentation substate, not a second image identity. Ordinary admitted

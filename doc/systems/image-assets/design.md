@@ -19,6 +19,14 @@ Allow many drafts and turns to share exact bytes without making a thread directo
 decoding, process/App/GPUI ownership, stage admission, configuration values, pins, device generation
 and source-to-paint qualification. Storage, durable references and generated admission remain here.
 
+## Original Command Contract
+
+[Original image commands](original-commands.md) is normative for independent original-source
+authorization, bounded command/effect ownership, clipboard representation limits, atomic Save and
+retirement qualification. Original-command consumers read that supplement and the source/storage
+rules here; rendition preparation additionally reads the rendition contract. The image feature owns
+visible command availability, outcomes and focus; neither supplement changes that matrix.
+
 ## Runtime Resource Boundary
 
 - `doc/systems/bounded-resource-dataflow/design.md` owns the shared bounded-resource invariant and
