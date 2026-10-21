@@ -28,8 +28,11 @@ impl ManagedBackendSession {
     ) -> Result<FreshLoadedThreadSession, ManagedBackendError> {
         self.require_foreground_request(ResponseFamily::ThreadStart.method())?;
         let params = ThreadStartParams::new(cwd, &options);
-        self.lineage_response(&params, ResponseFamily::ThreadStart, timeout)
-            .map(ThreadLineageResponse::into_fresh)
+        let mut fresh = self
+            .lineage_response(&params, ResponseFamily::ThreadStart, timeout)?
+            .into_fresh();
+        self.register_generated_loaded_source(fresh.generated_loaded_mut());
+        Ok(fresh)
     }
 
     pub fn resume_thread(
@@ -40,7 +43,7 @@ impl ManagedBackendSession {
     ) -> Result<LoadedThreadSession, ManagedBackendError> {
         self.require_foreground_request(ResponseFamily::ThreadResume.method())?;
         let params = ThreadResumeParams::new(thread_id, options);
-        let loaded = self
+        let mut loaded = self
             .lineage_response(&params, ResponseFamily::ThreadResume, timeout)?
             .into_loaded();
         if loaded.thread_id() != thread_id {
@@ -52,6 +55,7 @@ impl ManagedBackendSession {
                 actual,
             });
         }
+        self.register_generated_loaded_source(&mut loaded);
         Ok(loaded)
     }
 
@@ -84,7 +88,7 @@ impl ManagedBackendSession {
     ) -> Result<FreshLoadedThreadSession, ManagedBackendError> {
         self.require_foreground_request(ResponseFamily::ThreadFork.method())?;
         let response = self.lineage_response(params, ResponseFamily::ThreadFork, timeout)?;
-        let fresh = response.into_fresh();
+        let mut fresh = response.into_fresh();
         if fresh.thread_id() == source_thread_id {
             self.retire_connection();
             return Err(ManagedBackendError::ForkResponseReusedSource {
@@ -92,6 +96,7 @@ impl ManagedBackendSession {
                 source_thread: source_thread_id.clone(),
             });
         }
+        self.register_generated_loaded_source(fresh.generated_loaded_mut());
         Ok(fresh)
     }
 

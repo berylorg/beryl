@@ -1,6 +1,7 @@
 use std::{
     io,
     process::{Child, ChildStderr, ChildStdin, ChildStdout},
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -14,7 +15,7 @@ const DROP_KILL_TIMEOUT: Duration = Duration::from_secs(5);
 #[derive(Debug)]
 pub(crate) struct SupervisedBackendProcess {
     launch_label: String,
-    child: Option<Child>,
+    child: Option<Arc<Mutex<Child>>>,
     host_process_tree: HostProcessTree,
 }
 
@@ -22,7 +23,7 @@ impl SupervisedBackendProcess {
     pub(crate) fn new(child: Child, launch_label: impl Into<String>) -> Self {
         Self {
             launch_label: launch_label.into(),
-            child: Some(child),
+            child: Some(Arc::new(Mutex::new(child))),
             host_process_tree: HostProcessTree::none(),
         }
     }
@@ -32,23 +33,34 @@ impl SupervisedBackendProcess {
             .child
             .as_ref()
             .expect("process owns child during setup");
-        self.host_process_tree = HostProcessTree::create_for_child(child, &self.launch_label())?;
+        self.host_process_tree = HostProcessTree::create_for_child(
+            &crate::generated_output::lock(child),
+            &self.launch_label(),
+        )?;
         Ok(())
     }
     pub(crate) fn process_id(&self) -> Option<u32> {
-        self.child.as_ref().map(Child::id)
+        self.child
+            .as_ref()
+            .map(|child| crate::generated_output::lock(child).id())
     }
 
     pub(crate) fn take_stdin(&mut self) -> Option<ChildStdin> {
-        self.child.as_mut()?.stdin.take()
+        crate::generated_output::lock(self.child.as_ref()?)
+            .stdin
+            .take()
     }
 
     pub(crate) fn take_stdout(&mut self) -> Option<ChildStdout> {
-        self.child.as_mut()?.stdout.take()
+        crate::generated_output::lock(self.child.as_ref()?)
+            .stdout
+            .take()
     }
 
     pub(crate) fn take_stderr(&mut self) -> Option<ChildStderr> {
-        self.child.as_mut()?.stderr.take()
+        crate::generated_output::lock(self.child.as_ref()?)
+            .stderr
+            .take()
     }
 
     pub(crate) fn has_exited(&mut self) -> bool {
@@ -70,12 +82,16 @@ impl SupervisedBackendProcess {
         grace_timeout: Duration,
         kill_timeout: Duration,
     ) -> Result<(), ManagedBackendError> {
-        let Some(mut child) = self.child.take() else {
+        let Some(child) = self.child.take() else {
             self.host_process_tree.release();
             return Ok(());
         };
 
-        let result = self.shutdown_child(&mut child, grace_timeout, kill_timeout);
+        let result = self.shutdown_child(
+            &mut crate::generated_output::lock(&child),
+            grace_timeout,
+            kill_timeout,
+        );
         match result {
             Ok(()) => {
                 self.host_process_tree.release();
@@ -94,10 +110,14 @@ impl SupervisedBackendProcess {
             return Ok(true);
         };
 
-        child
+        crate::generated_output::lock(child)
             .try_wait()
             .map(|status| status.is_some())
             .map_err(|source| ManagedBackendError::QueryProcessStatus { launch, source })
+    }
+
+    pub(crate) fn generated_source_witness(&self) -> Option<Arc<Mutex<Child>>> {
+        self.child.clone()
     }
 
     fn shutdown_child(

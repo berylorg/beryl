@@ -5,6 +5,16 @@ struct Cursor<'a> {
     offset: usize,
 }
 impl<'a> Cursor<'a> {
+    fn reader(&mut self) -> Result<ReaderId> {
+        let id: ReaderId = self.take(16)?.try_into().unwrap();
+        if id == [0; 16] {
+            return invalid("zero reader identity");
+        }
+        Ok(id)
+    }
+    fn wide(&mut self) -> Result<u64> {
+        Ok(u64::from_le_bytes(self.take(8)?.try_into().unwrap()))
+    }
     fn take(&mut self, count: usize) -> Result<&'a [u8]> {
         let end = self
             .offset
@@ -60,12 +70,24 @@ pub(super) fn header(bytes: &[u8], expected: Option<&Nonce>) -> Result<(Nonce, u
         return invalid("invalid magic or version");
     }
     let tag = u16::from_le_bytes(bytes[10..12].try_into().unwrap());
-    if !matches!(tag, 1..=5 | 101..=106) {
+    if !matches!(tag, 1..=10 | 101..=110) {
         return invalid("unknown frame tag");
     }
     let length = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
     if length > MAX_PAYLOAD_LEN {
         return invalid("frame exceeds bound");
+    }
+    let reader_length = match tag {
+        6 => length == 4,
+        7 => (21..=20 + MAX_PATH_LEN).contains(&length),
+        8 => length == 36,
+        9 | 10 | 107 => length == 24,
+        108 => (37..=37 + MAX_READER_PAGE).contains(&length),
+        109 | 110 => length == 25,
+        _ => true,
+    };
+    if !reader_length {
+        return invalid("reader frame exceeds bound");
     }
     let nonce: Nonce = bytes[16..48].try_into().unwrap();
     if expected.is_some_and(|expected| *expected != nonce) {
@@ -125,6 +147,96 @@ pub fn decode_frame(expected_nonce: &Nonce, bytes: &[u8]) -> Result<Frame> {
         }
         4 => Frame::Stop,
         5 => Frame::BrokerClose,
+        6 => {
+            let limit = payload.number()?;
+            if limit == 0 {
+                return invalid("zero reader allowance");
+            }
+            Frame::ConfigureReaders { limit }
+        }
+        7 => {
+            let id = payload.reader()?;
+            let path = payload.text(MAX_PATH_LEN, true)?;
+            if !path.starts_with('/') {
+                return invalid("reader path is not absolute");
+            }
+            Frame::ReaderOpen { id, path }
+        }
+        8 => {
+            let id = payload.reader()?;
+            let sequence = payload.wide()?;
+            let offset = payload.wide()?;
+            let allowance = payload.number()?;
+            if sequence == 0
+                || allowance == 0
+                || allowance as usize > MAX_READER_PAGE
+                || offset.checked_add(u64::from(allowance)).is_none()
+            {
+                return invalid("invalid reader request");
+            }
+            Frame::ReaderRead {
+                id,
+                sequence,
+                offset,
+                allowance,
+            }
+        }
+        9 | 10 => {
+            let id = payload.reader()?;
+            let sequence = payload.wide()?;
+            if sequence == 0 {
+                return invalid("zero reader sequence");
+            }
+            if tag == 9 {
+                Frame::ReaderCancel { id, sequence }
+            } else {
+                Frame::ReaderClose { id, sequence }
+            }
+        }
+        107 => {
+            let id = payload.reader()?;
+            let length = payload.wide()?;
+            if length == 0 {
+                return invalid("empty reader source");
+            }
+            Frame::ReaderOpened { id, length }
+        }
+        108 => {
+            let id = payload.reader()?;
+            let sequence = payload.wide()?;
+            let offset = payload.wide()?;
+            let bytes = payload.bytes(MAX_READER_PAGE)?;
+            let eof = payload.flag()?;
+            if sequence == 0 || offset.checked_add(bytes.len() as u64).is_none() {
+                return invalid("invalid reader page");
+            }
+            Frame::ReaderPage {
+                id,
+                sequence,
+                offset,
+                bytes,
+                eof,
+            }
+        }
+        109 => {
+            let id = payload.reader()?;
+            let sequence = payload.wide()?;
+            let kind = match payload.byte()? {
+                1 => ReaderFailure::Refused,
+                2 => ReaderFailure::Missing,
+                3 => ReaderFailure::Unreadable,
+                4 => ReaderFailure::Changed,
+                5 => ReaderFailure::Protocol,
+                6 => ReaderFailure::Cancelled,
+                _ => return invalid("invalid reader failure"),
+            };
+            Frame::ReaderFailed { id, sequence, kind }
+        }
+        110 => Frame::ReaderClosed {
+            id: payload.reader()?,
+            sequence: payload.wide()?,
+            cancelled: payload.flag()?,
+        },
         101 => Frame::Ready {
             role: match payload.byte()? {
                 1 => Role::ContextBroker,
@@ -189,4 +301,40 @@ pub fn decode_frame(expected_nonce: &Nonce, bytes: &[u8]) -> Result<Frame> {
         return invalid("trailing payload");
     }
     Ok(frame)
+}
+
+pub(super) fn decode_owned(expected_nonce: &Nonce, mut bytes: Vec<u8>) -> Result<Frame> {
+    let (_, length, tag) = header(&bytes, Some(expected_nonce))?;
+    if tag != 108 {
+        return decode_frame(expected_nonce, &bytes);
+    }
+    if bytes.len() != HEADER_LEN + length {
+        return invalid("truncated or trailing frame");
+    }
+    let mut payload = Cursor {
+        bytes: &bytes[HEADER_LEN..],
+        offset: 0,
+    };
+    let id = payload.reader()?;
+    let sequence = payload.wide()?;
+    let offset = payload.wide()?;
+    let count = payload.number()? as usize;
+    if sequence == 0 || count > MAX_READER_PAGE || offset.checked_add(count as u64).is_none() {
+        return invalid("invalid reader page");
+    }
+    let start = HEADER_LEN + payload.offset;
+    payload.take(count)?;
+    let eof = payload.flag()?;
+    if payload.offset != length {
+        return invalid("trailing payload");
+    }
+    bytes.copy_within(start..start + count, 0);
+    bytes.truncate(count);
+    Ok(Frame::ReaderPage {
+        id,
+        sequence,
+        offset,
+        bytes,
+        eof,
+    })
 }

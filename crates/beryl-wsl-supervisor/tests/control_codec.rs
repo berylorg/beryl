@@ -88,7 +88,7 @@ fn stream_reader_leaves_the_next_frame_for_the_next_read() {
 fn rejects_nonce_tags_versions_lengths_trailing_and_partial_output() {
     let nonce = [4; 32];
     let encoded = encode_frame(&nonce, &Frame::Stop).unwrap();
-    for (offset, replacement) in [(0, 0), (8, 2), (10, 99), (16, 9)] {
+    for (offset, replacement) in [(0, 0), (8, 1), (10, 99), (16, 9)] {
         let mut bytes = encoded.clone();
         bytes[offset] = replacement;
         assert!(decode_frame(&nonce, &bytes).is_err());
@@ -106,7 +106,7 @@ fn rejects_nonce_tags_versions_lengths_trailing_and_partial_output() {
     }
     let mut reader = FrameReader::new(nonce);
     let mut bytes = encoded.clone();
-    bytes[8] = 2;
+    bytes[8] = 1;
     assert!(reader.feed(&bytes).is_err());
     assert!(reader.feed(&encoded).is_err());
 }

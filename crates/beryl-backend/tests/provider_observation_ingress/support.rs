@@ -153,7 +153,9 @@ impl OrderedTurnStreamSink for TraceSink {
                     ),
                 ))
             }
-            operation @ (OrderedTurnStreamOperation::ThreadStatusChanged(_)
+            operation @ (OrderedTurnStreamOperation::AccountQuotaObservation(_)
+            | OrderedTurnStreamOperation::ThreadContextObservation(_)
+            | OrderedTurnStreamOperation::ThreadStatusChanged(_)
             | OrderedTurnStreamOperation::ThreadClosed(_)
             | OrderedTurnStreamOperation::TurnStarted(_)
             | OrderedTurnStreamOperation::CheckedUserMessage(_)

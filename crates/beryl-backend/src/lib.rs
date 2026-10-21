@@ -394,6 +394,12 @@ mod command;
 mod dynamic_tool;
 mod exact_interruption;
 mod foreground;
+mod generated_output;
+pub use generated_output::{
+    GeneratedOutputCloseFailure, GeneratedOutputCursor, GeneratedOutputError,
+    GeneratedOutputOpenFailure, GeneratedOutputPermit, GeneratedOutputSource,
+    GeneratedOutputTarget, GeneratedReaderAllowance,
+};
 mod incoming_json;
 mod launch_cleanup;
 mod managed_process;

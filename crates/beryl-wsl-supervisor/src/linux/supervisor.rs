@@ -1,4 +1,4 @@
-use super::{context, namespace, sys};
+use super::{context, namespace, reader_control::ReaderControl, sys};
 use crate::{
     DiagnosticTail, ExitStatus, FailureKind, Frame, FrameReader, MAX_PATH_LEN, Role,
     WorkloadResult, read_initial_frame,
@@ -56,6 +56,54 @@ fn collect(fd: i32, bytes: &mut Vec<u8>, maximum: usize) -> io::Result<bool> {
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(false),
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
             Err(error) => return Err(error),
+        }
+    }
+}
+#[derive(Default)]
+struct SetupProof {
+    bytes: Vec<u8>,
+    finished: bool,
+    started: bool,
+}
+impl SetupProof {
+    fn poll(
+        &mut self,
+        fd: i32,
+        output: &mut sys::Output,
+        stopping: &mut Option<Instant>,
+        now: Instant,
+    ) {
+        if self.finished {
+            return;
+        }
+        match collect(fd, &mut self.bytes, 5) {
+            Ok(closed) => {
+                let ready = self.bytes == [0];
+                if closed || ready {
+                    self.finished = true;
+                    if ready {
+                        if stopping.is_none() {
+                            output.push(Frame::WorkloadStarted);
+                            self.started = true;
+                        }
+                    } else if let Some((kind, errno)) = namespace::decode_failure(&self.bytes) {
+                        failure(output, kind, &io::Error::from_raw_os_error(errno));
+                        stopping.get_or_insert(now);
+                    } else {
+                        failure(
+                            output,
+                            FailureKind::Protocol,
+                            &io::Error::other("invalid setup proof"),
+                        );
+                        stopping.get_or_insert(now);
+                    }
+                }
+            }
+            Err(error) => {
+                failure(output, FailureKind::Control, &error);
+                self.finished = true;
+                stopping.get_or_insert(now);
+            }
         }
     }
 }
@@ -120,6 +168,8 @@ pub fn supervise() -> io::Result<()> {
     };
     drop(context);
     let mut reader = FrameReader::new(nonce);
+    let mut generated_readers = ReaderControl::new();
+    let mut init_reaped = None;
     let mut control_live = true;
     let mut stopping: Option<Instant> = if namespace.is_none() {
         Some(Instant::now())
@@ -136,9 +186,7 @@ pub fn supervise() -> io::Result<()> {
             result: result.clone(),
         });
     }
-    let mut proof = Vec::new();
-    let mut proof_finished = false;
-    let mut started = false;
+    let mut setup = SetupProof::default();
     let mut status = Vec::new();
     let mut observation = Vec::new();
     let mut stdout_closed = false;
@@ -162,6 +210,15 @@ pub fn supervise() -> io::Result<()> {
                             if frame == Frame::Stop {
                                 request_stop = true;
                                 attempt_deadline = Some(now + Duration::from_secs(5));
+                            } else if setup.started
+                                && stopping.is_none()
+                                && matches!(request, Frame::LaunchServer { .. })
+                                && namespace.as_ref().is_some_and(|owner| {
+                                    generated_readers
+                                        .request(owner.readers.as_raw_fd(), &mut output, frame)
+                                        .is_ok()
+                                })
+                            {
                             } else {
                                 failure(
                                     &mut output,
@@ -200,7 +257,7 @@ pub fn supervise() -> io::Result<()> {
                     request_stop = true;
                 }
             }
-            if now >= started_at + Duration::from_secs(5) && !proof_finished && stopping.is_none() {
+            if now >= started_at + Duration::from_secs(5) && !setup.finished && stopping.is_none() {
                 failure(
                     &mut output,
                     FailureKind::Timeout,
@@ -226,6 +283,17 @@ pub fn supervise() -> io::Result<()> {
             attempt_deadline = Some(now + Duration::from_secs(5));
         }
         if let Some(owner) = namespace.as_ref() {
+            let reader_channel_closed = if init_reaped.is_none() {
+                match generated_readers.pump(owner.readers.as_raw_fd(), &mut output) {
+                    Ok(closed) => closed,
+                    Err(_) => {
+                        stopping.get_or_insert(now);
+                        false
+                    }
+                }
+            } else {
+                false
+            };
             if !stdout_closed {
                 match drain(owner.stdout.as_raw_fd(), &mut result.stdout) {
                     Ok(closed) => stdout_closed = closed,
@@ -246,36 +314,10 @@ pub fn supervise() -> io::Result<()> {
                     }
                 }
             }
-            if !proof_finished {
-                match collect(owner.proof.as_raw_fd(), &mut proof, 5) {
-                    Ok(closed) => {
-                        let setup_ready = proof == [0];
-                        if closed || setup_ready {
-                            proof_finished = true;
-                            if setup_ready {
-                                if stopping.is_none() {
-                                    output.push(Frame::WorkloadStarted);
-                                    started = true;
-                                }
-                            } else if let Some((kind, errno)) = namespace::decode_failure(&proof) {
-                                failure(&mut output, kind, &io::Error::from_raw_os_error(errno));
-                                stopping.get_or_insert(now);
-                            } else {
-                                failure(
-                                    &mut output,
-                                    FailureKind::Protocol,
-                                    &io::Error::other("invalid setup proof"),
-                                );
-                                stopping.get_or_insert(now);
-                            }
-                        }
-                    }
-                    Err(error) => {
-                        failure(&mut output, FailureKind::Control, &error);
-                        proof_finished = true;
-                        stopping.get_or_insert(now);
-                    }
-                }
+            setup.poll(owner.proof.as_raw_fd(), &mut output, &mut stopping, now);
+            // A fast init can close its channel after publishing the setup proof.
+            if reader_channel_closed {
+                stopping.get_or_insert(now);
             }
             if let Err(error) = collect(owner.status.as_raw_fd(), &mut status, 5) {
                 failure(&mut output, FailureKind::Control, &error);
@@ -296,8 +338,23 @@ pub fn supervise() -> io::Result<()> {
                     }
                 }
             }
-            match sys::reap(owner.pidfd.as_raw_fd()) {
+            let reaping = match init_reaped {
+                Some(exit) => Ok(Some(exit)),
+                None => sys::reap(owner.pidfd.as_raw_fd()),
+            };
+            match reaping {
                 Ok(Some(init_exit)) => {
+                    init_reaped = Some(init_exit);
+                    setup.poll(owner.proof.as_raw_fd(), &mut output, &mut stopping, now);
+                    match generated_readers.drain_closed(owner.readers.as_raw_fd(), &mut output) {
+                        Ok(true) => {}
+                        Ok(false) => continue,
+                        Err(error) => {
+                            failure(&mut output, FailureKind::Control, &error);
+                            stopping.get_or_insert(now);
+                            continue;
+                        }
+                    }
                     if !drain(owner.stdout.as_raw_fd(), &mut result.stdout).unwrap_or(false) {
                         result.stdout.truncated = true;
                     }
@@ -317,7 +374,7 @@ pub fn supervise() -> io::Result<()> {
                         init_exit
                     };
                     if matches!(request, Frame::Observe { .. }) {
-                        if result.exit == ExitStatus::Exited(0) && started {
+                        if result.exit == ExitStatus::Exited(0) && setup.started {
                             let prefix = b"BRYL-OBSERVE1\0";
                             let parsed = observation
                                 .strip_prefix(prefix)

@@ -91,10 +91,15 @@ impl ManagedBackendSession {
                 });
             }
         };
-        let ordered_sink: Option<&mut (dyn OrderedTurnStreamSink + '_)> = self
-            .ordered_turn_stream_sink
+        let mut guarded_sink = self.ordered_turn_stream_sink.as_mut().map(|sink| {
+            crate::generated_output::authority::LoadedSourceSink {
+                sink: &mut **sink,
+                authority: self.generated_loaded_source.clone(),
+            }
+        });
+        let ordered_sink: Option<&mut (dyn OrderedTurnStreamSink + '_)> = guarded_sink
             .as_mut()
-            .map(|sink| &mut **sink as &mut (dyn OrderedTurnStreamSink + '_));
+            .map(|sink| sink as &mut dyn OrderedTurnStreamSink);
         let outcome = self.transport.recv_message_timeout(
             method,
             timeout,

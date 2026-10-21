@@ -18,11 +18,12 @@ type Pipe<T> = Arc<Mutex<Option<T>>>;
 
 #[derive(Debug)]
 pub(super) struct Companion {
+    readers: Arc<super::readers::ReaderRegistry>,
     child: Child,
     stdin: Pipe<ChildStdin>,
     stdout: Pipe<ChildStdout>,
     stderr: Pipe<ChildStderr>,
-    requests: Option<SyncSender<Vec<u8>>>,
+    requests: Arc<Mutex<Option<SyncSender<Vec<u8>>>>>,
     events: Option<Receiver<Result<Frame, ManagedBackendError>>>,
     writer: Option<JoinHandle<()>>,
     reader: Option<JoinHandle<()>>,
@@ -38,11 +39,12 @@ impl Companion {
         let stdout = Arc::new(Mutex::new(child.stdout.take()));
         let stderr = Arc::new(Mutex::new(child.stderr.take()));
         Self {
+            readers: Arc::new(super::readers::ReaderRegistry::default()),
             child,
             stdin,
             stdout,
             stderr,
-            requests: None,
+            requests: Arc::new(Mutex::new(None)),
             events: None,
             writer: None,
             reader: None,
@@ -55,7 +57,10 @@ impl Companion {
 
     pub(super) fn prepare(&mut self, nonce: Nonce) -> Result<(), ManagedBackendError> {
         let (requests, request_rx) = mpsc::sync_channel::<Vec<u8>>(MAX_PENDING_FRAMES);
-        self.requests = Some(requests);
+        *self
+            .requests
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = Some(requests);
         let stdin = self.stdin.clone();
         let failed = self.io_failed.clone();
         self.writer = Some(
@@ -82,6 +87,7 @@ impl Companion {
         self.events = Some(event_rx);
         let stdout = self.stdout.clone();
         let failed = self.io_failed.clone();
+        let readers = self.readers.clone();
         self.reader = Some(
             thread::Builder::new()
                 .name("beryl-wsl-control-reader".into())
@@ -91,9 +97,34 @@ impl Companion {
                         return;
                     };
                     let mut reader = FrameReader::new(nonce);
+                    let mut control: Option<beryl_wsl_supervisor::ControlState> = None;
                     loop {
                         match reader.read_frame(&mut stdout) {
                             Ok(Some(frame)) => {
+                                if control.is_none() {
+                                    if let Frame::Ready { role } = &frame {
+                                        control =
+                                            Some(beryl_wsl_supervisor::ControlState::new(*role));
+                                    }
+                                }
+                                let valid = match control.as_mut() {
+                                    Some(control) => control.accept(&frame).is_ok(),
+                                    None => matches!(frame, Frame::Failure { .. }),
+                                };
+                                if !valid {
+                                    readers.fail();
+                                    failed.store(true, Ordering::Release);
+                                    break;
+                                }
+                                let frame = match readers.route(frame) {
+                                    Ok(Some(frame)) => frame,
+                                    Ok(None) => continue,
+                                    Err(_) => {
+                                        readers.fail();
+                                        failed.store(true, Ordering::Release);
+                                        break;
+                                    }
+                                };
                                 if events.try_send(Ok(frame)).is_err() {
                                     failed.store(true, Ordering::Release);
                                     break;
@@ -110,6 +141,7 @@ impl Companion {
                     }
                     let mut scratch = [0; 8192];
                     while stdout.read(&mut scratch).is_ok_and(|count| count != 0) {}
+                    readers.fail();
                 })
                 .map_err(|source| ManagedBackendError::WslCompanionIo { source })?,
         );
@@ -145,6 +177,8 @@ impl Companion {
             .map_err(|_| ManagedBackendError::WslSupervisionUnavailable)?;
         match self
             .requests
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
             .as_ref()
             .ok_or(ManagedBackendError::WslSupervisionUnavailable)?
             .try_send(bytes)
@@ -154,6 +188,26 @@ impl Companion {
                 Err(ManagedBackendError::WslSupervisionUnavailable)
             }
         }
+    }
+
+    pub(super) fn generated_reader(
+        &self,
+        allowance: crate::GeneratedReaderAllowance,
+        nonce: Nonce,
+    ) -> Result<super::readers::WslGeneratedReader, crate::GeneratedOutputError> {
+        if self.io_failed.load(Ordering::Acquire) {
+            return Err(crate::GeneratedOutputError::LostSourceAuthority);
+        }
+        if self.readers.configure(allowance)? {
+            if self
+                .send(&nonce, &Frame::ConfigureReaders { limit: allowance.0 })
+                .is_err()
+            {
+                self.readers.unconfigure();
+                return Err(crate::GeneratedOutputError::Busy);
+            }
+        }
+        self.readers.reserve(self.requests.clone(), nonce)
     }
 
     pub(super) fn receive(
@@ -208,7 +262,10 @@ impl Companion {
         {
             return Err(ManagedBackendError::WslSupervisionTimeout);
         }
-        self.requests.take();
+        self.requests
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take();
         take_pipe(&self.stdin);
         take_pipe(&self.stdout);
         take_pipe(&self.stderr);
@@ -226,6 +283,7 @@ impl Companion {
                 }
             }
         }
+        self.readers.joined();
         if self.io_failed.load(Ordering::Acquire) {
             return Err(ManagedBackendError::WslSupervisionUnavailable);
         }
@@ -253,7 +311,10 @@ impl Companion {
 
     #[cfg(feature = "lifecycle-test-support")]
     pub(super) fn close_control_for_lifecycle_test(&mut self) {
-        self.requests.take();
+        self.requests
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take();
     }
 
     #[cfg(feature = "lifecycle-test-support")]

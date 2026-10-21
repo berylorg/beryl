@@ -2,6 +2,16 @@ use super::types::MAGIC;
 use super::*;
 struct Payload(Vec<u8>);
 impl Payload {
+    fn reader(&mut self, id: &ReaderId) -> Result<()> {
+        if *id == [0; 16] {
+            return invalid("zero reader identity");
+        }
+        self.0.extend_from_slice(id);
+        Ok(())
+    }
+    fn wide(&mut self, value: u64) {
+        self.0.extend_from_slice(&value.to_le_bytes());
+    }
     fn byte(&mut self, value: u8) {
         self.0.push(value);
     }
@@ -10,7 +20,8 @@ impl Payload {
     }
     fn bytes(&mut self, bytes: &[u8], maximum: usize) -> Result<()> {
         if bytes.len() > maximum
-            || self.0.len().saturating_add(4).saturating_add(bytes.len()) > MAX_PAYLOAD_LEN
+            || self.0.len().saturating_add(4).saturating_add(bytes.len())
+                > HEADER_LEN + MAX_PAYLOAD_LEN
         {
             return invalid("field or aggregate exceeds bound");
         }
@@ -29,7 +40,15 @@ impl Payload {
 }
 
 pub fn encode_frame(nonce: &Nonce, frame: &Frame) -> Result<Vec<u8>> {
-    let mut payload = Payload(Vec::new());
+    if matches!(frame,Frame::ReaderPage{bytes,..} if bytes.len()>MAX_READER_PAGE) {
+        return invalid("invalid reader page");
+    }
+    let capacity = match frame {
+        Frame::ReaderPage { bytes, .. } => HEADER_LEN + 37 + bytes.len(),
+        _ => HEADER_LEN,
+    };
+    let mut payload = Payload(Vec::with_capacity(capacity));
+    payload.0.resize(HEADER_LEN, 0);
     let tag: u16 = match frame {
         Frame::Initialize => 1,
         Frame::LaunchServer {
@@ -73,6 +92,103 @@ pub fn encode_frame(nonce: &Nonce, frame: &Frame) -> Result<Vec<u8>> {
         }
         Frame::Stop => 4,
         Frame::BrokerClose => 5,
+        Frame::ConfigureReaders { limit } => {
+            if *limit == 0 {
+                return invalid("zero reader allowance");
+            }
+            payload.number(*limit);
+            6
+        }
+        Frame::ReaderOpen { id, path } => {
+            payload.reader(id)?;
+            payload.text(path, MAX_PATH_LEN, true)?;
+            if !path.starts_with('/') {
+                return invalid("reader path is not absolute");
+            }
+            7
+        }
+        Frame::ReaderRead {
+            id,
+            sequence,
+            offset,
+            allowance,
+        } => {
+            payload.reader(id)?;
+            if *sequence == 0
+                || *allowance == 0
+                || *allowance as usize > MAX_READER_PAGE
+                || offset.checked_add(u64::from(*allowance)).is_none()
+            {
+                return invalid("invalid reader request");
+            }
+            payload.wide(*sequence);
+            payload.wide(*offset);
+            payload.number(*allowance);
+            8
+        }
+        Frame::ReaderCancel { id, sequence } | Frame::ReaderClose { id, sequence } => {
+            payload.reader(id)?;
+            if *sequence == 0 {
+                return invalid("zero reader sequence");
+            }
+            payload.wide(*sequence);
+            if matches!(frame, Frame::ReaderCancel { .. }) {
+                9
+            } else {
+                10
+            }
+        }
+        Frame::ReaderOpened { id, length } => {
+            payload.reader(id)?;
+            if *length == 0 {
+                return invalid("empty reader source");
+            }
+            payload.wide(*length);
+            107
+        }
+        Frame::ReaderPage {
+            id,
+            sequence,
+            offset,
+            bytes,
+            eof,
+        } => {
+            payload.reader(id)?;
+            if *sequence == 0
+                || bytes.len() > MAX_READER_PAGE
+                || offset.checked_add(bytes.len() as u64).is_none()
+            {
+                return invalid("invalid reader page");
+            }
+            payload.wide(*sequence);
+            payload.wide(*offset);
+            payload.bytes(bytes, MAX_READER_PAGE)?;
+            payload.byte(u8::from(*eof));
+            108
+        }
+        Frame::ReaderFailed { id, sequence, kind } => {
+            payload.reader(id)?;
+            payload.wide(*sequence);
+            payload.byte(match kind {
+                ReaderFailure::Refused => 1,
+                ReaderFailure::Missing => 2,
+                ReaderFailure::Unreadable => 3,
+                ReaderFailure::Changed => 4,
+                ReaderFailure::Protocol => 5,
+                ReaderFailure::Cancelled => 6,
+            });
+            109
+        }
+        Frame::ReaderClosed {
+            id,
+            sequence,
+            cancelled,
+        } => {
+            payload.reader(id)?;
+            payload.wide(*sequence);
+            payload.byte(u8::from(*cancelled));
+            110
+        }
         Frame::Ready { role } => {
             payload.byte(match role {
                 Role::ContextBroker => 1,
@@ -127,15 +243,14 @@ pub fn encode_frame(nonce: &Nonce, frame: &Frame) -> Result<Vec<u8>> {
             106
         }
     };
-    if payload.0.len() > MAX_PAYLOAD_LEN {
+    let length = payload.0.len() - HEADER_LEN;
+    if length > MAX_PAYLOAD_LEN {
         return invalid("frame exceeds bound");
     }
-    let mut output = Vec::with_capacity(HEADER_LEN + payload.0.len());
-    output.extend_from_slice(MAGIC);
-    output.extend_from_slice(&PROTOCOL_VERSION.to_le_bytes());
-    output.extend_from_slice(&tag.to_le_bytes());
-    output.extend_from_slice(&(payload.0.len() as u32).to_le_bytes());
-    output.extend_from_slice(nonce);
-    output.extend_from_slice(&payload.0);
-    Ok(output)
+    payload.0[..8].copy_from_slice(MAGIC);
+    payload.0[8..10].copy_from_slice(&PROTOCOL_VERSION.to_le_bytes());
+    payload.0[10..12].copy_from_slice(&tag.to_le_bytes());
+    payload.0[12..16].copy_from_slice(&(length as u32).to_le_bytes());
+    payload.0[16..HEADER_LEN].copy_from_slice(nonce);
+    Ok(payload.0)
 }

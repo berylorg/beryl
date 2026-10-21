@@ -1,5 +1,5 @@
-use crate::{Frame, MAX_PENDING_FRAMES, Nonce, encode_frame};
-use std::collections::VecDeque;
+use crate::{Frame, MAX_PENDING_FRAMES, Nonce, ReaderId, encode_frame};
+use std::collections::{BTreeMap, VecDeque};
 use std::io::{self, Read};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::time::{Duration, Instant};
@@ -161,6 +161,9 @@ pub(super) struct Output {
     frames: VecDeque<Vec<u8>>,
     offset: usize,
     lost: bool,
+    readers: BTreeMap<ReaderId, VecDeque<(Vec<u8>, bool)>>,
+    reader_limit: u32,
+    active_reader: Option<(ReaderId, Vec<u8>, usize)>,
 }
 impl Output {
     pub fn new(nonce: Nonce) -> io::Result<Self> {
@@ -170,6 +173,9 @@ impl Output {
             frames: VecDeque::new(),
             offset: 0,
             lost: false,
+            readers: BTreeMap::new(),
+            reader_limit: 0,
+            active_reader: None,
         })
     }
     pub fn push(&mut self, frame: Frame) {
@@ -188,6 +194,29 @@ impl Output {
         self.drain();
     }
     pub fn drain(&mut self) {
+        let write_reader = self
+            .active_reader
+            .as_ref()
+            .is_some_and(|(_, _, offset)| *offset != 0 || self.frames.is_empty());
+        if let Some((_, bytes, offset)) = self.active_reader.as_mut().filter(|_| write_reader) {
+            match write(1, &bytes[*offset..]) {
+                Ok(0) => self.lost = true,
+                Ok(count) => *offset += count,
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                    ) =>
+                {
+                    return;
+                }
+                Err(_) => self.lost = true,
+            }
+            if !self.lost && *offset != bytes.len() {
+                return;
+            }
+            self.active_reader = None;
+        }
         while let Some(frame) = self.frames.front() {
             match write(1, &frame[self.offset..]) {
                 Ok(0) => {
@@ -211,6 +240,57 @@ impl Output {
         }
         if self.lost {
             self.frames.clear();
+            self.readers.clear();
+            self.active_reader = None;
+        } else if self.frames.is_empty() && self.active_reader.is_none() {
+            let id = self
+                .readers
+                .iter()
+                .find_map(|(id, frames)| (!frames.is_empty()).then_some(*id));
+            if let Some(id) = id {
+                let (bytes, closed) = self.readers.get_mut(&id).unwrap().pop_front().unwrap();
+                if closed {
+                    self.readers.remove(&id);
+                }
+                self.active_reader = Some((id, bytes, 0));
+            }
+        }
+    }
+    pub fn configure_readers(&mut self, limit: u32) {
+        self.reader_limit = limit;
+    }
+    pub fn reader_pending(&self, id: &ReaderId) -> bool {
+        self.readers
+            .get(id)
+            .is_some_and(|frames| !frames.is_empty())
+            || self
+                .active_reader
+                .as_ref()
+                .is_some_and(|(active, _, _)| active == id)
+    }
+    pub fn reader(&mut self, id: ReaderId, frame: Frame) -> io::Result<()> {
+        if !self.readers.contains_key(&id)
+            && self.readers.len() as u64 >= u64::from(self.reader_limit)
+        {
+            return Err(io::Error::other("reader output cardinality"));
+        }
+        let frames = self.readers.entry(id).or_default();
+        if frames.len() >= 3 {
+            return Err(io::Error::other("reader output bound"));
+        }
+        let closed = matches!(frame, Frame::ReaderClosed { .. });
+        frames.push_back((encode_frame(&self.nonce, &frame).map_err(codec)?, closed));
+        self.drain();
+        Ok(())
+    }
+    pub fn abandon_readers(&mut self) {
+        self.readers.clear();
+        if self
+            .active_reader
+            .as_ref()
+            .is_some_and(|(_, _, offset)| *offset == 0)
+        {
+            self.active_reader = None;
         }
     }
     pub fn lost(&self) -> bool {
@@ -218,7 +298,10 @@ impl Output {
     }
     pub fn flush(&mut self) {
         let deadline = Instant::now() + Duration::from_secs(5);
-        while !self.frames.is_empty() && !self.lost && Instant::now() < deadline {
+        while (!self.frames.is_empty() || !self.readers.is_empty() || self.active_reader.is_some())
+            && !self.lost
+            && Instant::now() < deadline
+        {
             let mut fds = [libc::pollfd {
                 fd: 1,
                 events: libc::POLLOUT,

@@ -119,6 +119,11 @@ cancel, namespace closure or control processing. Pending control frames retain t
 eight-frame cap; control takes priority between bounded data frames. No reader thread/process or
 frame is created without the corresponding admitted reader slot.
 
+An automatic terminal receipt preserves its admitted reader reservation until an explicit final
+next-sequence cancel or close is acknowledged. Other slots may cycle without evicting that proof;
+only the explicit acknowledgement permits reservation reuse. Backend retains its matching slot
+through this final acknowledgement, including after an automatic failure and closure.
+
 Cancel and close name the exact reader and next sequence. The original owner requests termination
 and retains pidfd/channel custody until exact child reaping and complete channel drain. The
 reader-closed event distinguishes normal completion from cancellation/failure and is emitted only

@@ -60,8 +60,10 @@ fn allocate_approval_response_authority_generation() -> Result<u64, ManagedBacke
 }
 
 pub struct ManagedBackendSession {
+    pub(crate) generated_loaded_source:
+        Option<std::sync::Arc<crate::generated_output::LoadedSourceAuthority>>,
     transport: BackendClientTransport,
-    managed_launch_provenance: Option<crate::server::ManagedLaunchProvenance>,
+    pub(crate) managed_launch_provenance: Option<crate::server::ManagedLaunchProvenance>,
     initialize: Option<InitializeResponse>,
     initialized_notification_profile: Option<InitializedNotificationProfile>,
     next_request_id: u64,
@@ -598,6 +600,12 @@ impl std::error::Error for ManagedWebSocketError {
 }
 
 impl ManagedBackendSession {
+    pub(crate) fn generated_profile_is_live(&self) -> bool {
+        self.initialize.is_some()
+            && !self.transport.is_closed()
+            && self.initialized_notification_profile
+                == Some(InitializedNotificationProfile::FullTurnStream)
+    }
     #[cfg(feature = "lifecycle-test-support")]
     #[doc(hidden)]
     pub fn last_websocket_ingress_test_metrics(
@@ -633,6 +641,7 @@ impl ManagedBackendSession {
     {
         Ok(Self {
             transport: BackendClientTransport::Unsupported,
+            generated_loaded_source: None,
             managed_launch_provenance: None,
             initialize: None,
             initialized_notification_profile: None,
@@ -978,6 +987,7 @@ impl ManagedBackendSession {
     }
 
     fn retire_connection(&mut self) {
+        self.retire_generated_loaded_source();
         self.pre_bind_approvals.clear();
         self.response_expectation.poison();
         self.exact_foreground_thread = None;
@@ -994,6 +1004,7 @@ impl ManagedBackendSession {
 
         Ok(Self {
             transport: BackendClientTransport::ForegroundWebSocket(transport),
+            generated_loaded_source: None,
             managed_launch_provenance: None,
             initialize: None,
             initialized_notification_profile: None,
@@ -1017,6 +1028,7 @@ impl ManagedBackendSession {
 
         Ok(Self {
             transport: BackendClientTransport::RequestOnlyWebSocket(transport),
+            generated_loaded_source: None,
             managed_launch_provenance: None,
             initialize: None,
             initialized_notification_profile: None,

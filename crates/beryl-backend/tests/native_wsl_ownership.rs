@@ -52,7 +52,7 @@ impl NativeContext {
                 artifact_host,
                 required("BERYL_WSL_TEST_ARTIFACT_LINUX"),
                 digest.finalize().into(),
-                1,
+                beryl_wsl_supervisor::PROTOCOL_VERSION,
                 Arc::new(file),
             )
             .unwrap(),

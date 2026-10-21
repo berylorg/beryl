@@ -1,14 +1,26 @@
 use std::fmt;
 use std::io;
 
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 pub const HEADER_LEN: usize = 48;
 pub const MAX_PAYLOAD_LEN: usize = 128 * 1024;
 pub const MAX_PENDING_FRAMES: usize = 8;
 pub const MAX_PATH_LEN: usize = 4096;
 pub const MAX_DIAGNOSTIC_LEN: usize = 4096;
 pub type Nonce = [u8; 32];
-pub(super) const MAGIC: &[u8; 8] = b"BRYLWSL1";
+pub(super) const MAGIC: &[u8; 8] = b"BRYLWSL2";
+pub const MAX_READER_PAGE: usize = 8192;
+pub type ReaderId = [u8; 16];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReaderFailure {
+    Refused,
+    Missing,
+    Unreadable,
+    Changed,
+    Protocol,
+    Cancelled,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Role {
@@ -67,6 +79,48 @@ pub enum Frame {
     },
     Stop,
     BrokerClose,
+    ConfigureReaders {
+        limit: u32,
+    },
+    ReaderOpen {
+        id: ReaderId,
+        path: String,
+    },
+    ReaderRead {
+        id: ReaderId,
+        sequence: u64,
+        offset: u64,
+        allowance: u32,
+    },
+    ReaderCancel {
+        id: ReaderId,
+        sequence: u64,
+    },
+    ReaderClose {
+        id: ReaderId,
+        sequence: u64,
+    },
+    ReaderOpened {
+        id: ReaderId,
+        length: u64,
+    },
+    ReaderPage {
+        id: ReaderId,
+        sequence: u64,
+        offset: u64,
+        bytes: Vec<u8>,
+        eof: bool,
+    },
+    ReaderFailed {
+        id: ReaderId,
+        sequence: u64,
+        kind: ReaderFailure,
+    },
+    ReaderClosed {
+        id: ReaderId,
+        sequence: u64,
+        cancelled: bool,
+    },
     Ready {
         role: Role,
     },

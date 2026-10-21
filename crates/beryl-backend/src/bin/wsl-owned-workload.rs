@@ -57,6 +57,9 @@ mod workload {
                     .strip_prefix("ws://")
                     .ok_or("missing loopback listener")?;
                 let token_path = argument(&arguments, "--ws-token-file")?;
+                if std::path::Path::new("generated-output-fixture").is_file() {
+                    return super::generated_source::run(listen, token_path);
+                }
                 let mut token = std::fs::read(token_path)?;
                 if token.len() != 64 {
                     return Err("unexpected bearer file".into());
@@ -169,3 +172,6 @@ fn main() {
     eprintln!("Linux ownership fixture requires Linux");
     std::process::exit(1);
 }
+#[cfg(target_os = "linux")]
+#[path = "wsl-owned-workload/generated_source.rs"]
+mod generated_source;

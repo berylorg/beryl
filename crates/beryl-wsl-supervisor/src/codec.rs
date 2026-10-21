@@ -7,8 +7,8 @@ pub use encode::encode_frame;
 pub use reader::{ControlState, FrameReader, read_initial_frame};
 pub use types::{
     CodecError, DiagnosticTail, ExitStatus, FailureKind, Frame, HEADER_LEN, MAX_DIAGNOSTIC_LEN,
-    MAX_PATH_LEN, MAX_PAYLOAD_LEN, MAX_PENDING_FRAMES, Nonce, ObservationKind, PROTOCOL_VERSION,
-    Role, WorkloadResult,
+    MAX_PATH_LEN, MAX_PAYLOAD_LEN, MAX_PENDING_FRAMES, MAX_READER_PAGE, Nonce, ObservationKind,
+    PROTOCOL_VERSION, ReaderFailure, ReaderId, Role, WorkloadResult,
 };
 use types::{Result, invalid};
 fn validate_text(text: &str, maximum: usize, path: bool) -> Result<()> {

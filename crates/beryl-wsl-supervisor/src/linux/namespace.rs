@@ -1,4 +1,4 @@
-use super::{context::Context, sys};
+use super::{context::Context, reader_transport, readers::Readers, sys};
 use crate::{FailureKind, Frame, MAX_PATH_LEN, ObservationKind};
 use std::ffi::{CString, OsString};
 use std::io;
@@ -15,6 +15,7 @@ pub(super) struct Channels {
     pub observation: i32,
     pub stdout: i32,
     pub stderr: i32,
+    pub readers: i32,
 }
 fn fail(fd: i32, kind: FailureKind, error: io::Error) -> ! {
     let tag = match kind {
@@ -56,6 +57,7 @@ pub(super) fn init(context: &Context, request: &Frame, channels: Channels) -> ! 
             channels.observation,
             channels.stdout,
             channels.stderr,
+            channels.readers,
         ])?;
         sys::check(unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) })?;
         if sys::exited(channels.parent)? {
@@ -112,12 +114,24 @@ pub(super) fn init(context: &Context, request: &Frame, channels: Channels) -> ! 
     }
     let mut trace_started = false;
     let mut exec_proved = false;
+    let mut readers = Readers::new();
     if sys::nonblocking(channels.commands).is_err() {
         unsafe { libc::_exit(1) }
     }
     loop {
         if sys::exited(channels.parent).unwrap_or(true) {
             unsafe { libc::_exit(1) }
+        }
+        for _ in 0..8 {
+            match reader_transport::receive(channels.readers) {
+                Ok(reader_transport::Received::Pending) => break,
+                Ok(reader_transport::Received::Frame(frame)) => {
+                    if !tracing || readers.request(context, frame).is_err() {
+                        unsafe { libc::_exit(1) }
+                    }
+                }
+                _ => unsafe { libc::_exit(1) },
+            }
         }
         let mut status = 0;
         loop {
@@ -183,6 +197,9 @@ pub(super) fn init(context: &Context, request: &Frame, channels: Channels) -> ! 
             if child == 0 {
                 break;
             }
+            if child > 0 && (libc::WIFEXITED(status) || libc::WIFSIGNALED(status)) {
+                readers.reaped(child);
+            }
             if child < 0 {
                 let error = sys::error();
                 if error.kind() == io::ErrorKind::Interrupted {
@@ -190,6 +207,9 @@ pub(super) fn init(context: &Context, request: &Frame, channels: Channels) -> ! 
                 }
                 unsafe { libc::_exit(1) }
             }
+        }
+        if readers.pump(channels.readers).is_err() {
+            unsafe { libc::_exit(1) }
         }
         let mut fds = [
             libc::pollfd {
@@ -390,6 +410,7 @@ pub(super) struct Namespace {
     pub observation: OwnedFd,
     pub stdout: OwnedFd,
     pub stderr: OwnedFd,
+    pub readers: OwnedFd,
 }
 pub(super) fn spawn(context: &Context, request: &Frame) -> io::Result<Namespace> {
     let parent = sys::pidfd_self()?;
@@ -400,6 +421,7 @@ pub(super) fn spawn(context: &Context, request: &Frame) -> io::Result<Namespace>
     let (observation_read, observation_write) = sys::pipe()?;
     let (stdout_read, stdout_write) = sys::pipe()?;
     let (stderr_read, stderr_write) = sys::pipe()?;
+    let (reader_parent, reader_init) = reader_transport::nonblocking_pair()?;
     for read in [
         &command_write,
         &status_read,
@@ -423,6 +445,7 @@ pub(super) fn spawn(context: &Context, request: &Frame) -> io::Result<Namespace>
                 observation: observation_write.as_raw_fd(),
                 stdout: stdout_write.as_raw_fd(),
                 stderr: stderr_write.as_raw_fd(),
+                readers: reader_init.as_raw_fd(),
             },
         ),
         sys::Spawn::Parent { pidfd, .. } => pidfd,
@@ -435,6 +458,7 @@ pub(super) fn spawn(context: &Context, request: &Frame) -> io::Result<Namespace>
         observation: observation_read,
         stdout: stdout_read,
         stderr: stderr_read,
+        readers: reader_parent,
     };
     if let Err(error) = sys::write_all(gate_write.as_raw_fd(), b"G") {
         let _ = sys::signal(namespace.pidfd.as_raw_fd(), libc::SIGKILL);

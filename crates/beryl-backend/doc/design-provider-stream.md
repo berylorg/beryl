@@ -26,6 +26,14 @@ IDs, historical records, equal generation numbers or a new session cannot constr
 capability. The App source-proof join supplies the exact item/resource/path correlation; backend
 rechecks its live original launch and loaded-session fences before opening and during reads.
 
+`ManagedBackendSession::authorize_generated_output` checks the original release admission and
+opaque loaded session and returns a `GeneratedOutputPermit`. `GeneratedOutputTarget` supplies
+descriptive resource/turn/item correlation; constructing that tuple grants no authority.
+`ManagedBackendServer::open_generated_output` takes the permit, native path, configured reader
+allowance and cancellation flag. Its `GeneratedOutputSource` supplies captured length, borrowed
+independent cursors and consuming explicit close. Failed open or close returns any source whose
+disposal remains uncertain so the original consumer retains cleanup custody.
+
 The file source owns one regular file opened under the original producer's filesystem authority.
 Host paths use the existing absolute Host-native path policy, including supported UNC forms; WSL
 paths are absolute POSIX paths in that exact distribution. Relative resolution and project/root

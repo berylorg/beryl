@@ -24,9 +24,15 @@ fn artifact(version: u16, path: &str) -> Result<Arc<WslSupervisorArtifact>, Mana
 #[test]
 fn incompatible_or_unmapped_artifact_is_unavailable() {
     for (version, path) in [
-        (2, "/mnt/c/Beryl/beryl-wsl-supervisor"),
-        (1, "/tmp/beryl-wsl-supervisor"),
-        (1, "/mnt/c/../beryl-wsl-supervisor"),
+        (1, "/mnt/c/Beryl/beryl-wsl-supervisor"),
+        (
+            beryl_wsl_supervisor::PROTOCOL_VERSION,
+            "/tmp/beryl-wsl-supervisor",
+        ),
+        (
+            beryl_wsl_supervisor::PROTOCOL_VERSION,
+            "/mnt/c/../beryl-wsl-supervisor",
+        ),
     ] {
         assert!(matches!(
             artifact(version, path),
@@ -37,7 +43,11 @@ fn incompatible_or_unmapped_artifact_is_unavailable() {
 
 #[test]
 fn invalid_observation_requests_never_acquire_a_process_owner() {
-    let artifact = artifact(1, "/mnt/c/Beryl/beryl-wsl-supervisor").unwrap();
+    let artifact = artifact(
+        beryl_wsl_supervisor::PROTOCOL_VERSION,
+        "/mnt/c/Beryl/beryl-wsl-supervisor",
+    )
+    .unwrap();
     let distribution = WslDistributionName::new("Ubuntu").unwrap();
     for (operation, timeout) in [
         (
@@ -72,7 +82,7 @@ fn invalid_observation_requests_never_acquire_a_process_owner() {
 #[test]
 fn cancellation_before_observation_does_not_start_a_companion() {
     let failure = WslFilesystemObservation::observe(
-        artifact(1, "/mnt/c/Beryl/beryl-wsl-supervisor").unwrap(),
+        artifact(2, "/mnt/c/Beryl/beryl-wsl-supervisor").unwrap(),
         &WslDistributionName::new("Ubuntu").unwrap(),
         WslFilesystemOperation::UserHome,
         Duration::from_secs(1),

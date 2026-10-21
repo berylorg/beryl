@@ -38,12 +38,22 @@ pub struct ThreadLoadOptions {
 }
 
 /// One loaded app-server thread normalized without materializing its historical turns.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct LoadedThreadSession {
+    pub(crate) generated_source_authority:
+        Option<std::sync::Arc<crate::generated_output::LoadedSourceAuthority>>,
     thread_id: CasThreadId,
     status: ThreadStatus,
     metadata: ThreadSessionMetadata,
 }
+impl PartialEq for LoadedThreadSession {
+    fn eq(&self, other: &Self) -> bool {
+        self.thread_id == other.thread_id
+            && self.status == other.status
+            && self.metadata == other.metadata
+    }
+}
+impl Eq for LoadedThreadSession {}
 
 /// A newly started or forked loaded thread that has not yet been used for injection.
 #[derive(Debug, PartialEq, Eq)]
@@ -163,6 +173,9 @@ impl LoadedThreadSession {
 }
 
 impl FreshLoadedThreadSession {
+    pub(crate) fn generated_loaded_mut(&mut self) -> &mut LoadedThreadSession {
+        &mut self.loaded
+    }
     /// Returns the fresh thread as an ordinary loaded session without authorizing injection.
     #[must_use]
     pub fn into_loaded(self) -> LoadedThreadSession {
@@ -214,6 +227,7 @@ impl FreshIdleThread {
 pub(crate) fn fresh_idle_thread_for_lifecycle_test(thread_id: CasThreadId) -> FreshIdleThread {
     FreshIdleThread {
         loaded: LoadedThreadSession {
+            generated_source_authority: None,
             thread_id,
             status: ThreadStatus::Idle,
             metadata: ThreadSessionMetadata::default(),
@@ -303,6 +317,7 @@ impl ThreadLineageResponse {
 
     pub(crate) fn into_loaded(self) -> LoadedThreadSession {
         LoadedThreadSession {
+            generated_source_authority: None,
             thread_id: self.thread_id,
             status: self.status,
             metadata: ThreadSessionMetadata {

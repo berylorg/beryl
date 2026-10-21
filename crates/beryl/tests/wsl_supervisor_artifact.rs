@@ -72,11 +72,13 @@ fn sibling_verification_fails_closed_and_keeps_exact_file_pinned() {
     let path = directory.path().join("beryl-wsl-supervisor-linux-x86_64");
     let bytes = static_elf();
     let digest = identity::digest(&mut Cursor::new(&bytes)).unwrap();
-    assert!(artifact::open_sibling(&executable, digest, 1).is_none());
+    let protocol_version = 2;
+    assert!(artifact::open_sibling(&executable, digest, protocol_version).is_none());
     fs::write(&path, &bytes).unwrap();
-    assert!(artifact::open_sibling(&executable, [0; 32], 1).is_none());
+    assert!(artifact::open_sibling(&executable, [0; 32], protocol_version).is_none());
     assert!(artifact::open_sibling(&executable, digest, 0).is_none());
-    let descriptor = artifact::open_sibling(&executable, digest, 1).unwrap();
+    assert!(artifact::open_sibling(&executable, digest, 1).is_none());
+    let descriptor = artifact::open_sibling(&executable, digest, protocol_version).unwrap();
     assert!(OpenOptions::new().write(true).open(&path).is_err());
     assert!(fs::remove_file(&path).is_err());
     let retained = descriptor.clone();
@@ -89,5 +91,5 @@ fn sibling_verification_fails_closed_and_keeps_exact_file_pinned() {
         .unwrap()
         .write_all(b"changed")
         .unwrap();
-    assert!(artifact::open_sibling(&executable, digest, 1).is_none());
+    assert!(artifact::open_sibling(&executable, digest, protocol_version).is_none());
 }

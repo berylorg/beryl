@@ -23,7 +23,7 @@ impl FrameReader {
         let result = self.feed_inner(bytes);
         if result.is_err() {
             self.failed = true;
-            self.pending.clear();
+            self.pending = Vec::new();
         }
         result
     }
@@ -36,14 +36,17 @@ impl FrameReader {
             bytes = &bytes[count..];
             if self.pending.len() == HEADER_LEN && self.expected.is_none() {
                 let (_, length, _) = header(&self.pending, Some(&self.nonce))?;
+                self.pending.reserve_exact(length);
                 self.expected = Some(HEADER_LEN + length);
             }
             if self.expected == Some(self.pending.len()) {
                 if frames.len() == MAX_PENDING_FRAMES {
                     return invalid("too many queued frames");
                 }
-                frames.push(decode_frame(&self.nonce, &self.pending)?);
-                self.pending.clear();
+                frames.push(super::decode::decode_owned(
+                    &self.nonce,
+                    std::mem::take(&mut self.pending),
+                )?);
                 self.expected = None;
             }
         }
@@ -59,23 +62,50 @@ impl FrameReader {
         if self.failed {
             return invalid("reader already failed");
         }
+        let result = self.read_frame_inner(&mut reader);
+        if result.is_err() {
+            self.failed = true;
+            self.pending = Vec::new();
+        }
+        result
+    }
+    fn read_frame_inner(&mut self, reader: &mut impl Read) -> Result<Option<Frame>> {
         loop {
-            let mut scratch = [0u8; 8192];
-            let wanted =
-                (self.expected.unwrap_or(HEADER_LEN) - self.pending.len()).min(scratch.len());
-            match reader.read(&mut scratch[..wanted]) {
+            let start = self.pending.len();
+            let target = self.expected.unwrap_or(HEADER_LEN);
+            let wanted = (target - start).min(MAX_READER_PAGE);
+            self.pending.resize(start + wanted, 0);
+            let result = reader.read(&mut self.pending[start..]);
+            match result {
                 Ok(0) => {
+                    self.pending.truncate(start);
                     self.finish()?;
                     return Ok(None);
                 }
                 Ok(count) => {
-                    let mut frames = self.feed(&scratch[..count])?;
-                    if !frames.is_empty() {
-                        return Ok(Some(frames.remove(0)));
+                    self.pending.truncate(start + count);
+                    if self.pending.len() == HEADER_LEN && self.expected.is_none() {
+                        let (_, length, _) = header(&self.pending, Some(&self.nonce))?;
+                        self.pending.reserve_exact(length);
+                        self.expected = Some(HEADER_LEN + length);
+                    }
+                    if self.expected == Some(self.pending.len()) {
+                        self.expected = None;
+                        return super::decode::decode_owned(
+                            &self.nonce,
+                            std::mem::take(&mut self.pending),
+                        )
+                        .map(Some);
                     }
                 }
-                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-                Err(error) => return Err(error.into()),
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => {
+                    self.pending.truncate(start);
+                    continue;
+                }
+                Err(error) => {
+                    self.pending.truncate(start);
+                    return Err(error.into());
+                }
             }
         }
     }
@@ -86,15 +116,9 @@ pub fn read_initial_frame(mut reader: impl Read) -> Result<(Nonce, Frame)> {
     let (nonce, length, _) = header(&bytes, None)?;
     let mut frame = Vec::with_capacity(HEADER_LEN + length);
     frame.extend_from_slice(&bytes);
-    let mut remaining = length;
-    while remaining != 0 {
-        let mut scratch = [0u8; 8192];
-        let count = remaining.min(scratch.len());
-        reader.read_exact(&mut scratch[..count])?;
-        frame.extend_from_slice(&scratch[..count]);
-        remaining -= count;
-    }
-    Ok((nonce, decode_frame(&nonce, &frame)?))
+    frame.resize(HEADER_LEN + length, 0);
+    reader.read_exact(&mut frame[HEADER_LEN..])?;
+    Ok((nonce, super::decode::decode_owned(&nonce, frame)?))
 }
 pub struct ControlState {
     role: Role,
@@ -138,6 +162,11 @@ impl ControlState {
                 self.closed = true
             }
             Frame::Failure { .. } | Frame::ShutdownPending | Frame::Stop | Frame::BrokerClose => {}
+            Frame::ReaderOpened { .. }
+            | Frame::ReaderPage { .. }
+            | Frame::ReaderFailed { .. }
+            | Frame::ReaderClosed { .. }
+                if self.role == Role::Supervisor && self.started && !self.namespace_closed => {}
             _ => return invalid("illegal control stage"),
         }
         Ok(())

@@ -121,7 +121,7 @@ fn detached_double_fork_and_nested_descendants_close_with_the_original_namespace
             .stdout
             .bytes
             .windows(8)
-            .any(|bytes| bytes == b"BRYLWSL1"),
+            .any(|bytes| bytes == b"BRYLWSL2"),
         "CLI bytes must be retained only as diagnostic output"
     );
     assert!(

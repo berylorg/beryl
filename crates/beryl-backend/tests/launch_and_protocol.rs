@@ -191,7 +191,7 @@ fn wsl_managed_launch_uses_exact_distro_broker_and_immutable_artifact() {
             std::path::PathBuf::from(r"C:\Beryl\beryl-wsl-supervisor"),
             "/mnt/c/Beryl/beryl-wsl-supervisor".into(),
             [7; 32],
-            1,
+            beryl_wsl_supervisor::PROTOCOL_VERSION,
             std::sync::Arc::new(tempfile::tempfile().unwrap()),
         )
         .unwrap(),

@@ -10,6 +10,7 @@ use crate::{ManagedBackendError, WslSupervisorArtifact};
 
 mod companion;
 pub(crate) mod progress;
+pub(crate) mod readers;
 use companion::Companion;
 use progress::ControlProgress;
 
@@ -31,6 +32,21 @@ pub(crate) struct WslSupervision {
 }
 
 impl WslSupervision {
+    pub(crate) fn open_generated_reader(
+        &mut self,
+        allowance: crate::GeneratedReaderAllowance,
+    ) -> Result<readers::WslGeneratedReader, crate::GeneratedOutputError> {
+        if !self.progress.workload_started
+            || self.progress.namespace_closed.is_some()
+            || self.complete
+        {
+            return Err(crate::GeneratedOutputError::LostSourceAuthority);
+        }
+        self.supervisor
+            .as_ref()
+            .ok_or(crate::GeneratedOutputError::LostSourceAuthority)?
+            .generated_reader(allowance, self.nonce)
+    }
     pub(crate) fn new(
         artifact: Arc<WslSupervisorArtifact>,
         distribution: String,

@@ -39,6 +39,7 @@ impl ManagedProcessOwner {
 
 #[derive(Debug, Default)]
 pub struct ManagedBackendLaunchCleanup {
+    pub(crate) source_files: Option<std::sync::Arc<crate::generated_output::ProcessSourceFiles>>,
     pub(crate) process: Option<ManagedProcessOwner>,
     pub(crate) auth: Option<ManagedBackendAuthMaterial>,
     pub(crate) stderr_reader: Option<thread::JoinHandle<()>>,
@@ -55,6 +56,7 @@ impl ManagedBackendLaunchCleanup {
         auth: Option<ManagedBackendAuthMaterial>,
     ) -> Self {
         Self {
+            source_files: None,
             process,
             auth,
             stderr_reader: None,
@@ -67,6 +69,9 @@ impl ManagedBackendLaunchCleanup {
     }
 
     pub fn shutdown(&mut self) -> Result<(), ManagedBackendError> {
+        if let Some(files) = &self.source_files {
+            files.retire();
+        }
         if self.complete {
             return Ok(());
         }

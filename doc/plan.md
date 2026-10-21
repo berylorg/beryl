@@ -5,20 +5,12 @@ phases unless a major blocker requires Operator input. Preserve accepted shell, 
 transcript, composer, Settings, restoration and replacement editing. Preserve unrelated skills/memory.
 Commit and push accepted phases; no installation is authorized.
 
-# Phase 810: Establish Generated-Media Finalization Architecture (finished)
+# Phase 811: Deliver Authenticated Generated-Output Sources (finished)
 
-Independent complete-boundary review and correction closure accepted exact producer/source proof,
-durable admission/reference and atomic resolution, bounded discovery/lifetime and generated-marker
-contracts; [architecture readiness](audits/generated-media-finalization-architecture.md).
-Privileged source implementation and composed finalization remain separate acceptance boundaries.
-
-# Phase 811: Deliver Authenticated Generated-Output Sources (pending)
-
-After Phase810 readiness, qualify exact original Host and WSL source capabilities, same-open-file
-bounded positional cursors, original-namespace reader credentials/protocol and joined cancellation
-without replacement-source adoption. This privileged source boundary needs its own native
-acceptance before the finalizer consumes it; qualification includes HomeStore's repeated admission
-passes, not only a standalone reader helper.
+Original Host/WSL source authority, bounded same-file cursors, V2 readers and joined disposal are
+accepted by independent review. All 142 distinct scoped cases and the normal production desktop
+check qualify; [durable evidence](audits/generated-output-source-qualification.md).
+The composed historical source join, finalization and publication remain the next boundary.
 
 # Phase 812: Deliver Generated-Media Finalization (pending)
 

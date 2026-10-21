@@ -43,6 +43,7 @@ pub struct ManagedBackendLaunchIdentity(Arc<ManagedBackendLaunchIdentityInner>);
 
 #[derive(Debug, Eq, PartialEq)]
 struct ManagedBackendLaunchIdentityInner {
+    files: Arc<crate::generated_output::ProcessSourceFiles>,
     runtime_id: RuntimeId,
     process_generation: CasProcessGeneration,
     runtime_mode: RuntimeMode,
@@ -53,11 +54,18 @@ struct ManagedBackendLaunchIdentityInner {
 }
 
 impl ManagedBackendLaunchIdentity {
+    pub(crate) fn same_instance(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+    pub(crate) fn source_files(&self) -> &Arc<crate::generated_output::ProcessSourceFiles> {
+        &self.0.files
+    }
     fn new(
         launch_spec: &ManagedBackendLaunchSpec,
         process_generation: CasProcessGeneration,
     ) -> Self {
         Self(Arc::new(ManagedBackendLaunchIdentityInner {
+            files: Arc::new(crate::generated_output::ProcessSourceFiles::default()),
             runtime_id: launch_spec.runtime_id(),
             process_generation,
             runtime_mode: launch_spec.runtime_mode().clone(),
@@ -119,6 +127,27 @@ pub struct ManagedBackendClientConnector {
 }
 
 impl ManagedBackendServer {
+    pub fn open_generated_output(
+        &mut self,
+        permit: crate::GeneratedOutputPermit,
+        path: &RuntimeNativePath,
+        allowance: crate::GeneratedReaderAllowance,
+        cancellation: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<crate::GeneratedOutputSource, crate::GeneratedOutputOpenFailure> {
+        if !matches!(&self.provenance,ManagedLaunchProvenance::Production(identity) if identity.same_instance(&permit.launch))
+            || !self.is_process_alive()
+        {
+            return Err(crate::GeneratedOutputOpenFailure::refused(
+                crate::GeneratedOutputError::LostSourceAuthority,
+            ));
+        }
+        let process = self.cleanup.process.as_mut().ok_or_else(|| {
+            crate::GeneratedOutputOpenFailure::refused(
+                crate::GeneratedOutputError::LostSourceAuthority,
+            )
+        })?;
+        crate::generated_output::source::open(permit, path, allowance, cancellation, process)
+    }
     pub fn launch(
         launch_spec: ManagedBackendLaunchSpec,
     ) -> Result<Self, ManagedBackendLaunchFailure> {
@@ -206,6 +235,7 @@ impl ManagedBackendServer {
             Err(error) => return Err(ManagedBackendLaunchFailure::new(error, cleanup)),
         };
         let identity = ManagedBackendLaunchIdentity::new(&launch_spec, process_generation);
+        cleanup.source_files = Some(identity.source_files().clone());
         Ok(Self {
             launch_spec,
             endpoint,

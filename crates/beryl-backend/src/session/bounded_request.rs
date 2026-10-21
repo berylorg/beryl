@@ -195,6 +195,7 @@ impl ManagedBackendSession {
         let family = ResponseFamily::ThreadUnsubscribe;
         self.require_foreground_request(family.method())?;
         let params = ThreadUnsubscribeParams::new(thread_id);
+        self.retire_generated_thread(thread_id);
         let completion = self.dispatch_request(&params, timeout)?;
         let exact = self.exact_response(completion, family.method())?;
         let BoundedResponseResult::ThreadUnsubscribe(status) = exact.result else {
