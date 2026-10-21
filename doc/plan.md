@@ -5,22 +5,12 @@ phases unless a major blocker requires Operator input. Preserve accepted shell, 
 transcript, composer, Settings, restoration and replacement editing. Preserve unrelated skills/memory.
 Commit and push accepted phases; no installation is authorized.
 
-# Phase 808: Establish Original-Image Command Architecture (finished)
+# Phase 809: Deliver Original-Image Copy And Save (finished)
 
-Independent complete-boundary review accepted exact-original authorization, bounded command/worker
-custody, cancellation/publication election, native acknowledgement, atomic destination preservation
-and canonical focus/placement; [architecture readiness](audits/original-image-command-architecture.md).
-Existing GPUI/text-Save capabilities support the target. No runtime source or test was changed/run.
-Phase807 is committed/pushed as `89fd6d6d` with its separate accepted rendition qualification.
-
-# Phase 809: Deliver Original-Image Copy And Save (pending)
-
-After Phase808 readiness, connect exact admitted originals to checked clipboard and atomic native
-Save independently of rendition readiness. Mount preview and direct contextual commands with exact
-origin/fallback focus, disabled reasons and feedback. Qualify exact bytes, unsupported/over-limit
-representations, stale/cancel/refused publication, picker cancellation, declined overwrite, atomic
-failure preservation and graph drain. Announce native GUI runs; isolate clipboard tests from the
-Operator's clipboard. Complete independent source/effect acceptance.
+Mounted exact-original Copy/Save through shared authenticated workers, move-only clipboard custody,
+atomic destination publication and canonical menu/focus behavior. Independent complete-boundary
+review accepted seventy distinct passing App cases and the final production check;
+[qualification and limits](audits/original-image-command-qualification.md).
 
 # Phase 810: Establish Generated-Media Finalization Architecture (pending)
 

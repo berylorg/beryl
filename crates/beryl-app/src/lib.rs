@@ -196,6 +196,7 @@ pub use widgets::activity_panel::model as activity_panel_test_support;
 #[cfg(feature = "test-faults")]
 pub use widgets::activity_panel::test_support as activity_panel_native_test_support;
 mod app_services;
+mod atomic_save;
 #[cfg(target_os = "windows")]
 pub mod bootstrap;
 pub mod cas_projection;

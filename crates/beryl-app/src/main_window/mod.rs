@@ -6,7 +6,7 @@ mod conversation_composer_owner;
 mod creation;
 #[cfg(target_os = "windows")]
 mod desktop_placement;
-mod image_inspection;
+pub(crate) mod image_inspection;
 mod image_marker_surface;
 mod initial_composer;
 mod marker_metadata_authority;

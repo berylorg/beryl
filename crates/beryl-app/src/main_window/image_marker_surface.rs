@@ -28,12 +28,6 @@ pub enum ComposerImagePresentationState {
     LocalUnavailable,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ComposerImagePreviewCommandState {
-    DisabledPending,
-    DisabledUnavailable,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ComposerMarkerFocusTarget {
     OriginMarker(RealizedInlineObjectAnchor),
@@ -75,17 +69,6 @@ impl ComposerImagePreviewShell {
 
     pub const fn commands(self) -> &'static [ComposerPreviewCommand; 2] {
         &COMPOSER_PREVIEW_COMMANDS
-    }
-
-    pub const fn command_state(self) -> ComposerImagePreviewCommandState {
-        match self.state {
-            ComposerImagePresentationState::Pending => {
-                ComposerImagePreviewCommandState::DisabledPending
-            }
-            ComposerImagePresentationState::LocalUnavailable => {
-                ComposerImagePreviewCommandState::DisabledUnavailable
-            }
-        }
     }
 }
 

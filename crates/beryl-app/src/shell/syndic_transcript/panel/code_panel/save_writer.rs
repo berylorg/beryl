@@ -1,11 +1,9 @@
 use super::{ACTIVE, CANCELLED, PUBLISHING};
+use crate::atomic_save::{AtomicSaveError, AtomicSaveStage};
 use futures_channel::oneshot;
-use std::{
-    io::Write,
-    sync::{
-        Arc,
-        atomic::{AtomicU8, Ordering},
-    },
+use std::sync::{
+    Arc,
+    atomic::{AtomicU8, Ordering},
 };
 pub(in super::super::super) enum SaveOperation {
     Open(gpui::SavePathChoice),
@@ -90,9 +88,9 @@ pub(crate) enum SaveFault {
     Publish,
 }
 
-fn cleanup(stage: Option<tempfile::NamedTempFile>) -> Result<(), &'static str> {
+fn cleanup(stage: Option<AtomicSaveStage>) -> Result<(), &'static str> {
     if let Some(stage) = stage {
-        stage.close().map_err(|_| {
+        stage.cleanup().map_err(|_| {
             tracing::error!(
                 "Code Save temporary output cleanup failed; a temporary file may remain"
             );
@@ -107,8 +105,7 @@ pub(in super::super::super) async fn run(
     gate: Arc<AtomicU8>,
     mut _options: SaveWriterOptions,
 ) {
-    let mut stage: Option<tempfile::NamedTempFile> = None;
-    let mut destination = None;
+    let mut stage: Option<AtomicSaveStage> = None;
     while let Ok(work) = receiver.await {
         #[cfg(test)]
         if let Some(hold) = &_options.hold {
@@ -119,20 +116,15 @@ pub(in super::super::super) async fn run(
         } else {
             (|| match work.operation {
                 SaveOperation::Open(choice) => {
-                    let path = &choice.path;
-                    if path.as_os_str().len() > 32768 || !path.is_absolute() {
-                        return Err("Save unavailable: destination refused");
-                    }
-                    let parent = path
-                        .parent()
-                        .ok_or("Save unavailable: destination refused")?;
                     stage = Some(
-                        tempfile::Builder::new()
-                            .prefix(".beryl-code-save-")
-                            .tempfile_in(parent)
-                            .map_err(|_| "Save unavailable: staging file could not be created")?,
+                        AtomicSaveStage::create(choice, ".beryl-code-save-").map_err(|error| {
+                            if error == AtomicSaveError::Destination {
+                                "Save unavailable: destination refused"
+                            } else {
+                                "Save unavailable: staging file could not be created"
+                            }
+                        })?,
                     );
-                    destination = Some(choice);
                     Ok(SaveResult::Opened)
                 }
                 SaveOperation::Write(bytes) => {
@@ -144,23 +136,20 @@ pub(in super::super::super) async fn run(
                         stage
                             .as_mut()
                             .ok_or("Save unavailable: writer retired")?
-                            .write_all(&bytes[..bytes.len().min(3)])
+                            .write(&bytes[..bytes.len().min(3)])
                             .map_err(|_| "Save unavailable: writing failed")?;
                         return Err("Save unavailable: writing failed");
                     }
                     stage
                         .as_mut()
                         .ok_or("Save unavailable: writer retired")?
-                        .write_all(&bytes)
+                        .write(&bytes)
                         .map_err(|_| "Save unavailable: writing failed")?;
                     Ok(SaveResult::Wrote(bytes.len()))
                 }
                 SaveOperation::Prepare => {
                     let file = stage.as_mut().ok_or("Save unavailable: writer retired")?;
-                    file.flush()
-                        .map_err(|_| "Save unavailable: writing failed")?;
-                    file.as_file()
-                        .sync_all()
+                    file.prepare()
                         .map_err(|_| "Save unavailable: writing failed")?;
                     Ok(SaveResult::Prepared)
                 }
@@ -172,25 +161,12 @@ pub(in super::super::super) async fn run(
                     if matches!(_options.fault, Some(SaveFault::Publish)) {
                         return Err("Save unavailable: publication failed");
                     }
-                    let file = stage.take().ok_or("Save unavailable: writer retired")?;
-                    let destination = destination
-                        .as_ref()
-                        .ok_or("Save unavailable: destination retired")?;
-                    let persisted = if destination.replace_existing {
-                        file.persist(&destination.path)
-                    } else {
-                        file.persist_noclobber(&destination.path)
-                    };
-                    match persisted {
-                        Ok(file) => {
-                            drop(file);
-                            Ok(SaveResult::Published)
-                        }
-                        Err(error) => {
-                            stage = Some(error.file);
-                            Err("Save unavailable: publication failed")
-                        }
-                    }
+                    stage
+                        .as_mut()
+                        .ok_or("Save unavailable: writer retired")?
+                        .publish()
+                        .map_err(|_| "Save unavailable: publication failed")?;
+                    Ok(SaveResult::Published)
                 }
             })()
         };

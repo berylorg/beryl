@@ -233,55 +233,7 @@ fn native_mounted_image_renditions_paint_in_transcript_and_composer_and_release_
                         .read_with(cx, |root, _| root.test_image_marker_rendition().is_none())
                         .unwrap()
                 );
-                window
-                    .update(cx, |root, _, _| root.close_image_media_window())
-                    .unwrap();
-                attachment.retire();
-                media.begin_shutdown();
-                wait_until(
-                    window,
-                    cx,
-                    |cx| {
-                        with_native(window, cx, |native, app| {
-                            native.draw_and_present_for_test(app);
-                            app.poll_image_resource_retirement(media.domain()).unwrap();
-                        })
-                        .unwrap();
-                        let attachment_drained =
-                            attachment.retire() == gpui::ImageResourceDrain::Drained;
-                        media.poll_shutdown() == gpui::ImageResourceDrain::Drained
-                            && attachment_drained
-                    },
-                    "all media workers and native image owners must drain before fixture disposal",
-                )
-                .await;
-                let resources = media.domain().diagnostics();
-                assert_eq!(
-                    (
-                        resources.staging_buffers,
-                        resources.staging_bytes,
-                        resources.reserved_textures,
-                        resources.resident_textures,
-                        resources.texture_bytes,
-                        resources.unique_pins,
-                        resources.frame_uses
-                    ),
-                    (0, 0, 0, 0, 0, 0, 0)
-                );
-                let work = media.diagnostics().unwrap();
-                assert_eq!(
-                    (
-                        work.queued,
-                        work.active_workers,
-                        work.flights,
-                        work.path_slots,
-                        work.verification_slots,
-                        work.cpu.entries,
-                        work.cpu.bytes
-                    ),
-                    (0, 0, 0, 0, 0, 0, 0)
-                );
-                assert!(media.domain().failure().is_none());
+                drain_media(window, &media, &attachment, cx).await;
                 dispose(window, &panel, cx).await;
             })
         },
@@ -306,6 +258,9 @@ async fn wait_for_native_recovery(
         "native unavailability must retain one current failed interest for progress",
     )
     .await;
+    let origin = window
+        .read_with(cx, |root, _| root.test_image_marker_inspection().unwrap())
+        .unwrap();
     let deadline = Instant::now() + Duration::from_millis(350);
     let before = media.diagnostics().unwrap();
     while Instant::now() < deadline {
@@ -313,12 +268,24 @@ async fn wait_for_native_recovery(
             native.draw_and_present_for_test(app)
         })
         .unwrap();
-        assert_eq!(
+        assert!(matches!(
             window
                 .read_with(cx, |root, _| root.test_image_marker_rendition())
                 .unwrap(),
-            Some((false, false, true, true))
-        );
+            Some((false, false, true, _))
+        ));
+        window
+            .read_with(cx, |root, _| {
+                let current = root.test_image_marker_inspection().unwrap();
+                assert_eq!(current.request, origin.request);
+                assert_eq!(
+                    current.target.record.record_id,
+                    origin.target.record.record_id
+                );
+                assert_eq!(current.activation, origin.activation);
+                assert_eq!(current.presentation, origin.presentation);
+            })
+            .unwrap();
         let progress = media.diagnostics().unwrap();
         assert!(
             progress.failures.saturating_sub(before.failures)
@@ -336,7 +303,7 @@ async fn wait_for_native_recovery(
     with_native(window, cx, |native, _| native.refresh()).unwrap();
 }
 
-async fn open_composer_view(
+pub(super) async fn open_composer_view(
     window: WindowHandle<MainWindowShellRoot>,
     resident: &Entity<MainWindowConversationComposer>,
     input: &Entity<gpui_text_input::RangeTextInput>,
@@ -404,4 +371,59 @@ async fn open_composer_view(
         "View must mount inspection for the exact composer marker",
     )
     .await;
+}
+
+pub(super) async fn drain_media(
+    window: WindowHandle<MainWindowShellRoot>,
+    media: &crate::image_processing::ImageMediaProcess,
+    attachment: &crate::image_processing::ImageMediaAttachment,
+    cx: &mut AsyncApp,
+) {
+    window
+        .update(cx, |root, _, _| root.close_image_media_window())
+        .unwrap();
+    attachment.retire();
+    media.begin_shutdown();
+    wait_until(
+        window,
+        cx,
+        |cx| {
+            with_native(window, cx, |native, app| {
+                native.draw_and_present_for_test(app);
+                app.poll_image_resource_retirement(media.domain()).unwrap();
+            })
+            .unwrap();
+            let attachment_drained = attachment.retire() == gpui::ImageResourceDrain::Drained;
+            media.poll_shutdown() == gpui::ImageResourceDrain::Drained && attachment_drained
+        },
+        "all media workers and native image owners must drain before fixture disposal",
+    )
+    .await;
+    let resources = media.domain().diagnostics();
+    assert_eq!(
+        (
+            resources.staging_buffers,
+            resources.staging_bytes,
+            resources.reserved_textures,
+            resources.resident_textures,
+            resources.texture_bytes,
+            resources.unique_pins,
+            resources.frame_uses
+        ),
+        (0, 0, 0, 0, 0, 0, 0)
+    );
+    let work = media.diagnostics().unwrap();
+    assert_eq!(
+        (
+            work.queued,
+            work.active_workers,
+            work.flights,
+            work.path_slots,
+            work.verification_slots,
+            work.cpu.entries,
+            work.cpu.bytes
+        ),
+        (0, 0, 0, 0, 0, 0, 0)
+    );
+    assert!(media.domain().failure().is_none());
 }

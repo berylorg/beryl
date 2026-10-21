@@ -351,6 +351,7 @@ impl MainWindowConversationComposer {
             return Err("composer lifecycle selection changed its editor binding".to_owned());
         }
         self.selection = successor;
+        self.image_original_commands = None;
         self.image_inspection = None;
         self.image_surfaces.selection_changed(successor);
         self.input
@@ -556,6 +557,7 @@ impl MainWindowConversationComposer {
         self.mutation_evidence = None;
         self.pending_marker_removal = None;
         self.image_surface_attachment = None;
+        self.image_original_commands = None;
         self.image_inspection = None;
         self.image_surfaces.clear();
         self.admitted_positions = None;
@@ -600,6 +602,7 @@ impl MainWindowConversationComposer {
                 if let Some(clipboard) = self.propagated_clipboard.take() {
                     clipboard.cancel();
                 }
+                self.image_original_commands = None;
                 self.image_inspection = None;
                 self.image_surfaces.clear();
                 if let Some(attachment) = self.image_surface_attachment.take()

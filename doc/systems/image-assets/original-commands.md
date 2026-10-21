@@ -38,6 +38,11 @@ shared original-command reservation. The immutable media configuration contains
 prepared output, publication election and effect-result delivery; there is no uncharged queue or
 second command registry. A refused reservation retains no source, buffer or worker.
 
+A pending native picker retains that reservation until its actual completion is received, including
+cancellation/error. Cancelling an App command fences its effects but does not prove that the native
+picker closed. A live modal flow may keep retirement Pending until it settles; no unattended picker
+timeout or inferred completion is required.
+
 Original jobs share the fixed media worker cohort and its process path/verification reservations
 with rendition jobs. A source job owns at most one configured sidecar I/O page. A waiting request
 contains compact demand and weak attachment access; admitted workers alone upgrade source services.

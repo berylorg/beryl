@@ -211,10 +211,9 @@ fn native_grouped_markers_keep_inline_bounds_exact_origins_and_primary_keyboard_
                     assert!(target.record.historical_target().is_some());
                     source.get_or_insert(target.record.historical_target().unwrap());
                     let rows = panel.read(app).transcript_menu_rows_for_test();
-                    assert_eq!(rows.iter().map(|row| row.0.as_str()).collect::<Vec<_>>(), ["Copy", "Save", "Edit message"]);
-                    assert!(rows[..2].iter().all(|row| !row.1 && row.2.is_some()));
+                    assert_eq!(rows.iter().map(|row| row.0.as_str()).collect::<Vec<_>>(), ["Copy", "Save…", "Edit message"]);
+                    assert!(rows[..2].iter().all(|row| (row.1 && row.2.is_none()) || (!row.1 && row.2.as_deref() == Some("Checking the exact original image."))), "{rows:?}");
                     assert!(rows[2].1 || rows[2].2.is_some());
-                    key(native, app, "enter");
                     assert!(panel.read(app).quote_menu_open_for_test());
                     key(native, app, "escape");
                 }
@@ -234,6 +233,33 @@ fn native_grouped_markers_keep_inline_bounds_exact_origins_and_primary_keyboard_
                 }
                 markers
             }).unwrap();
+            with_native(window, cx, |native, app| {
+                let bounds = panel
+                    .read(app)
+                    .image_marker_bounds(&markers[0], native)
+                    .unwrap();
+                context(native, app, bounds.center());
+            })
+            .unwrap();
+            let mut observed_original = None;
+            wait_until(window, cx, |cx| {
+                    let current = panel.read_with(cx, |panel, _| (panel.test_image_direct_original_command(false), panel.test_image_direct_original_command(true))).unwrap();
+                    if Some(current) != observed_original {
+                        eprintln!("grouped marker original availability: {current:?}");
+                        observed_original = Some(current);
+                    }
+                    [current.0, current.1].iter().all(|command| command.is_some_and(|(reason, _)| reason.is_none()))
+                }, "readable original Copy and Save must become available independently of the rendition").await;
+            with_native(window, cx, |native, app| {
+                let rows = panel.read(app).transcript_menu_rows_for_test();
+                assert!(
+                    rows[..2].iter().all(|row| row.1 && row.2.is_none()),
+                    "{rows:?}"
+                );
+                assert!(panel.read(app).quote_menu_open_for_test());
+                key(native, app, "escape");
+            })
+            .unwrap();
             for (index, command) in [None, Some("enter"), Some("space")].into_iter().enumerate() {
                 let (bounds, diagnostic) = with_native(window, cx, |native, app| {
                     native.draw_and_present_for_test(app);

@@ -243,6 +243,10 @@ pub struct MainWindowConversationComposer {
         super::image_inspection::ImageInspection,
     )>,
     image_surface_focus: FocusHandle,
+    image_original_commands: Option<(
+        ComposerImagePreviewShell,
+        super::image_inspection::original_commands::PreviewImageCommands,
+    )>,
     image_surface_attachment: Option<InlineObjectSurfaceAttachment>,
     pending_marker_removal: Option<gpui_text_input::MutationKey>,
     propagated_clipboard: Option<clipboard::ActivePropagatedClipboard>,
@@ -547,6 +551,13 @@ impl MainWindowConversationComposer {
     }
 
     #[cfg(any(test, feature = "test-faults"))]
+    pub fn test_image_original_menu_open(&self) -> bool {
+        self.image_original_commands
+            .as_ref()
+            .is_some_and(|(_, commands)| commands.menu_open())
+    }
+
+    #[cfg(any(test, feature = "test-faults"))]
     pub fn test_image_preview_rendition(&self) -> Option<(bool, bool, bool, bool)> {
         self.image_inspection
             .as_ref()
@@ -560,12 +571,29 @@ impl MainWindowConversationComposer {
         self.image_inspection.as_ref()?.1.read_pixel_for_test()
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_image_original_command(
+        &self,
+        save: bool,
+    ) -> Option<(Option<&'static str>, &'static str)> {
+        let commands = &self.image_original_commands.as_ref()?.1.original;
+        Some((
+            commands.reason(if save {
+                crate::image_processing::OriginalImageRequest::Save
+            } else {
+                crate::image_processing::OriginalImageRequest::Copy
+            }),
+            commands.feedback,
+        ))
+    }
+
     fn activate_marker(
         &mut self,
         activation: InlineObjectActivation,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
+        self.image_original_commands = None;
         self.image_inspection = None;
         if self.startup_interaction_gated {
             return Err("conversation composer is waiting for startup".to_owned());
@@ -600,6 +628,7 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
+        self.image_original_commands = None;
         self.image_inspection = None;
         if self.startup_interaction_gated {
             return Err("conversation composer is waiting for startup".to_owned());
@@ -694,6 +723,7 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<Option<ComposerMarkerFocusTarget>, String> {
+        self.image_original_commands = None;
         self.image_inspection = None;
         let Some(anchor) = self
             .image_surfaces

@@ -21,9 +21,8 @@ use beryl_app::{
         SyndicComposerHost,
     },
     main_window::{
-        ComposerImagePresentationState, ComposerImagePreviewCommandState,
-        ComposerMarkerActivationDisposition, ComposerMarkerCommand, ComposerMarkerFocusTarget,
-        ComposerPreviewCommand, MainWindowComposerActivationAdvance,
+        ComposerImagePresentationState, ComposerMarkerActivationDisposition, ComposerMarkerCommand,
+        ComposerMarkerFocusTarget, ComposerPreviewCommand, MainWindowComposerActivationAdvance,
         MainWindowComposerDispatchError, MainWindowComposerDispatchOutcome,
         MainWindowComposerDisposalAdvance, MainWindowComposerDraftState,
         MainWindowComposerImageSurfaces, MainWindowComposerMarkerMetadataAuthority,
@@ -1446,10 +1445,6 @@ fn marker_menu_and_preview_keep_canonical_anchor_and_focus_fallback() {
         &[ComposerPreviewCommand::Copy, ComposerPreviewCommand::Save]
     );
     assert_eq!(
-        surfaces.preview().unwrap().command_state(),
-        ComposerImagePreviewCommandState::DisabledPending
-    );
-    assert_eq!(
         surfaces.dismiss_preview(false, true),
         Some(ComposerMarkerFocusTarget::ComposerEditor)
     );
@@ -1471,10 +1466,6 @@ fn marker_menu_and_preview_keep_canonical_anchor_and_focus_fallback() {
     surfaces
         .invoke_view(selection, ComposerImagePresentationState::LocalUnavailable)
         .unwrap();
-    assert_eq!(
-        surfaces.preview().unwrap().command_state(),
-        ComposerImagePreviewCommandState::DisabledUnavailable
-    );
     assert_eq!(
         surfaces.dismiss_preview(false, false),
         Some(ComposerMarkerFocusTarget::ThreadSelector)

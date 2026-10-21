@@ -19,6 +19,7 @@ impl MainWindowConversationComposer {
     ) {
         let next = media.map(std::sync::Arc::downgrade).unwrap_or_default();
         if !std::sync::Weak::ptr_eq(&self.image_media_window, &next) {
+            self.image_original_commands = None;
             self.image_inspection = None;
             self.image_media_window = next;
         }
@@ -32,6 +33,7 @@ impl MainWindowConversationComposer {
                 && self.exact_origin_is_active(preview.origin(), cx)
         });
         let Some(preview) = preview else {
+            self.image_original_commands = None;
             self.image_inspection = None;
             return;
         };
@@ -55,9 +57,22 @@ impl MainWindowConversationComposer {
                 preview,
                 super::super::image_inspection::ImageInspection::new(media.as_deref(), demand),
             ));
+            self.image_original_commands = Some((
+                preview,
+                crate::main_window::image_inspection::original_commands::PreviewImageCommands::new(
+                    self.image_media_window.clone(),
+                    demand,
+                    self.image_surface_focus.clone(),
+                    window,
+                    cx,
+                ),
+            ));
         }
         if let Some((_, inspection)) = self.image_inspection.as_mut() {
             inspection.prepare(media.as_deref(), window, cx);
+        }
+        if let Some((_, commands)) = self.image_original_commands.as_mut() {
+            commands.poll(window, cx);
         }
     }
 
@@ -176,7 +191,57 @@ impl MainWindowConversationComposer {
         .with_priority(2)
     }
 
-    fn render_image_preview(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_image_preview(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        let menu = self
+            .image_original_commands
+            .as_mut()
+            .and_then(|(_, commands)| {
+                commands.render(
+                    crate::main_window::image_inspection::original_commands::composer_colors(),
+                    "composer-image-original-menu",
+                    composer_original_menu_event,
+                    window,
+                    cx,
+                )
+            });
+        let command_anchor = self.image_original_commands.as_ref().map(|(_, commands)| {
+            let bounds = commands.anchor_bounds.clone();
+            div()
+                .on_children_prepainted(move |children, _, _| bounds.set(children.first().copied()))
+                .child(
+                    div()
+                        .id("conversation-composer-image-commands")
+                        .debug_selector(|| "conversation-composer-image-commands".to_owned())
+                        .track_focus(&commands.anchor_focus)
+                        .focusable()
+                        .tab_stop(true)
+                        .px_2()
+                        .py_1()
+                        .cursor_pointer()
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            if let Some((_, commands)) = this.image_original_commands.as_mut() {
+                                commands.open(window, cx);
+                            }
+                        }))
+                        .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                            if matches!(event.keystroke.key.as_str(), "enter" | "space" | " ") {
+                                cx.stop_propagation();
+                                if let Some((_, commands)) = this.image_original_commands.as_mut() {
+                                    commands.open(window, cx);
+                                }
+                            }
+                        }))
+                        .child("Image actions"),
+                )
+        });
+        let feedback = self
+            .image_original_commands
+            .as_ref()
+            .map(|(_, commands)| commands.original.feedback);
         let presentation = self
             .image_inspection
             .as_ref()
@@ -198,8 +263,13 @@ impl MainWindowConversationComposer {
                 div()
                     .id("conversation-composer-image-preview")
                     .debug_selector(|| "conversation-composer-image-preview".to_owned())
-                    .track_focus(&self.image_surface_focus)
                     .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                        if let Some((_, commands)) = this.image_original_commands.as_mut()
+                            && commands.key(&event.keystroke.key, window)
+                        {
+                            cx.stop_propagation();
+                            return;
+                        }
                         if event.keystroke.key == "escape" {
                             cx.stop_propagation();
                             if let Err(error) = this.dismiss_image_preview(window, cx) {
@@ -208,6 +278,15 @@ impl MainWindowConversationComposer {
                         }
                     }))
                     .on_mouse_down_out(cx.listener(|this, _, window, cx| {
+                        if this
+                            .image_original_commands
+                            .as_ref()
+                            .is_some_and(|(_, commands)| {
+                                commands.menu_open() || commands.original.picker_pending()
+                            })
+                        {
+                            return;
+                        }
                         if let Err(error) = this.dismiss_image_preview(window, cx) {
                             this.record_surface_error(error, cx);
                         }
@@ -234,6 +313,9 @@ impl MainWindowConversationComposer {
                             .child(
                                 div()
                                     .id("conversation-composer-image-preview-close")
+                                    .track_focus(&self.image_surface_focus)
+                                    .focusable()
+                                    .tab_stop(true)
                                     .debug_selector(|| {
                                         "conversation-composer-image-preview-close".to_owned()
                                     })
@@ -263,23 +345,17 @@ impl MainWindowConversationComposer {
                             .bg(rgb(0x181b20))
                             .children(presentation),
                     )
-                    .child(
-                        div()
-                            .flex()
-                            .justify_end()
-                            .gap_2()
-                            .child(disabled_preview_command(
-                                "conversation-composer-image-preview-copy",
-                                "Copy",
-                            ))
-                            .child(disabled_preview_command(
-                                "conversation-composer-image-preview-save",
-                                "Save",
-                            )),
-                    ),
+                    .child(div().flex().justify_end().gap_2().children(command_anchor))
+                    .children(
+                        feedback
+                            .filter(|feedback| !feedback.is_empty())
+                            .map(|feedback| div().text_xs().child(feedback)),
+                    )
+                    .children(menu),
             ),
         )
         .with_priority(3)
+        .into_any_element()
     }
 }
 
@@ -397,17 +473,23 @@ fn submission_tooltip(reason: crate::cas_projection::SubmissionUnavailable) -> i
         .child(reason.reason())
 }
 
-fn disabled_preview_command(selector: &'static str, label: &'static str) -> impl IntoElement {
-    div()
-        .id(selector)
-        .debug_selector(move || selector.to_owned())
-        .px_3()
-        .py_1()
-        .rounded_sm()
-        .border_1()
-        .border_color(rgb(0x5f6875))
-        .opacity(0.48)
-        .child(label)
+fn composer_original_menu_event(
+    this: &mut MainWindowConversationComposer,
+    event: crate::widgets::anchored_context_menu::MenuEvent,
+    window: &mut Window,
+    cx: &mut Context<MainWindowConversationComposer>,
+) {
+    let current = this
+        .image_surfaces
+        .preview()
+        .is_some_and(|preview| this.is_live() && this.exact_origin_is_active(preview.origin(), cx));
+    if !current {
+        this.image_original_commands = None;
+        return;
+    }
+    if let Some((_, commands)) = this.image_original_commands.as_mut() {
+        commands.event(event, window, cx);
+    }
 }
 
 fn clamp_axis(value: Pixels, maximum: Pixels) -> Pixels {

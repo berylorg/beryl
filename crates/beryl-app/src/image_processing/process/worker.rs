@@ -7,9 +7,13 @@ use super::*;
 
 pub(super) fn run(core: Arc<ProcessCore>) {
     loop {
+        if let Some((operation, attachment)) = original::claim(&core) {
+            original::run(&core, operation, attachment);
+            continue;
+        }
         let job = {
             let mut state = lock(&core.state);
-            while state.queue.is_empty() && !state.stopping {
+            while state.queue.is_empty() && !original::has_work(&state) && !state.stopping {
                 state = core
                     .work
                     .wait(state)
@@ -17,6 +21,9 @@ pub(super) fn run(core: Arc<ProcessCore>) {
             }
             if state.stopping {
                 break;
+            }
+            if original::has_work(&state) {
+                continue;
             }
             let Some(queued) = state.queue.pop_front() else {
                 continue;

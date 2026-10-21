@@ -30,11 +30,10 @@ use beryl_app::{
         SyndicComposerHost,
     },
     main_window::{
-        ComposerImagePresentationState, ComposerImagePreviewCommandState,
-        MainWindowComposerMarkerMetadataAuthority, MainWindowComposerSlot,
-        MainWindowConversationComposer, MainWindowConversationComposerConfig,
-        MainWindowConversationComposerConfigError, MainWindowConversationComposerEvent,
-        MainWindowConversationComposerService,
+        ComposerImagePresentationState, MainWindowComposerMarkerMetadataAuthority,
+        MainWindowComposerSlot, MainWindowConversationComposer,
+        MainWindowConversationComposerConfig, MainWindowConversationComposerConfigError,
+        MainWindowConversationComposerEvent, MainWindowConversationComposerService,
     },
 };
 use beryl_home_store::{CommandCancellation, HomeStore};
@@ -700,21 +699,21 @@ fn marker_menu_and_preview_mount_and_dismiss_through_real_gpui_surfaces(
         assert!(composer.marker_menu().is_none());
         let preview = composer.image_preview().unwrap();
         assert_eq!(preview.state(), ComposerImagePresentationState::Pending);
-        assert_eq!(
-            preview.command_state(),
-            ComposerImagePreviewCommandState::DisabledPending
-        );
     });
     assert!(
         cx.debug_bounds("conversation-composer-image-preview")
             .is_some()
     );
-    let copy = cx
-        .debug_bounds("conversation-composer-image-preview-copy")
+    let actions = cx
+        .debug_bounds("conversation-composer-image-commands")
         .unwrap();
-    let save = cx
-        .debug_bounds("conversation-composer-image-preview-save")
-        .unwrap();
+    cx.simulate_click(actions.center(), Modifiers::none());
+    drive_owner(cx, 4);
+    composer.read_with(cx, |composer, _| {
+        assert!(composer.test_image_original_menu_open())
+    });
+    let copy = cx.debug_bounds("image-original-copy").unwrap();
+    let save = cx.debug_bounds("image-original-save").unwrap();
     cx.simulate_click(copy.center(), Modifiers::none());
     cx.simulate_click(save.center(), Modifiers::none());
     drive_owner(cx, 2);
@@ -722,6 +721,25 @@ fn marker_menu_and_preview_mount_and_dismiss_through_real_gpui_surfaces(
         assert!(composer.image_preview().is_some())
     });
 
+    let disabled_menu_focus = cx.update(|window, app| window.focused(app).unwrap());
+    cx.simulate_keystrokes("enter");
+    drive_owner(cx, 4);
+    composer.read_with(cx, |composer, _| {
+        assert!(composer.test_image_original_menu_open())
+    });
+    assert_eq!(
+        cx.update(|window, app| window.focused(app).unwrap()),
+        disabled_menu_focus
+    );
+
+    cx.simulate_keystrokes("escape");
+    drive_owner(cx, 4);
+    composer.read_with(cx, |composer, _| {
+        assert!(!composer.test_image_original_menu_open())
+    });
+    composer.read_with(cx, |composer, _| {
+        assert!(composer.image_preview().is_some())
+    });
     cx.simulate_keystrokes("escape");
     drive_owner(cx, 4);
     composer.read_with(cx, |composer, _| {
@@ -763,8 +781,8 @@ fn marker_menu_and_preview_mount_and_dismiss_through_real_gpui_surfaces(
     composer.read_with(cx, |composer, _| {
         let preview = composer.image_preview().unwrap();
         assert_eq!(
-            preview.command_state(),
-            ComposerImagePreviewCommandState::DisabledUnavailable
+            preview.state(),
+            ComposerImagePresentationState::LocalUnavailable
         );
     });
     let close = cx

@@ -249,6 +249,7 @@ impl MainWindowConversationComposer {
             image_surfaces: MainWindowComposerImageSurfaces::default(),
             image_media_window: std::sync::Weak::new(),
             image_inspection: None,
+            image_original_commands: None,
             image_surface_focus: cx.focus_handle(),
             image_surface_attachment: None,
             pending_marker_removal: None,
@@ -589,6 +590,7 @@ impl MainWindowConversationComposer {
                     }
                 }
                 RangeTextInputEvent::InlineObjectRealizationLost(loss) => {
+                    this.image_original_commands = None;
                     this.image_inspection = None;
                     this.image_surface_attachment = None;
                     this.image_surfaces.realization_lost(*loss);

@@ -13,6 +13,7 @@ pub(super) struct TranscriptImagePreview {
     close: FocusHandle,
     _focus_guard: gpui::Subscription,
     inspection: crate::main_window::image_inspection::ImageInspection,
+    commands: crate::main_window::image_inspection::original_commands::PreviewImageCommands,
 }
 
 pub(super) fn subscribe(
@@ -44,7 +45,9 @@ pub(super) fn subscribe(
             let close = cx.focus_handle().tab_stop(true);
             let guard = cx.on_blur(&close, window, |root, window, _| {
                 if let Some(preview) = &root.transcript_image_preview {
-                    window.focus(&preview.close);
+                    if !preview.commands.focus_delegated(window) {
+                        window.focus(&preview.close);
+                    }
                 }
             });
             window.focus(&close);
@@ -53,12 +56,24 @@ pub(super) fn subscribe(
                 root.image_media_window.as_deref(),
                 demand,
             );
+            let commands =
+                crate::main_window::image_inspection::original_commands::PreviewImageCommands::new(
+                    root.image_media_window
+                        .as_ref()
+                        .map(Arc::downgrade)
+                        .unwrap_or_default(),
+                    demand,
+                    close.clone(),
+                    window,
+                    cx,
+                );
             root.transcript_image_preview = Some(TranscriptImagePreview {
                 source: source.clone(),
                 origin: event.clone(),
                 close,
                 _focus_guard: guard,
                 inspection,
+                commands,
             });
             cx.notify();
         },
@@ -115,6 +130,9 @@ impl MainWindowShellRoot {
                 }
             }
         }
+        self.running_threads.transcript.update(cx, |panel, _| {
+            panel.set_image_original_media_window(self.image_media_window.as_ref())
+        });
         let composer = self
             .controller
             .as_ref()
@@ -134,6 +152,29 @@ impl MainWindowShellRoot {
         if let Some(media) = self.image_media_window.take() {
             media.close();
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_image_original_command(
+        &self,
+        save: bool,
+    ) -> Option<(Option<&'static str>, &'static str)> {
+        let commands = &self.transcript_image_preview.as_ref()?.commands.original;
+        Some((
+            commands.reason(if save {
+                crate::image_processing::OriginalImageRequest::Save
+            } else {
+                crate::image_processing::OriginalImageRequest::Copy
+            }),
+            commands.feedback,
+        ))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_image_original_anchor_focused(&self, window: &Window) -> bool {
+        self.transcript_image_preview
+            .as_ref()
+            .is_some_and(|preview| preview.commands.anchor_focus.is_focused(window))
     }
 
     #[cfg(test)]
@@ -212,11 +253,23 @@ impl MainWindowShellRoot {
         {
             self.dismiss_transcript_image_preview(window, cx);
         }
+        let colors = super::model_controls::menu_colors(self);
         let preview = self.transcript_image_preview.as_mut()?;
         preview
             .inspection
             .prepare(self.image_media_window.as_deref(), window, cx);
         let presentation = preview.inspection.element();
+        preview.commands.poll(window, cx);
+        let menu = preview.commands.render(
+            colors,
+            "transcript-image-original-menu",
+            transcript_original_menu_event,
+            window,
+            cx,
+        );
+        let anchor_bounds = preview.commands.anchor_bounds.clone();
+        let anchor_focus = preview.commands.anchor_focus.clone();
+        let feedback = preview.commands.original.feedback;
         let ResidentContextMenuContentKind::ImageMarker(marker) =
             preview.origin.target.record.content_kind
         else {
@@ -224,8 +277,6 @@ impl MainWindowShellRoot {
         };
         let label = format!("Image {}", marker.marker.label());
         let close = preview.close.clone();
-        let keys = close.clone();
-        let colors = super::model_controls::menu_colors(self);
         let viewport = window.viewport_size();
         Some(
             div()
@@ -254,7 +305,9 @@ impl MainWindowShellRoot {
                         }
                         "tab" => {
                             cx.stop_propagation();
-                            window.focus(&keys);
+                            if let Some(preview) = root.transcript_image_preview.as_mut() {
+                                preview.commands.key("tab", window);
+                            }
                         }
                         _ => {}
                     }
@@ -284,6 +337,49 @@ impl MainWindowShellRoot {
                                 .items_center()
                                 .justify_between()
                                 .child(label)
+                                .child(
+                                    div()
+                                        .on_children_prepainted(move |children, _, _| {
+                                            anchor_bounds.set(children.first().copied())
+                                        })
+                                        .child(
+                                            div()
+                                                .id("transcript-image-preview-actions")
+                                                .debug_selector(|| {
+                                                    "transcript-image-preview-actions".to_owned()
+                                                })
+                                                .track_focus(&anchor_focus)
+                                                .focusable()
+                                                .tab_stop(true)
+                                                .px(px(8.0))
+                                                .py(px(4.0))
+                                                .cursor_pointer()
+                                                .on_click(cx.listener(|root, _, window, cx| {
+                                                    if let Some(preview) =
+                                                        root.transcript_image_preview.as_mut()
+                                                    {
+                                                        preview.commands.open(window, cx);
+                                                    }
+                                                }))
+                                                .on_key_down(cx.listener(
+                                                    |root, event: &KeyDownEvent, window, cx| {
+                                                        if matches!(
+                                                            event.keystroke.key.as_str(),
+                                                            "enter" | "space" | " "
+                                                        ) {
+                                                            cx.stop_propagation();
+                                                            if let Some(preview) = root
+                                                                .transcript_image_preview
+                                                                .as_mut()
+                                                            {
+                                                                preview.commands.open(window, cx);
+                                                            }
+                                                        }
+                                                    },
+                                                ))
+                                                .child("Image actions"),
+                                        ),
+                                )
                                 .child(
                                     div()
                                         .id("transcript-image-preview-close")
@@ -327,24 +423,38 @@ impl MainWindowShellRoot {
                                 .text_color(colors.disabled)
                                 .child(presentation),
                         )
-                        .child(
-                            div()
-                                .flex()
-                                .justify_end()
-                                .gap(px(12.0))
-                                .text_color(colors.disabled)
-                                .child(div().id("transcript-image-preview-copy").child("Copy"))
-                                .child(div().id("transcript-image-preview-save").child("Save")),
-                        )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(colors.disabled)
-                                .child("Copy and Save require the exact prepared original image."),
-                        ),
+                        .children((!feedback.is_empty()).then(|| div().text_xs().child(feedback))),
                 )
+                .children(menu)
                 .into_any_element(),
         )
+    }
+}
+
+fn transcript_original_menu_event(
+    root: &mut MainWindowShellRoot,
+    event: crate::widgets::anchored_context_menu::MenuEvent,
+    window: &mut Window,
+    cx: &mut Context<MainWindowShellRoot>,
+) {
+    let current = root
+        .transcript_image_preview
+        .as_ref()
+        .is_some_and(|preview| {
+            preview.source == root.running_threads.transcript
+                && !root.running_threads.views_retired
+                && !root.running_threads.reads_suspended
+                && preview
+                    .source
+                    .read(cx)
+                    .image_marker_inspection_current(&preview.origin, window)
+        });
+    if !current {
+        root.dismiss_transcript_image_preview(window, cx);
+        return;
+    }
+    if let Some(preview) = root.transcript_image_preview.as_mut() {
+        preview.commands.event(event, window, cx);
     }
 }
 

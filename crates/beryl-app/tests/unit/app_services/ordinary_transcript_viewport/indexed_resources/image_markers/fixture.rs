@@ -140,7 +140,7 @@ fn seed_asset_content(path: &std::path::Path, prefix: &str, suffix: &str, png: b
     home.close().unwrap();
 }
 
-fn publish_png(home: &HomeStore, assets: &AssetState) -> beryl_model::AssetId {
+pub(in super::super) fn png_bytes() -> Vec<u8> {
     let mut bytes = Vec::new();
     {
         let mut encoder = png::Encoder::new(&mut bytes, 3, 2);
@@ -155,6 +155,11 @@ fn publish_png(home: &HomeStore, assets: &AssetState) -> beryl_model::AssetId {
             .unwrap();
         writer.finish().unwrap();
     }
+    bytes
+}
+
+fn publish_png(home: &HomeStore, assets: &AssetState) -> beryl_model::AssetId {
+    let bytes = png_bytes();
     let sidecar = home
         .admit_sidecar(
             beryl_home_store::SidecarNamespace::new("images").unwrap(),

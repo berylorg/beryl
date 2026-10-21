@@ -228,6 +228,9 @@
   fifty-nine scoped cases; [qualification and limits](../../audits/bounded-image-rendition-qualification.md).
 - [x] Established independently reviewed exact-original Copy/Save authority, bounded command/effect
   custody, destination preservation and focus contracts; [architecture readiness](../../audits/original-image-command-architecture.md).
+- [x] Mounted exact-original Copy/Save through the shared worker cohort, checked effect custody,
+  atomic file publication and canonical focus, with independent acceptance of seventy distinct
+  scoped App cases; [qualification and limits](../../audits/original-image-command-qualification.md).
 - [ ] Complete generated-output producer/resource/reference and atomic finalization contracts in the image system and owning State/Syndic/App designs before finalizer implementation.
 - [ ] Implement Beryl-home image admission for paste and generated output, content-addressed
   sidecars, labels, references, Host/WSL projection, and generated-output ownership.

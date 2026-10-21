@@ -20,6 +20,7 @@ use super::{
 };
 
 mod lifecycle;
+mod original;
 mod presentation;
 mod signal;
 mod worker;
@@ -28,6 +29,10 @@ mod worker;
 #[path = "../../tests/unit/image_media_process.rs"]
 mod tests;
 
+pub(crate) use original::{
+    OriginalCapacityChanged, OriginalImageAvailability, OriginalImageCommand,
+    OriginalImageCopyEffect, OriginalImageFailure, OriginalImageRequest, OriginalImageState,
+};
 pub(crate) use presentation::{ImageMediaInterest, ImageMediaWindow};
 pub(crate) use signal::ImageMediaChanged;
 
@@ -96,6 +101,8 @@ pub(crate) struct ImageMediaDiagnostics {
     pub(crate) joins: u64,
     pub(crate) cancellations: u64,
     pub(crate) failures: u64,
+    pub(crate) original_commands: usize,
+    pub(crate) original_encoded_bytes: usize,
     pub(crate) cpu: CpuSurfaceDiagnostics,
 }
 
@@ -109,6 +116,7 @@ pub(crate) struct ImageMediaAttachment {
 }
 
 struct ProcessCore {
+    original_capacity: Arc<original::OriginalCapacityEvent>,
     native_progress: Arc<signal::NativeProgress>,
     domain: ImageResourceDomain,
     limits: MediaResourceLimits,
@@ -128,6 +136,7 @@ struct ProcessState {
     windows: BTreeMap<u64, Weak<WindowState>>,
     queue: VecDeque<QueuedDemand>,
     flights: BTreeMap<RenditionIdentity, Flight>,
+    original: Option<Arc<original::OriginalCommandState>>,
     active_workers: usize,
     path_slots: usize,
     verification_slots: usize,
@@ -247,6 +256,7 @@ impl ImageMediaProcess {
             return Err(ImageMediaError(ImageMediaFailure::Capacity));
         }
         let core = Arc::new(ProcessCore {
+            original_capacity: Arc::new(original::OriginalCapacityEvent::new(limits)),
             native_progress: Arc::new(signal::NativeProgress::default()),
             domain,
             limits,
@@ -329,6 +339,10 @@ impl ImageMediaProcess {
         if let Some(previous) = state.attachment.upgrade() {
             if !previous.retired.load(Ordering::Acquire)
                 || previous.active_workers.load(Ordering::Acquire) != 0
+                || state
+                    .original
+                    .as_ref()
+                    .is_some_and(|operation| operation.belongs_to(&previous))
                 || previous.consumer.retire() != ImageResourceDrain::Drained
             {
                 return Err(ImageMediaError(ImageMediaFailure::Retired));
@@ -363,6 +377,11 @@ impl ImageMediaProcess {
             joins: state.joins,
             cancellations: state.cancellations,
             failures: state.failures,
+            original_commands: usize::from(state.original.is_some()),
+            original_encoded_bytes: state
+                .original
+                .as_ref()
+                .map_or(0, |operation| operation.encoded_bytes()),
             cpu: self.core.cpu.diagnostics()?,
         })
     }

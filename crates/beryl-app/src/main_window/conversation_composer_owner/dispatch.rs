@@ -993,6 +993,7 @@ impl MainWindowConversationComposer {
             let history_frontier = proof.selection.binding().range_history_frontier();
             let previous = self.selection;
             self.selection = proof.selection;
+            self.image_original_commands = None;
             self.image_inspection = None;
             self.image_surfaces.selection_changed(self.selection);
             self.admitted_positions = Some(proof.positions);
@@ -1035,6 +1036,7 @@ impl MainWindowConversationComposer {
         {
             let previous = self.selection;
             self.selection = result.settled_selection;
+            self.image_original_commands = None;
             self.image_inspection = None;
             self.image_surfaces.selection_changed(self.selection);
             cx.emit(
@@ -1120,6 +1122,7 @@ impl MainWindowConversationComposer {
                 self.selection = result.settled_selection;
                 self.private_clipboard_owner
                     .adopted(previous, self.selection, None);
+                self.image_original_commands = None;
                 self.image_inspection = None;
                 self.image_surfaces.selection_changed(self.selection);
                 if previous != self.selection {

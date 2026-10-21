@@ -27,6 +27,8 @@ pub(crate) use png_source::{PngPreflight, preflight_png};
 pub(crate) use process::{
     ImageMediaAttachment, ImageMediaChanged, ImageMediaDiagnostics, ImageMediaError,
     ImageMediaFailure, ImageMediaInterest, ImageMediaProcess, ImageMediaWindow,
+    OriginalCapacityChanged, OriginalImageAvailability, OriginalImageCommand,
+    OriginalImageCopyEffect, OriginalImageFailure, OriginalImageRequest, OriginalImageState,
 };
 pub(crate) use source::{
     ImageSourceDemand, ImageSourceError, ImageSourceProvider, ResolvedImageSource,

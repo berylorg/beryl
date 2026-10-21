@@ -1,5 +1,6 @@
 mod code;
 mod discussion;
+mod image_commands;
 
 #[cfg(test)]
 mod testing;
@@ -14,6 +15,9 @@ use gpui::{Bounds, size};
 
 #[derive(Default)]
 pub(in super::super) struct QuoteState {
+    image_media: std::sync::Weak<crate::image_processing::ImageMediaWindow>,
+    image_commands: Option<image_commands::DirectImageCommands>,
+    image_command_feedback: Option<image_commands::DirectImageFeedback>,
     serial: u64,
     pub(in super::super) capture: Option<QuoteCapture>,
     turn: Option<TurnCapture>,
@@ -69,6 +73,8 @@ impl SyndicTranscriptPanel {
     }
 
     pub(in super::super) fn invalidate_transcript_menu(&mut self) {
+        self.quote_state.image_commands = None;
+        self.quote_state.image_command_feedback = None;
         self.quote_state.branch_qualified = None;
         self.quote_state.capture = None;
         self.quote_state.code_capture = None;
@@ -91,6 +97,22 @@ impl SyndicTranscriptPanel {
             self.quote_state.edit_disabled_reason
         };
         QuoteRows {
+            image_copy_reason: self.quote_state.image_commands.as_ref().map_or(
+                Some("Checking the exact original image."),
+                |commands| {
+                    commands
+                        .original
+                        .reason(crate::image_processing::OriginalImageRequest::Copy)
+                },
+            ),
+            image_save_reason: self.quote_state.image_commands.as_ref().map_or(
+                Some("Checking the exact original image."),
+                |commands| {
+                    commands
+                        .original
+                        .reason(crate::image_processing::OriginalImageRequest::Save)
+                },
+            ),
             quote: self.quote_state.capture.is_some() || self.quote_state.code_capture.is_some(),
             branch: branch_source.is_some(),
             branch_label: if branch_current {
@@ -527,6 +549,7 @@ impl SyndicTranscriptPanel {
             window,
         );
         self.quote_state.popup = Some(popup);
+        self.open_image_original_commands(window, cx);
         if let Some(capture) = &self.quote_state.capture {
             if let Some(captured) = self.host.mapped_discussion_source(
                 capture.selection.activation,
@@ -547,6 +570,14 @@ impl SyndicTranscriptPanel {
     }
 
     pub(in super::super) fn close_quote_menu(&mut self, window: &mut Window) {
+        if self
+            .quote_state
+            .image_commands
+            .as_ref()
+            .is_some_and(|commands| !commands.effect_started)
+        {
+            self.quote_state.image_commands = None;
+        }
         let marker = self.quote_state.marker_origin.take();
         let code_focus = self.quote_state.code_capture.as_ref().and_then(|capture| {
             self.code_panels
@@ -591,8 +622,9 @@ impl SyndicTranscriptPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
+        self.poll_image_original_commands(window, cx);
         if self.initial_history_loading || self.quote_state.popup.is_none() {
-            return None;
+            return self.image_original_feedback(window);
         }
         let current = self.transcript_menu_current(window);
         if !current {
@@ -615,6 +647,8 @@ impl SyndicTranscriptPanel {
 }
 
 struct QuoteRows {
+    image_copy_reason: Option<&'static str>,
+    image_save_reason: Option<&'static str>,
     branch: bool,
     branch_label: &'static str,
     branch_reason: Option<&'static str>,
@@ -664,8 +698,12 @@ impl MenuCollection for QuoteRows {
                 } else {
                     "transcript-image-save"
                 },
-                if media_index == 0 { "Copy" } else { "Save" },
-                Some("The original image is not available in this transcript view."),
+                if media_index == 0 { "Copy" } else { "Save…" },
+                if media_index == 0 {
+                    self.image_copy_reason
+                } else {
+                    self.image_save_reason
+                },
             )
         } else {
             ("transcript-edit-message", "Edit message", self.edit_reason)
@@ -677,7 +715,10 @@ impl MenuCollection for QuoteRows {
             kind: MenuRowKind::Command,
             selected: false,
             enabled: quote
-                || ((id == "transcript-edit-message" || id == "transcript-discuss-branch")
+                || ((id == "transcript-edit-message"
+                    || id == "transcript-discuss-branch"
+                    || id == "transcript-image-copy"
+                    || id == "transcript-image-save")
                     && reason.is_none()),
             disabled_reason: reason.map(Into::into),
             selector: id.into(),
@@ -709,6 +750,15 @@ fn quote_input(
             }
             MenuIntent::Focus(_) => cx.notify(),
             MenuIntent::Activate { id, .. } => {
+                if id.as_ref() == "transcript-image-copy" || id.as_ref() == "transcript-image-save"
+                {
+                    panel.activate_image_original_command(
+                        id.as_ref() == "transcript-image-save",
+                        window,
+                        cx,
+                    );
+                    return;
+                }
                 if id.as_ref() == "transcript-discuss-branch" {
                     if panel.quote_state.code_capture.is_some() {
                         panel.activate_code_discussion(window, cx);

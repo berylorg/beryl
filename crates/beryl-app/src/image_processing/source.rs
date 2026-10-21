@@ -65,6 +65,21 @@ pub(crate) struct ResolvedImageSource {
     dimensions: [u32; 2],
 }
 
+pub(crate) struct ResolvedOriginalImageSource {
+    scope: HomeGenerationIdentity,
+    metadata: AssetMetadataRecord,
+}
+
+impl ResolvedOriginalImageSource {
+    pub(crate) fn asset_id(&self) -> AssetId {
+        self.metadata.asset_id()
+    }
+
+    pub(crate) fn metadata(&self) -> &AssetMetadataRecord {
+        &self.metadata
+    }
+}
+
 impl ResolvedImageSource {
     pub(crate) fn asset_id(&self) -> AssetId {
         self.metadata.asset_id()
@@ -145,6 +160,20 @@ impl ImageSourceProvider {
         demand: &ImageSourceDemand,
         cancellation: &CommandCancellation,
     ) -> Result<ResolvedImageSource, ImageSourceError> {
+        let original = self.resolve_original(demand, cancellation)?;
+        let dimensions = admitted_dimensions(&original.metadata, self.limits)?;
+        Ok(ResolvedImageSource {
+            scope: original.scope,
+            metadata: original.metadata,
+            dimensions,
+        })
+    }
+
+    pub(crate) fn resolve_original(
+        &self,
+        demand: &ImageSourceDemand,
+        cancellation: &CommandCancellation,
+    ) -> Result<ResolvedOriginalImageSource, ImageSourceError> {
         self.check_scope(cancellation)?;
         let asset_id = match *demand {
             ImageSourceDemand::Composer {
@@ -179,12 +208,10 @@ impl ImageSourceProvider {
         {
             return Err(ImageSourceError::Identity);
         }
-        let dimensions = admitted_dimensions(&metadata, self.limits)?;
         self.check_scope(cancellation)?;
-        Ok(ResolvedImageSource {
+        Ok(ResolvedOriginalImageSource {
             scope: self.scope,
             metadata,
-            dimensions,
         })
     }
 
@@ -193,12 +220,39 @@ impl ImageSourceProvider {
         source: &ResolvedImageSource,
         cancellation: CommandCancellation,
     ) -> Result<VerifiedSidecarReader, ImageSourceError> {
+        self.open_verified_asset(
+            source.scope,
+            source.asset_id(),
+            self.limits.configuration().rendition_source_max_bytes as u64,
+            cancellation,
+        )
+    }
+
+    pub(crate) fn open_original_verified(
+        &self,
+        source: &ResolvedOriginalImageSource,
+        cancellation: CommandCancellation,
+    ) -> Result<VerifiedSidecarReader, ImageSourceError> {
+        self.open_verified_asset(
+            source.scope,
+            source.asset_id(),
+            source.asset_id().length().get(),
+            cancellation,
+        )
+    }
+
+    fn open_verified_asset(
+        &self,
+        scope: HomeGenerationIdentity,
+        asset: AssetId,
+        maximum_bytes: u64,
+        cancellation: CommandCancellation,
+    ) -> Result<VerifiedSidecarReader, ImageSourceError> {
         self.check_scope(&cancellation)?;
-        if source.scope != self.scope {
+        if scope != self.scope {
             return Err(ImageSourceError::Stale);
         }
         let config = self.limits.configuration();
-        let asset = source.asset_id();
         let address = SidecarAddress::new(
             SidecarNamespace::new("images").expect("ordinary asset namespace is valid"),
             SidecarDigest::from_bytes(asset.digest()),
@@ -209,8 +263,7 @@ impl ImageSourceProvider {
             .open_verified_sidecar_reader(
                 &address,
                 SidecarByteLimit::new(
-                    NonZeroU64::new(config.rendition_source_max_bytes as u64)
-                        .expect("validated positive source limit"),
+                    NonZeroU64::new(maximum_bytes).expect("validated positive source limit"),
                 ),
                 NonZeroUsize::new(config.sidecar_io_page_bytes)
                     .expect("validated positive source page"),

@@ -326,8 +326,14 @@ pub(super) fn cancel_interest(interest: &Arc<InterestState>, reason: ImageMediaF
 }
 
 pub(super) fn close_window(window: &Arc<WindowState>) -> ImageResourceDrain {
-    let first = !window.closed.swap(true, Ordering::AcqRel);
+    let first = if let Some(core) = window.core.upgrade() {
+        let _state = lock(&core.state);
+        !window.closed.swap(true, Ordering::AcqRel)
+    } else {
+        !window.closed.swap(true, Ordering::AcqRel)
+    };
     if first {
+        original::retire_window(window);
         let interests = lock(&window.interests)
             .values()
             .filter_map(Weak::upgrade)

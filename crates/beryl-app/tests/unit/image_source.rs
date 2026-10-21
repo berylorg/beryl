@@ -279,3 +279,102 @@ fn queued_source_demands_have_fixed_owners_and_no_drop_custody() {
     assert!(!std::mem::needs_drop::<ImageSourceDemand>());
     assert!(std::mem::size_of::<ImageSourceDemand>() <= 1024);
 }
+
+#[test]
+fn exact_original_reader_is_independent_of_format_dimensions_and_rendition_length() {
+    let (_directory, home, state, storage, _) =
+        host_fixture::fixture_with_state("original-source-limits", 77);
+    let assets = state.assets();
+    let bytes = b"an exact original unsupported by the rendition decoder";
+    let admitted = home
+        .admit_sidecar(
+            SidecarNamespace::new("images").unwrap(),
+            bytes,
+            SidecarByteLimit::new(NonZeroU64::new(1024).unwrap()),
+        )
+        .unwrap();
+    let asset = AssetId::sha256_v1(
+        admitted.address().digest().as_bytes(),
+        NonZeroU64::new(admitted.address().length()).unwrap(),
+    );
+    let revision = assets.revision(&home).unwrap();
+    let contribution = assets
+        .publish_metadata(
+            revision,
+            admitted,
+            PublishAssetMetadata::new(
+                asset,
+                AssetMediaType::new("image/webp").unwrap(),
+                None,
+                revision.checked_next().unwrap(),
+            ),
+        )
+        .unwrap();
+    let mut command = beryl_home_store::HomeCommand::new(home.home_revision().unwrap());
+    contribution.add_to(&mut command).unwrap();
+    host_fixture::committed(home.execute(command));
+    let metadata = assets.metadata(&home, asset).unwrap().unwrap();
+    let mut config = limits().configuration();
+    config.rendition_source_max_bytes = 1;
+    let limits = MediaResourceLimits::new(config).unwrap();
+    assert!(matches!(
+        admitted_dimensions(&metadata, limits),
+        Err(ImageSourceError::Unsupported)
+    ));
+    let original = ResolvedOriginalImageSource {
+        scope: home.generation_identity().unwrap(),
+        metadata,
+    };
+    let provider =
+        ImageSourceProvider::new(home.service_reference(), storage, assets, limits).unwrap();
+    let mut reader = provider
+        .open_original_verified(&original, CommandCancellation::new())
+        .unwrap();
+    assert!(reader.fill_buf().unwrap().len() <= config.sidecar_io_page_bytes);
+    let mut found = Vec::new();
+    reader.read_to_end(&mut found).unwrap();
+    assert_eq!(found, bytes);
+    drop(reader);
+    let path = provider
+        .open_original_verified(&original, CommandCancellation::new())
+        .unwrap()
+        .verified_sidecar()
+        .path()
+        .to_path_buf();
+    std::fs::write(path, b"corrupted").unwrap();
+    assert!(matches!(
+        provider.open_original_verified(&original, CommandCancellation::new()),
+        Err(ImageSourceError::Sidecar(SidecarError::ContentMismatch))
+    ));
+}
+
+#[test]
+fn original_authentication_keeps_exact_occurrence_checks_without_rendition_admission() {
+    let (_directory, home, state, storage, thread) =
+        host_fixture::fixture_with_state("original-occurrence", 78);
+    let (marker, _) = host_fixture::populate(storage.clone(), &home, thread, 79);
+    let current = binding(&home, &storage, thread, 79);
+    let provider = source_provider(&home, storage, state.assets());
+    assert!(matches!(
+        provider.resolve_original(
+            &ImageSourceDemand::Composer {
+                binding: current,
+                marker_id: marker.marker_id(),
+                order_key: marker.order_key() + 1
+            },
+            &CommandCancellation::new()
+        ),
+        Err(ImageSourceError::Identity)
+    ));
+    assert!(matches!(
+        provider.resolve_original(
+            &ImageSourceDemand::Composer {
+                binding: current,
+                marker_id: marker.marker_id(),
+                order_key: marker.order_key()
+            },
+            &CommandCancellation::new()
+        ),
+        Err(ImageSourceError::Unavailable)
+    ));
+}

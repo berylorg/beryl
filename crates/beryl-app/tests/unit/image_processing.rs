@@ -15,6 +15,28 @@ fn limits() -> MediaResourceLimits {
     MediaResourceLimits::new(MediaResourceConfiguration::default()).unwrap()
 }
 
+#[test]
+fn original_command_configuration_has_one_slot_and_explicit_clipboard_budgets() {
+    let config = limits().configuration();
+    assert_eq!(config.original_command_slots, 1);
+    assert_eq!(config.original_clipboard_total_bytes, 67_108_864);
+    assert_eq!(config.original_clipboard_metadata_bytes, 4096);
+    assert!(
+        MediaResourceLimits::new(MediaResourceConfiguration {
+            original_command_slots: 2,
+            ..config
+        })
+        .is_err()
+    );
+    assert!(
+        MediaResourceLimits::new(MediaResourceConfiguration {
+            original_clipboard_metadata_bytes: 23,
+            ..config
+        })
+        .is_err()
+    );
+}
+
 fn cancelled_signal() -> CommandCancellation {
     let cancellation = CommandCancellation::new();
     cancellation.cancel();

@@ -6,6 +6,9 @@ pub(crate) struct MediaResourceConfiguration {
     pub(crate) generated_media_worker_slots: usize,
     pub(crate) generated_media_page_bytes: usize,
     pub(crate) paste_admission_queue_items: usize,
+    pub(crate) original_command_slots: usize,
+    pub(crate) original_clipboard_total_bytes: usize,
+    pub(crate) original_clipboard_metadata_bytes: usize,
     pub(crate) path_preparation_slots: usize,
     pub(crate) sidecar_verification_slots: usize,
     pub(crate) sidecar_io_page_bytes: usize,
@@ -35,6 +38,9 @@ impl Default for MediaResourceConfiguration {
             generated_media_worker_slots: 2,
             generated_media_page_bytes: 65_536,
             paste_admission_queue_items: 1,
+            original_command_slots: 1,
+            original_clipboard_total_bytes: 67_108_864,
+            original_clipboard_metadata_bytes: 4_096,
             path_preparation_slots: 2,
             sidecar_verification_slots: 2,
             sidecar_io_page_bytes: 4_096,
@@ -69,6 +75,9 @@ impl MediaResourceLimits {
             config.generated_media_worker_slots,
             config.generated_media_page_bytes,
             config.paste_admission_queue_items,
+            config.original_command_slots,
+            config.original_clipboard_total_bytes,
+            config.original_clipboard_metadata_bytes,
             config.path_preparation_slots,
             config.sidecar_verification_slots,
             config.sidecar_io_page_bytes,
@@ -99,6 +108,9 @@ impl MediaResourceLimits {
             .iter()
             .all(|capacity| *capacity > 0 && *capacity <= isize::MAX as usize)
             && config.sidecar_io_page_bytes >= 13
+            && config.original_command_slots == 1
+            && config.original_clipboard_metadata_bytes >= 24
+            && config.original_clipboard_metadata_bytes < config.original_clipboard_total_bytes
             && config.decoder_processed_chunk_max_bytes >= 13
             && config.rendition_source_max_dimension <= u32::MAX as usize
             && config.rendition_max_dimension <= config.rendition_source_max_dimension
@@ -114,6 +126,10 @@ impl MediaResourceLimits {
         if !valid {
             return Err(ImagePreparationError::Configuration);
         }
+        config
+            .window_pin_entries
+            .checked_mul(beryl_state::MAX_RESTORABLE_WINDOWS)
+            .ok_or(ImagePreparationError::Configuration)?;
         config
             .generated_media_worker_slots
             .checked_mul(config.generated_media_page_bytes)

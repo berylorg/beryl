@@ -6,6 +6,8 @@ use crate::image_processing::{
     ImageMediaChanged, ImageMediaFailure, ImageMediaInterest, ImageMediaWindow, ImageSourceDemand,
 };
 
+pub(crate) mod original_commands;
+
 pub(crate) struct ImageInspection {
     demand: Option<ImageSourceDemand>,
     interest: Option<ImageMediaInterest>,

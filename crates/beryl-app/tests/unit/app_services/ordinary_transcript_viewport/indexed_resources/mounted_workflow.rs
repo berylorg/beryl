@@ -490,3 +490,6 @@ mod replacement_branch;
 
 #[path = "mounted_workflow/image_inspection.rs"]
 mod image_inspection;
+
+#[path = "mounted_workflow/original_commands.rs"]
+mod original_commands;

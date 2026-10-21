@@ -20,6 +20,14 @@ impl ImageMediaAttachment {
         if self.inner.active_workers.load(Ordering::Acquire) != 0 {
             return ImageResourceDrain::Pending;
         }
+        if self.inner.core.upgrade().is_some_and(|core| {
+            lock(&core.state)
+                .original
+                .as_ref()
+                .is_some_and(|operation| operation.belongs_to(&self.inner))
+        }) {
+            return ImageResourceDrain::Pending;
+        }
         if self.inner.consumer.domain().failure().is_some() {
             return ImageResourceDrain::Pending;
         }
@@ -34,10 +42,10 @@ impl Drop for ImageMediaAttachment {
 }
 
 pub(super) fn retire_attachment(attachment: &Arc<AttachmentState>) -> ImageResourceDrain {
-    attachment.retired.store(true, Ordering::Release);
     if let Some(core) = attachment.core.upgrade() {
         let windows = {
             let mut state = lock(&core.state);
+            attachment.retired.store(true, Ordering::Release);
             state.queue.retain(|queued| {
                 !queued
                     .attachment
@@ -78,13 +86,22 @@ pub(super) fn retire_attachment(attachment: &Arc<AttachmentState>) -> ImageResou
         core.cpu.retire_attachment(attachment.id);
         core.work.notify_all();
         core.event.notify();
+    } else {
+        attachment.retired.store(true, Ordering::Release);
     }
     attachment.event.notify();
     let native = attachment.consumer.retire();
     if attachment.consumer.domain().failure().is_some() {
         return ImageResourceDrain::Pending;
     }
-    if attachment.active_workers.load(Ordering::Acquire) == 0 {
+    if attachment.active_workers.load(Ordering::Acquire) == 0
+        && !attachment.core.upgrade().is_some_and(|core| {
+            lock(&core.state)
+                .original
+                .as_ref()
+                .is_some_and(|operation| operation.belongs_to(attachment))
+        })
+    {
         native
     } else {
         ImageResourceDrain::Pending
@@ -122,6 +139,7 @@ impl ImageMediaProcess {
             || state.active_workers != 0
             || !state.queue.is_empty()
             || !state.flights.is_empty()
+            || state.original.is_some()
         {
             return ImageResourceDrain::Pending;
         }

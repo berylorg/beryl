@@ -134,9 +134,20 @@ original jobs do not spawn a thread, decoder, independent executor pool or unbou
 reservation remains held through a pending native picker and through any prepared output or effect
 result. Waiting native picker state holds no source service or file. Availability preparation
 returns only compact facts and releases its slot; a later command performs fresh authentication.
+One detached foreground completion task retains the exact command and only weak GUI access until
+the native picker result arrives, even after its presentation closes. It explicitly settles the
+picker hold on success, cancellation or error; dropping an App receiver or cancelling the command
+cannot stand in for native completion.
 When admission is busy, an already mounted adapter retains only its one current compact demand and
 may retry on the process's bounded capacity-change notification. It installs no timer, retained
 closure history or extra source queue, and retires that retry with its exact surface/request.
+The original-capacity notification owns a separate bounded broadcast of weak, future-owned waiter
+registrations, capped by checked multiplication of the supported native-window count and configured
+per-window interest allowance. Saturation returns typed capacity refusal. A dropped waiter removes
+only its own wake registration; notification wakes all remaining admitted waiters after releasing
+its lock. Capture registration/revision before attempting command admission so a release before
+the future's first poll cannot be lost. A terminal operation failure does not automatically replay
+that operation or retry because releasing its own slot emitted a notification.
 
 Each visible image command surface owns one compact original request/result adapter alongside its
 independent rendition interest. Its identity binds the exact occurrence, attachment, window and
