@@ -7,14 +7,15 @@ use sha2::{Digest, Sha256};
 use crate::read::access::ReadAccess;
 use crate::{SyndicStorage, draft_piece::*};
 
-mod mapping_program;
 mod deferred_prefix;
+mod mapping_program;
 mod marker_identity_lookup;
 mod marker_program;
 mod marker_tree_edit;
 mod sealed_import;
 mod sequence_edit;
 mod sequence_units;
+mod tree_balance;
 pub(crate) use sealed_import::{append_import_leaf, cross_validate_import_leaf};
 
 #[cfg(feature = "test-faults")]
@@ -1207,14 +1208,7 @@ fn pack_inserted_sequence_children(
     height: u8,
     children: Vec<DraftPieceChildV1>,
 ) -> Result<Vec<SequenceRef>, DraftPiecePrepareErrorV1> {
-    if children.len() <= DRAFT_PIECE_MAX_CHILDREN {
-        return Ok(vec![context.new_sequence_node(height, children)?]);
-    }
-    let split = children.len() / 2;
-    Ok(vec![
-        context.new_sequence_node(height, children[..split].to_vec())?,
-        context.new_sequence_node(height, children[split..].to_vec())?,
-    ])
+    tree_balance::pack_children(children, |parts| context.new_sequence_node(height, parts))
 }
 
 fn insert_sequence_leaf_recursive(
@@ -1419,14 +1413,7 @@ fn index_insert_recursive(
     for replacement in replacements.into_iter().rev() {
         children.insert(index, replacement.link);
     }
-    if children.len() <= DRAFT_PIECE_MAX_CHILDREN {
-        return Ok(vec![context.new_index_node(tree.height, children)?]);
-    }
-    let split = children.len() / 2;
-    Ok(vec![
-        context.new_index_node(tree.height, children[..split].to_vec())?,
-        context.new_index_node(tree.height, children[split..].to_vec())?,
-    ])
+    tree_balance::pack_children(children, |parts| context.new_index_node(tree.height, parts))
 }
 
 fn index_insert(
@@ -1581,15 +1568,9 @@ fn marker_order_insert_recursive(
         asset_id,
     )?;
     children.splice(index..index, replacements.into_iter().map(|part| part.link));
-    if children.len() <= DRAFT_PIECE_MAX_CHILDREN {
-        Ok(vec![context.new_marker_order_node(tree.height, children)?])
-    } else {
-        let split = children.len() / 2;
-        Ok(vec![
-            context.new_marker_order_node(tree.height, children[..split].to_vec())?,
-            context.new_marker_order_node(tree.height, children[split..].to_vec())?,
-        ])
-    }
+    tree_balance::pack_children(children, |parts| {
+        context.new_marker_order_node(tree.height, parts)
+    })
 }
 
 fn marker_order_insert(
@@ -2823,7 +2804,11 @@ pub(crate) fn read_text_demand<'a>(
         DraftPieceTextDemandV1::Validate(candidate) => {
             if extent == 0 {
                 return Ok(DraftPieceTextDemandResultV1::new(
-                    root, demand, 0, 0, Vec::new(),
+                    root,
+                    demand,
+                    0,
+                    0,
+                    Vec::new(),
                     DraftPieceTextEdgeFactV1::DocumentStart,
                     DraftPieceTextEdgeFactV1::DocumentEnd,
                     context.records_read,

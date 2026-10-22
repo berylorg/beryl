@@ -228,8 +228,8 @@
 
 - [x] Named live code, tests, fixtures, and configuration by behavior and verified the complete live naming surface.
 - [x] Completed the accepted duplicate-implementation and bounded-theme simplification batch, retaining its recorded verification limits.
-- [ ] Integrate the accepted private marker owner into complete bootstrap publication and graph retirement, distributing shared clones only from the published graph.
-- [ ] Share only the duplicated persistent-tree rebalancing mechanics after editor behavior stabilizes.
+- [x] Reconciled accepted private marker ownership through initial/recovery publication and retirement; shared clones originate from the published graph ([composition acceptance](../../failures/target-bootstrap-composition.md#complete-initial-graph-publication-and-retirement)).
+- [x] Shared private persistent-tree packing and marker sibling normalization with unchanged authentication, durable identities and bounds; [58-case qualification](../../audits/persistent-tree-balancing-qualification.md).
 - [ ] Remove every remaining shim, obsolete export, test, key, diagnostic, role, archived-source
   membership edge, and forbidden API reference.
 - [ ] Close evidence gaps, if any remain after owning phases, for named Beryl-owned queues, caches,

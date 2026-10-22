@@ -76,31 +76,14 @@ fn edit_identity(
             let sibling_children = sibling
                 .children()
                 .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
-            let mut combined = Vec::with_capacity(underfull.len() + sibling_children.len());
-            if sibling_index < index {
-                combined.extend_from_slice(sibling_children);
-                combined.extend(underfull);
-            } else {
-                combined.extend(underfull);
-                combined.extend_from_slice(sibling_children);
-            }
-            let replacements = if combined.len() <= DRAFT_PIECE_MAX_CHILDREN {
-                vec![context.new_index_node(height, combined)?.link]
-            } else {
-                let middle = combined.len() / 2;
-                vec![
-                    context
-                        .new_index_node(height, combined[..middle].to_vec())?
-                        .link,
-                    context
-                        .new_index_node(height, combined[middle..].to_vec())?
-                        .link,
-                ]
-            };
-            children.splice(
-                index.min(sibling_index)..=index.max(sibling_index),
-                replacements,
-            );
+            tree_balance::rebalance_children(
+                &mut children,
+                index,
+                sibling_index,
+                underfull,
+                sibling_children,
+                |parts| context.new_index_node(height, parts).map(|tree| tree.link),
+            )?;
         }
     }
     match children.len() {
@@ -222,31 +205,18 @@ fn edit_order(
             let sibling_children = sibling
                 .children()
                 .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
-            let mut combined = Vec::with_capacity(underfull.len() + sibling_children.len());
-            if sibling_index < index {
-                combined.extend_from_slice(sibling_children);
-                combined.extend(underfull);
-            } else {
-                combined.extend(underfull);
-                combined.extend_from_slice(sibling_children);
-            }
-            let replacements = if combined.len() <= DRAFT_PIECE_MAX_CHILDREN {
-                vec![context.new_marker_order_node(height, combined)?.link]
-            } else {
-                let middle = combined.len() / 2;
-                vec![
+            tree_balance::rebalance_children(
+                &mut children,
+                index,
+                sibling_index,
+                underfull,
+                sibling_children,
+                |parts| {
                     context
-                        .new_marker_order_node(height, combined[..middle].to_vec())?
-                        .link,
-                    context
-                        .new_marker_order_node(height, combined[middle..].to_vec())?
-                        .link,
-                ]
-            };
-            children.splice(
-                index.min(sibling_index)..=index.max(sibling_index),
-                replacements,
-            );
+                        .new_marker_order_node(height, parts)
+                        .map(|tree| tree.link)
+                },
+            )?;
         }
     }
     match children.len() {

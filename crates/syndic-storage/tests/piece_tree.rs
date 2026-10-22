@@ -878,6 +878,9 @@ fn remember_settled_transaction(
             syndic_storage::DraftPieceSettlementClosureV1::SealedImport(_) => {
                 panic!("ordinary transaction unexpectedly imported sealed content")
             }
+            syndic_storage::DraftPieceSettlementClosureV1::OrdinaryRootReplacement(_) => {
+                panic!("ordinary transaction unexpectedly replaced an accepted-input root")
+            }
         },
         other => panic!("settled transaction has unexpected status: {other:?}"),
     }

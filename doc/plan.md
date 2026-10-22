@@ -6,27 +6,29 @@ transcript, composer, Settings, restoration and replacement editing. Preserve un
 Commit and push accepted phases; no installation is authorized. Do not modify CAS. Revisit accepted
 [known limitations](known-limitations.md) after the rework is otherwise finished.
 
-# Phase 815: Qualify Assets And Deferred Cleanup (finished)
+# Phase 816: Share Persistent Marker Tree Balancing (finished)
 
-Independently accepted composed asset/resource and deferred-cleanup behavior with 107 distinct
-App and 72 durable asset/Home passing cases, including all three final native image workflows.
-Normal App check passes. Corrected fixture authority/source preconditions without weakening
-production behavior or source predicates. [Qualification and limits](audits/asset-cleanup-qualification.md).
-Checkpoint 7 is closed with automatic titles explicitly deferred; owned task artifacts are reclaimed.
+Shared private packing and marker sibling normalization while preserving authenticated traversal,
+constructor ordering, durable formats, charging and root semantics. Independent review accepted;
+58 focused persistence cases and normal storage check pass
+([qualification](audits/persistent-tree-balancing-qualification.md)).
 
-# Phase 816: Qualify And Close The Complete Rework (wip)
+# Phase 817: Qualify And Close The Complete Rework (wip)
 
-Perform independent readiness on Checkpoint 8's remaining marker-owner composition, persistent-tree
-rebalancing, obsolete-surface and final functional/resource evidence. Reconcile stale aggregate
-rows against accepted code/evidence; a genuinely separate missing implementation outcome must get
-its owning design readiness and ordered acceptance boundary before coding. No new implementation
-scope is selected yet.
+Requalify the five outstanding `notice_mount` large clipboard size/storage and marker
+capacity/storage/ambiguous refusal cases, serially with a 60-second slow interval and four-interval
+termination. Preserve the 3 MiB fixture, fixed pages, refusal/history and custody assertions.
+Replace the obsolete historical archive-path assertion in `transcript_rework_source_boundary`
+with an enduring storage/presentation separation assertion, then run that source-boundary target.
 
-After prerequisite closure, qualify the complete storage/runtime/CAS, multi-window, conversation,
-branch, asset, recovery and Windows boundary; revisit the five ancillary large controls with
-fixture-compatible functional bounds where required. Obtain independent architectural completion
-review and satisfy exact archive/reference-removal closure under the rework skill, with accepted
-known limitations explicit. Sustained performance/stress still requires Operator coordination.
+Map accepted storage/runtime/CAS, multi-window, conversation, branch, asset, recovery and Windows
+receipts to the complete boundary, including early large ingress/outbound evidence. Reuse unchanged
+owning evidence within its declared limits rather than summing overlapping counts. Refresh native
+composition after tree changes and run the normal production binary check. Independent architectural
+completion review must resolve applicable findings before exact archive/reference-removal closure
+under the rework skill. Automatic titles and unavailable historical repair retain their accepted
+limitations. No concrete unresolved envelope question currently requires sustained stress;
+performance/stress still requires Operator coordination.
 
 Use the existing canonical checkout `C:/Users/user/p/berylorg/beryl-restoration-progressive-canonical`
 and shared root `target` for one serial Cargo lane; root `.cargo/local.toml` is unsuitable for the
@@ -36,7 +38,7 @@ edits in `main_window/conversation_composer_owner/dispatch/evidence.rs` and
 unit build without it remains unqualified as recorded in the asset audit. No owned build/test
 process or phase-815 fixture remains. Do not install software or modify CAS.
 
-# Phase 817: Revisit Known Limitations (pending)
+# Phase 818: Revisit Known Limitations (pending)
 
 After the rework is otherwise finished, review the accepted limitation register and available
 capabilities, then propose the next bounded work. Do not modify CAS or silently waive qualification;
