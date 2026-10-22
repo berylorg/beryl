@@ -258,6 +258,16 @@ Keep thread selection responsive across a large Beryl home while preserving exac
   character, has no Unicode control character or surrounding whitespace, and is at most 512 UTF-8
   bytes. Validation rejects rather than truncates model output.
 
+## Automatic Title Generation Availability
+
+Automatic generation is an accepted known limitation of the current Beryl-home rework. Ordinary
+and discussion threads use their existing history-derived title or localized untitled fallback;
+already accepted generated attributes retain normal display precedence. Automatic generation
+creates no background backend session until its inference-only requirement can be qualified.
+CAS modification is outside this work. Revisit the
+[limitation](../../known-limitations.md#automatic-thread-titles) after the rework is otherwise
+finished; it does not block remaining rework acceptance or foreground use.
+
 ## History-Derived Title
 
 - The source is the earliest real user-authored input on the thread's current selected path. For a

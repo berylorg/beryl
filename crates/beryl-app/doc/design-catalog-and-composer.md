@@ -788,6 +788,9 @@ Neither path replays import, guesses a successor or substitutes a clean-close ch
 - The title adapter consumes exact Syndic eligibility and bounded source facts, uses one bounded
   maintenance backend session, validates the typed result, and submits one one-way Syndic attribute
   mutation. It never reads CAS thread names or history or occupies a selected foreground stream.
+  [Title maintenance](design-title-maintenance.md) owns finite discovery, invocation and cleanup
+  bounds, graph-wide uncertainty fencing, source acceptance and coherent refresh. Disconnected
+  legacy title tasks and their removed backend API are not an implementation path.
 
 ## Selected-Thread Lineage Adapter
 

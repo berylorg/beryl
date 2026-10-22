@@ -26,6 +26,33 @@ Independent records prevent unrelated changes from fencing one another:
   usage revision.
 - Thread catalog summary is a compact rebuildable query value derived from current durable facts.
 
+Automatic title preparation is a typed resumable source read, independent of catalog certification
+and ordinary writer work. Its implementation is deferred under the feature's
+[availability limit](../../../doc/features/conversation-threads/design.md#automatic-title-generation-availability);
+the preparation contract below does not require current-rework wiring. It is eligible only for
+ordinary threads without an accepted generated title and selects the earliest local real
+OrdinaryUser input on the current selected path. It
+excludes drafts, provider operations, synthetic context, continuation and inherited discussion
+input. Reuse the existing source-selection/content-range rules behind budgeted continuations;
+do not execute an unbudgeted ancestry traversal in one preparation step or in the title writer.
+
+One preparation step consumes at most 64 source records and 65,536 stored/decoded bytes and keeps
+one bounded continuation/earliest-source witness. The prepared source owns at most 4,096 original
+logical UTF-8 bytes ending at a scalar boundary. Empty usable text cannot be replaced. It binds
+the exact Home generation, thread and attributes revisions, selected-path digest, source turn,
+sealed content reference/digest and immutable execution binding. Each bounded step authenticates
+its relevant source witnesses and confirms its read coherence; unrelated prior mutations do not
+invalidate the whole continuation. A changed relevant source is typed stale/ineligible, never a
+different prompt silently substituted into the same candidate.
+
+Typed candidate discovery pages contain at most 32 threads with a finite fixed pass frontier and
+exact continuation. A caller can advance beyond every attempted thread without resetting on
+unrelated writes or collecting all candidates. Process-local preparation/discovery cursors and
+proofs add no durable family or persisted byte shape. Prepared facts grant no backend capability.
+The source produces the existing GeneratedThreadTitle with unchanged strict validation and exact
+provenance. Acceptance remains the existing one-way attributes mutation and ordinary command
+reconciliation; its writer rechecks source/attributes rather than trusting a model result.
+
 Compact catalog authentication on a retained Home read uses bounded Thread, immutable Execution,
 Attributes, HistorySummary and ThreadCatalogSummary records. It requires exact canonical source
 witness equality, identity/execution/lineage agreement, archive/activity/completeness facts and

@@ -9,6 +9,16 @@ This supplement is normative only for its bounded backend thread-operation role 
 - `thread/start` creates the pinned ephemeral backend thread from its closed start input; `thread/resume` attaches an exact CAS projection only for live execution/control, never activation or catalog proof; and `thread/fork` creates one backend thread from an exact source thread without deciding activation or displayed lineage. `thread/rollback` takes only an exact thread id and trailing-turn count and mutates that backend thread history only; it does not decide branch preparation, source editing, or any GUI workflow.
 - Start, resume, and fork request metadata-only controls including `excludeTurns = true` where provided. Their lineage responses, and rollback/start responses, retain exact bounded thread identity, closed status, model, provider, and reasoning facts when the method supplies them; they never synthesize omitted facts. Turns, items, previews, paths, names, source trees, historical arrays, and bodies are discarded rather than becoming an alternate transcript. Resume and rollback reject a different returned thread id; fork rejects reuse of its source thread.
 - `thread/read` retains bounded thread identity, closed status, required bounded provider identity, and optional bounded subagent nickname. It never synthesizes model or reasoning metadata. `thread/unsubscribe` preserves only `notLoaded`, `notSubscribed`, or `unsubscribed` and is not persistent-thread deletion. Thread-close notifications retain only bounded identity in source order. Backend names are not Beryl title authority.
+- Background consumers may qualify an independent full-profile session through the ordinary
+  original-launch/release/configuration proof, start an ephemeral thread with explicit developer
+  instructions and consume the existing typed streamed-turn operations. They do not reuse a
+  selected stream or promote request-only clients. The exact thread-start instruction override
+  is explicit and does not append user-global instructions. Background task policy and candidate
+  acceptance remain App/Syndic owned. Closing this websocket proves only local connection drainage;
+  unsubscribe and socket close do not prove remote turn termination or authorize killing the
+  shared managed process. Exact start dispatch classifications remain unchanged.
+  This ordinary session path establishes no inference-only guarantee. Automatic title invocation
+  remains gated by the App's [maintenance readiness contract](../../beryl-app/doc/design-title-maintenance.md#readiness-gate).
 - Ordinary `config/read` exposes only cwd-scoped bounded model and reasoning fields. `model/list` accepts at most 64 records per caller-requested page, retaining bounded id/display label, hidden/default facts, closed default effort, recognized-effort bitset, and one bounded continuation. It has no all-pages aggregation; descriptions, modalities, unknown metadata, and unknown efforts are discarded.
 - Resume and fork failures expose a method-specific lineage verdict only when app-server supplies one through a machine-readable field. Other JSON-RPC errors remain unclassified: numeric code, diagnostic text, and repetition never infer source loss or retry authority.
 

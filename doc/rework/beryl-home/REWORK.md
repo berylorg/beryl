@@ -125,6 +125,7 @@
 - Replacing immediately healthy initial open intentionally breaks typed consumers until their
   candidate registration and publication boundaries are rebuilt; no alternate healthy opener or
   automatic-publication substitute may conceal that gap.
+- Automatic model-generated titles are an accepted [known limitation](../../known-limitations.md#automatic-thread-titles), deferred without CAS modification until the rework is otherwise finished.
 
 # Reference Snapshot
 
@@ -249,7 +250,7 @@
 - [ ] Integrate bounded file reads, header parsing, on-demand thumbnails and tiles, decode workers,
   CPU surfaces, upload staging, shared media identity, GPU residency, eviction, and device-loss
   recovery.
-- [ ] Complete the App title-maintenance lifecycle contract and mount generated titles through Syndic authority and bounded Beryl projections.
+- [x] Recorded deferred automatic titles as a [known limitation](../../known-limitations.md#automatic-thread-titles), preserving history-derived titles and allowing remaining rework acceptance.
 - [ ] Preserve unreachable turns and resources until a separately designed future garbage-
   collection operation.
 - [ ] Gate: confirm representative asset limits, hostile dimensions, atomic publication, owned-resource release and deferred cleanup before Checkpoint 8, verifying unavailable repair or eligible generated-image repair as applicable.

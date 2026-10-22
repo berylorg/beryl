@@ -52,6 +52,8 @@ bindings; diagnostic commands do not gain authority to bypass ordinary lifecycle
   contribution to same-home replacement.
 - [Catalog and composer](design-catalog-and-composer.md) is normative for catalog projection and
   the range-backed composer, edit, history, publication, submission, activation, and title adapters.
+- [Title maintenance](design-title-maintenance.md) is normative for bounded source-qualified
+  background generation, independent backend invocation, uncertainty and process-graph retirement.
 - [Live control](design-live-control.md) is normative for approval, exact-stop, compaction, and
   lifecycle-continuation coordinator, driver, and custody surfaces.
 - [Live projection and scheduling](design-live-projection-and-scheduling.md) is normative for

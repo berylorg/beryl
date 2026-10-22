@@ -1454,6 +1454,17 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   supplied generation time that proved eligibility. Archive state is exactly
   ordinary, open branch discussion, or archived branch discussion; only exact successful handoff
   can publish the open-to-archived transition.
+- Automatic title generation consumes Syndic-owned bounded preparation, not App history scanning.
+  This future preparation/service capability is deferred under the thread feature's
+  [availability limit](../../features/conversation-threads/design.md#automatic-title-generation-availability).
+  Only ordinary threads without an accepted title qualify. Budgeted selected-path traversal selects
+  the earliest eligible local sealed user input and returns its exact thread/attributes/path,
+  content and immutable execution witnesses plus at most 4,096 original logical UTF-8 bytes.
+  Finite paged discovery and preparation continuations preserve bounded resident state and
+  reauthenticate relevant witnesses. A source change discards the candidate; it does not rebase
+  an in-flight title. App's independent maintenance session and lifecycle are governed by its
+  title-maintenance contract; background work creates no canonical conversation turn. One-way
+  acceptance wakes existing summary/catalog repair and coherent selected metadata publication.
 - A separate revisioned thread-usage record owns the latest exact selected-thread token observation:
   nonnegative last and total counters, optional positive model context window, observation time,
   and the exact immutable `ExecutionBinding`, binding revision, CAS thread, managed-process
