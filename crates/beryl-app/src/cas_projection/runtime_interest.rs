@@ -30,9 +30,9 @@ pub(crate) use activity_read::{
 pub(crate) use model_read::{RuntimeModelRead, RuntimeModelReadError};
 pub use session::RuntimeSessionAdmissionError;
 
-#[cfg(feature = "test-faults")]
+#[cfg(any(test, feature = "test-faults"))]
 mod test_support;
-#[cfg(feature = "test-faults")]
+#[cfg(any(test, feature = "test-faults"))]
 pub use test_support::{RuntimeInterestTestHarness, RuntimeInterestTestProbe};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -493,3 +493,6 @@ mod image_inspection;
 
 #[path = "mounted_workflow/original_commands.rs"]
 mod original_commands;
+
+#[path = "mounted_workflow/media_retirement.rs"]
+mod media_retirement;

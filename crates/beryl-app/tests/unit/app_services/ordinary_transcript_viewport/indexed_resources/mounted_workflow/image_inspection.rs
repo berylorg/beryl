@@ -21,8 +21,8 @@ fn native_mounted_image_renditions_paint_in_transcript_and_composer_and_release_
                 let panel = window
                     .read_with(cx, |root, _| root.test_transcript_panel())
                     .unwrap();
-                leading(window, &panel, cx).await;
                 ready(window, &panel, cx, &["before", "after"]).await;
+                settled_transcript(window, &panel, cx).await;
                 let markers = panel
                     .read_with(cx, |panel, _| {
                         panel
@@ -261,6 +261,9 @@ async fn wait_for_native_recovery(
     let origin = window
         .read_with(cx, |root, _| root.test_image_marker_inspection().unwrap())
         .unwrap();
+    let panel = window
+        .read_with(cx, |root, _| root.test_transcript_panel())
+        .unwrap();
     let deadline = Instant::now() + Duration::from_millis(350);
     let before = media.diagnostics().unwrap();
     while Instant::now() < deadline {
@@ -268,12 +271,42 @@ async fn wait_for_native_recovery(
             native.draw_and_present_for_test(app)
         })
         .unwrap();
-        assert!(matches!(
-            window
-                .read_with(cx, |root, _| root.test_image_marker_rendition())
-                .unwrap(),
-            Some((false, false, true, _))
-        ));
+        let actual = window
+            .read_with(cx, |root, _| root.test_image_marker_rendition())
+            .unwrap();
+        let source_currentness = window
+            .read_with(cx, |root, _| {
+                root.test_image_marker_inspection().map(|current| {
+                    (
+                        current.request == origin.request,
+                        current.target.record.record_id == origin.target.record.record_id,
+                        current.activation == origin.activation,
+                        current.presentation == origin.presentation,
+                    )
+                })
+            })
+            .unwrap();
+        let source_boundary = with_native(window, cx, |native, app| {
+            let panel = panel.read(app);
+            let snapshot = panel.snapshot();
+            (
+                snapshot.activation_revision == origin.activation,
+                snapshot.presentation_revision == origin.presentation,
+                panel.image_marker_bounds(&origin.target.record.record_id, native)
+                    == Some(origin.bounds),
+                panel.narrative_geometry_current_for_test(native),
+                panel.measurement_diagnostics().0,
+            )
+        })
+        .unwrap();
+        assert!(
+            matches!(actual, Some((false, false, true, _))),
+            "unavailable native interest changed: actual={actual:?}, source_currentness={source_currentness:?}, source_boundary(activation,presentation,bounds,geometry,measurement_pending)={source_boundary:?}, before={before:?}, current={:?}, generation={:?}, domain_failure={:?}, domain={:?}",
+            media.diagnostics().unwrap(),
+            media.domain().generation(),
+            media.domain().failure(),
+            media.domain().diagnostics(),
+        );
         window
             .read_with(cx, |root, _| {
                 let current = root.test_image_marker_inspection().unwrap();

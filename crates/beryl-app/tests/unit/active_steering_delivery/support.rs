@@ -49,6 +49,13 @@ mod storage {
     ));
 }
 
+mod runtime {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/active_steering_delivery/support/runtime.rs"
+    ));
+}
+
 use self::{
     image::publish_image_asset,
     storage::{
@@ -127,6 +134,7 @@ pub(super) struct DeliveryFixture {
     service: ProjectionConnectionService,
     storage: SyndicStorage,
     session: AdmittedProjectionSession,
+    runtime: crate::cas_projection::runtime_interest::RuntimeInterestTestHarness,
     target: Option<LiveEventTarget>,
     cancellation: ProjectionCancellationToken,
     thread_id: SyndicThreadId,
@@ -438,6 +446,15 @@ impl DeliveryFixture {
                 ),
             ),
         );
+        let (runtime, enrolled_session) = runtime::enroll_session(
+            home,
+            &storage,
+            execution_binding(runtime_id, seed),
+            thread_id,
+            submitted_turn_id,
+            session,
+        );
+        session = enrolled_session;
         let binding = storage
             .current_binding(home, thread_id, point_limit())
             .unwrap()
@@ -634,6 +651,7 @@ impl DeliveryFixture {
             service,
             storage,
             session,
+            runtime,
             target: Some(target),
             cancellation,
             thread_id,
@@ -1023,6 +1041,7 @@ impl DeliveryFixture {
             service,
             storage: _,
             session,
+            mut runtime,
             target,
             cancellation: _,
             thread_id: _,
@@ -1036,6 +1055,7 @@ impl DeliveryFixture {
         drop(session);
         server.join();
         let outcome = service.close();
+        assert!(runtime.shutdown(), "fixture runtime must join retirement");
         drop(directory);
         outcome
     }

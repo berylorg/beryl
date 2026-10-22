@@ -54,8 +54,8 @@ fn native_original_image_commands_use_exact_bytes_focus_and_late_picker_cancella
                     )))));
                 })
                 .unwrap();
-                leading(window, &panel, cx).await;
                 ready(window, &panel, cx, &["before", "after"]).await;
+                settled_transcript(window, &panel, cx).await;
                 let markers = panel
                     .read_with(cx, |panel, _| {
                         panel
@@ -194,21 +194,56 @@ fn native_original_image_commands_use_exact_bytes_focus_and_late_picker_cancella
                 open_preview(window, &panel, &markers[1], cx).await;
                 let successor_focus =
                     with_native(window, cx, |native, app| native.focused(app).unwrap()).unwrap();
+                let successor_origin = root
+                    .read_with(cx, |root, _| root.test_image_marker_inspection().unwrap())
+                    .unwrap();
                 let late_destination = directory.join("late.bin");
                 send.send(Ok(Some(gpui::SavePathChoice {
                     path: late_destination.clone(),
                     replace_existing: false,
                 })))
                 .unwrap();
+                let diagnose_at = Instant::now() + Duration::from_secs(9);
+                let mut diagnosed = false;
                 wait_until(
                     window,
                     cx,
                     |cx| {
-                        root.read_with(cx, |root, _| {
-                            root.test_image_original_command(false)
-                                .is_some_and(|(reason, _)| reason.is_none())
-                        })
-                        .unwrap()
+                        let (command, rendition, source_current) = root
+                            .read_with(cx, |root, _| {
+                                (
+                                    root.test_image_original_command(false),
+                                    root.test_image_marker_rendition(),
+                                    root.test_image_marker_inspection().is_some_and(|inspection| {
+                                        inspection.target.record.record_id == markers[1]
+                                    }),
+                                )
+                            })
+                            .unwrap();
+                        let ready = command.is_some_and(|(reason, _)| reason.is_none());
+                        if !ready && !diagnosed && (!source_current || Instant::now() >= diagnose_at) {
+                            diagnosed = true;
+                            let source_boundary = with_native(window, cx, |native, app| {
+                                let panel = panel.read(app);
+                                let snapshot = panel.snapshot();
+                                (
+                                    snapshot.activation_revision == successor_origin.activation,
+                                    snapshot.presentation_revision == successor_origin.presentation,
+                                    panel.image_marker_bounds(&successor_origin.target.record.record_id, native)
+                                        == Some(successor_origin.bounds),
+                                    panel.narrative_geometry_current_for_test(native),
+                                    panel.measurement_diagnostics().0,
+                                )
+                            }).unwrap();
+                            eprintln!(
+                                "cancelled picker settlement: command={command:?}, rendition={rendition:?}, source_current={source_current}, source_boundary(activation,presentation,bounds,geometry,measurement_pending)={source_boundary:?}, work={:?}, generation={:?}, domain_failure={:?}, domain={:?}",
+                                media.diagnostics().unwrap(),
+                                media.domain().generation(),
+                                media.domain().failure(),
+                                media.domain().diagnostics(),
+                            );
+                        }
+                        ready
                     },
                     "late cancelled choice must release admission for the successor surface",
                 )
@@ -340,7 +375,7 @@ async fn open_direct_menu(
     )
     .await;
 }
-async fn open_preview(
+pub(super) async fn open_preview(
     window: WindowHandle<MainWindowShellRoot>,
     panel: &Entity<SyndicTranscriptPanel>,
     marker: &crate::syndic_transcript::ResidentPresentationRecordId,
@@ -366,7 +401,7 @@ async fn open_preview(
     )
     .await;
 }
-async fn preview_action(
+pub(super) async fn preview_action(
     window: WindowHandle<MainWindowShellRoot>,
     anchor: &'static str,
     save: bool,
