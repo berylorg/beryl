@@ -2,8 +2,8 @@
 
 This follow-up register records accepted limitations and links their owning contracts and evidence.
 It does not replace feature/system/package authority or declare missing behavior implemented.
-Revisit these items after the Beryl-home rework is otherwise finished; accepted deferrals do not
-block its remaining implementation and qualification.
+Reviewed on 2026-10-22 after complete application qualification and closure. These accepted
+limitations remain separate follow-up work; they do not reopen the completed implementation.
 
 ## Automatic Thread Titles
 
@@ -34,4 +34,15 @@ from a partial full-view response. The
 [historical repair contract](systems/cas-live-syndic-transcript/design.md#exact-terminal-turn-historical-repair)
 owns eligibility and any future separately authorized repair. The
 [source-completeness evidence](failures/cas-terminal-repair-full-view-is-not-completeness.md)
-records the accepted limitation. Revisit source capabilities after the remaining rework closes.
+records the accepted limitation. Revisit source capabilities in separately selected follow-up work.
+
+## Follow-Up Boundary
+
+For automatic titles, the next bounded investigation is reassessing a supported public isolated
+inference operation against the existing feature contract. For historical repair, first establish
+complete semantic content and original-identity proof from an eligible source before planning
+admission or dispatch. The pinned evidence does not establish either missing capability.
+
+No further implementation is selected by this review. CAS modification, a release-pin change,
+ordinary-session title fallback and partial-history repair remain unauthorized. Future work begins
+from the live feature/system contracts and this register.
