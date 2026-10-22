@@ -106,8 +106,8 @@
 - Evidence: design review showed the user-visible goals are responsive rendering, memory bounds, smooth semantic navigation, and a full viewport when source data exists. The visual transcript scrollbar, exact page-scroll geometry, and selection through unrendered chunks are acceptable to remove for this rewrite.
 - Why it failed: continuous huge-turn geometry keeps correctness coupled to offscreen measurement and pushes the implementation back toward fragile spacer behavior. It also preserves old scrollbar-driven behavior that the new core does not need.
 - Course correction: streamed huge-turn mode abandons continuous pixel geometry. It stores a semantic anchor shaped by turn identity, chunk identity, local anchor offset when needed, rendered chunk range, and navigation direction. The renderer fills adjacent chunks around that anchor until the viewport plus overscan is full or an explicit fallback/boundary is reached. The transcript region renders no visual scrollbar, and selection/copy in streamed huge-turn mode is limited to rendered chunks.
-- Historical affected authority and tests: `doc/features/transcript/design.md`, the now-archived
-  `doc/rework/beryl-home/old-doc/ui.md`, `crates/beryl-app/doc/design.md`, and the then-active root
+- Historical affected authority and tests: `doc/features/transcript/design.md`,
+  `crates/beryl-app/doc/design.md`, and the then-active root
   plan required the semantic streaming path. Tests guarded against transcript scrollbar rendering,
   unrendered-chunk spacers, cumulative chunk scroll offsets, and render-anyway controls in that phase.
 

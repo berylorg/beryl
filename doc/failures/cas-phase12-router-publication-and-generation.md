@@ -67,7 +67,6 @@ sessions and all later response attempts reject before touching the transport.
 # Affected Authority
 
 - `doc/plan.md`, Phase 12.
-- `doc/rework/beryl-home/REWORK.md`, Checkpoint 3.
 - `doc/systems/cas-live-syndic-transcript/design.md`.
 - `crates/beryl-app/doc/design.md`.
 - `crates/beryl-backend/doc/design.md`.

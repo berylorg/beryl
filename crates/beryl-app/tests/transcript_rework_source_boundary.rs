@@ -3,6 +3,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
+const ACTIVITY_METADATA_READ_SOURCES: [&str; 3] = [
+    "activity_service/viewport/metadata.rs",
+    "cas_projection/runtime_interest/activity_read.rs",
+    "shell/tool_activity_nickname.rs",
+];
+
 #[test]
 fn live_tests_do_not_import_legacy_transcript_source_by_path() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -38,12 +44,13 @@ fn syndic_transcript_sources_stay_inside_new_boundary() {
         .join("shell")
         .join("syndic_transcript");
     let archived_crates = ["old", "crates"].join("-");
-    let archived_rework_path = ["doc/rework/syndic-to-renderer", &archived_crates].join("/");
+    let archived_source = ["old", "code"].join("-");
     let storage_crate_name = ["syndic", "storage"].join("-");
     let storage_module_name = ["syndic", "storage"].join("_");
     let forbidden_needles = [
         archived_crates.as_str(),
-        archived_rework_path.as_str(),
+        archived_source.as_str(),
+        "doc/rework/",
         storage_crate_name.as_str(),
         storage_module_name.as_str(),
     ];
@@ -239,8 +246,10 @@ fn syndic_transcript_manual_scroll_command_stays_on_host_boundary() {
     assert!(host_source.contains("pub(crate) fn manual_scroll("));
     assert!(host_source.contains("self.realize_frame(command.frame_request())"));
     assert!(panel_source.contains("pub(crate) fn manual_scroll("));
-    assert!(panel_source
-        .contains("self.queue_manual_delta(command.frame_request().manual_delta_px, cx)"));
+    assert!(
+        panel_source
+            .contains("self.queue_manual_delta(command.frame_request().manual_delta_px, cx)")
+    );
     assert!(panel_source.contains("pub(crate) fn manual_scroll_delta("));
     assert!(panel_source.contains("ManualTranscriptScrollCommand::new("));
     assert!(panel_source.contains("Some(snapshot.presentation_revision)"));
@@ -429,7 +438,6 @@ fn backend_source_exposes_no_cas_catalog_protocol() {
 fn live_app_source_avoids_obsolete_catalog_storage_and_activation_inputs() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let src_dir = manifest_dir.join("src");
-    let metadata_read_path = "shell/tool_activity_nickname.rs";
     let loaded_list_method = ["thread", "loaded", "list"].join("/");
     let loaded_list_type = ["Thread", "Loaded", "List"].join("");
     let known_thread_key = ["known", "threads"].join("_");
@@ -448,7 +456,7 @@ fn live_app_source_avoids_obsolete_catalog_storage_and_activation_inputs() {
             || source.contains("read_thread_metadata_details(")
         {
             metadata_read_sources.push(relative_path.clone());
-            if relative_path != metadata_read_path {
+            if !ACTIVITY_METADATA_READ_SOURCES.contains(&relative_path.as_str()) {
                 offenders.push(format!(
                     "{relative_path} contains metadata-only thread/read"
                 ));
@@ -482,7 +490,10 @@ fn live_app_source_avoids_obsolete_catalog_storage_and_activation_inputs() {
     );
     metadata_read_sources.sort();
     metadata_read_sources.dedup();
-    assert_eq!(metadata_read_sources, vec![metadata_read_path.to_string()]);
+    assert_eq!(
+        metadata_read_sources,
+        ACTIVITY_METADATA_READ_SOURCES.map(String::from).to_vec()
+    );
 }
 
 #[test]
@@ -505,7 +516,10 @@ fn activity_metadata_read_uses_compact_typed_boundary() {
     }
     metadata_read_sources.sort();
     metadata_read_sources.dedup();
-    assert_eq!(metadata_read_sources, vec![metadata_read_path.to_string()]);
+    assert_eq!(
+        metadata_read_sources,
+        ACTIVITY_METADATA_READ_SOURCES.map(String::from).to_vec()
+    );
 
     let metadata_read_source = fs::read_to_string(src_dir.join(metadata_read_path))
         .expect("activity metadata resolver source should be readable");
@@ -537,8 +551,10 @@ fn activity_metadata_read_uses_compact_typed_boundary() {
         .expect("activity projection source should be readable");
     assert!(projection_source.contains("metadata.thread_id().as_str()"));
     assert!(projection_source.contains("metadata.agent_nickname()"));
-    assert!(projection_source
-        .contains("note_subagent_runtime_metadata_values(thread_id, None, None, true)"));
+    assert!(
+        projection_source
+            .contains("note_subagent_runtime_metadata_values(thread_id, None, None, true)")
+    );
 
     let title_backend_source = fs::read_to_string(
         src_dir

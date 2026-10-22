@@ -38,5 +38,4 @@ events and fragments to CAS schema state and admitted `beryl-stream` page leases
 - `../bounded-json/doc/design.md` and `../bounded-json/doc/plan.md`.
 - `doc/systems/bounded-resource-dataflow/design.md`.
 - `crates/beryl-backend/doc/design.md`.
-- `doc/rework/beryl-home/REWORK.md`.
 - `doc/plan.md`, Phase 13 sequence items 4 and 5.

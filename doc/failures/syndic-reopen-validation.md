@@ -14,6 +14,6 @@ Widening the home-store fault seam would change the accepted package contract in
 
 Course correction: stop Phase 2 before schema implementation. The Operator must explicitly choose either a bounded test-only physical-envelope corruption extension owned by `beryl-home-store`, with corresponding authoritative documentation and tests, or narrower Phase 2 wording that assigns in-bound physical corruption to ordinary reopen while retaining semantic and oversized-record same-home recovery proofs.
 
-Affected authority: `doc/plan.md`, `doc/rework/beryl-home/REWORK.md`, `crates/beryl-home-store/doc/design.md`, and `crates/syndic-storage/doc/design.md`.
+Affected authority: `doc/plan.md`, `crates/beryl-home-store/doc/design.md`, and `crates/syndic-storage/doc/design.md`.
 
 Resolution: the Operator authorized the bounded `test-faults`-only extension. The home-store seam must require an exact current typed domain handle and codec owner, accept only a physical envelope rejected by that codec, enforce fixed fixture-byte ceilings and `SyncAll`, and expose no production or reusable raw-storage API. Phase 2 may proceed under that constraint.

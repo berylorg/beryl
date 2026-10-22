@@ -60,5 +60,4 @@ of the valid exact case and the missing, duplicate, and mismatch corruption case
 - `doc/systems/syndic-conversation-history/design.md`
 - `doc/systems/cas-live-syndic-transcript/design.md`
 - `crates/syndic-storage/doc/design.md`
-- `doc/rework/beryl-home/REWORK.md`
 - `doc/plan.md`

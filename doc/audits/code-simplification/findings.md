@@ -348,11 +348,10 @@ retain source evidence, caller dependencies, contract implications and verificat
 - SS-009 defers [Postcard 1.1.3](../../memory/crates.io/postcard/1.1.3/syndic-record-value-codecs.md)
   to a separately authorized new format. Its default tags, lengths and integers are not V7 bytes.
   A complete adapter and domain-validation prototype is required before claiming savings.
-- SS-010 records current input-gate V4 implementation and tests versus target V5/RepairRequired.
-  Root confirmed repair-required successor gates and durable request claims are pending in
-  [Checkpoint 5](../../rework/beryl-home/REWORK.md), while the root plan pauses Checkpoint 4.
-  This is a known baseline-to-target gap to reconcile with planned work, not a test-version-only fix
-  or a simplification deletion.
+- SS-010 recorded the then-current input-gate V4 implementation versus target V5/RepairRequired.
+  Later successor gating and explicit-incomplete recovery acceptance supersede that historical
+  implementation gap; the [history contract](../../systems/syndic-conversation-history/design.md)
+  owns the current behavior. It was not a test-version-only fix or a simplification deletion.
 
 The six counted local proposals estimate 411-640 net lines, midpoint approximately 520. The other
 entries are uncounted; no serializer migration, implementation, build or test was performed.

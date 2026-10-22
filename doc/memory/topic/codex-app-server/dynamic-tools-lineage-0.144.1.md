@@ -38,7 +38,7 @@ only nested `type: "function"` entries. The initial investigation also proved th
 accepts and normalizes its older flat compatibility form, but the target deliberately does not rely
 on that normalizer. CAS rejects a registry that mixes legacy and canonical entries.
 
-The retained `doc/rework/beryl-home/probes/cas-phase8-live.ps1` reproduces the negative capability
+The installed-runtime probe reproduced the negative capability
 check and provider-boundary equality checks alongside the existing native-lineage and injection
 proofs.
 

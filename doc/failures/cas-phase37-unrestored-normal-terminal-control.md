@@ -48,6 +48,5 @@ a substitute.
 # Affected Authority
 
 - `doc/plan.md`, new prerequisite Phase 37 and deferred residency Phase 38
-- `doc/rework/beryl-home/REWORK.md`, Checkpoint 3 terminal-publication status
 - `doc/systems/cas-live-syndic-transcript/design.md`
 - `doc/systems/syndic-conversation-history/design.md`

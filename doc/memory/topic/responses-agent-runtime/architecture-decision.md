@@ -210,7 +210,7 @@ If Operator selects this direction, reconcile these controlling areas before imp
   states. Keep windows, notifications and app-tool authority consistent.
 - Owning package docs: derive responsibilities and APIs from reconciled system/feature authority;
   resolve engineering-rigor requirements before implementation acceptance criteria.
-- `doc/rework/beryl-home/REWORK.md` and root `doc/plan.md`: retire or reconcile blocked CAS work,
+- Root `doc/plan.md`: retire or reconcile blocked CAS work,
   preserve still-valid storage/UI work and unfinished product gates, then derive a fresh bounded
   implementation window. Generic continue does not release the hold.
 

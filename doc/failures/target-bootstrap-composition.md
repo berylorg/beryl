@@ -59,9 +59,8 @@ The former rework sequence required Checkpoint 4 product acceptance before Check
 Checkpoint 5 recovery acceptance before Checkpoint 6 branch implementation, although complete
 graph publication itself belongs to Checkpoint 4.
 
-The Operator approved the recommended reconciliation on 2026-09-16. The
-[rework sequence](../rework/beryl-home/REWORK.md#checkpoint-5-add-terminal-repair-and-fresh-same-home-recovery)
-now permits prerequisite non-GUI recovery acceptance, then branch service acceptance, before
+The Operator approved the recommended reconciliation on 2026-09-16. The approved
+sequence permits prerequisite non-GUI recovery acceptance, then branch service acceptance, before
 complete graph publication; product-mounting gates remain separate. Recovery-before-branch and
 complete graph publication remain required. Component fixtures cannot certify graph publication,
 restored windows or visible recovery. Phase 423 remains pending until every required service is

@@ -30,6 +30,5 @@ usable lineage proof.
 ## Affected Authority
 
 - `doc/plan.md`, Phase 10.
-- `doc/rework/beryl-home/REWORK.md`, Checkpoint 3 projection completion.
 - `crates/beryl-app/src/cas_projection/execute/fresh.rs`, `native.rs`, and `recovery.rs`.
 - Remote/local cut-point verification.

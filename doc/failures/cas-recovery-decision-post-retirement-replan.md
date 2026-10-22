@@ -45,6 +45,5 @@ original target basis.
 ## Affected Authority
 
 - `doc/plan.md`, Phase 10.
-- `doc/rework/beryl-home/REWORK.md`, Checkpoint 3 projection completion.
 - `crates/beryl-app/src/cas_projection/execute.rs`, `execute/decision.rs`, and publication helpers.
 - Focused explicit-recovery verification.

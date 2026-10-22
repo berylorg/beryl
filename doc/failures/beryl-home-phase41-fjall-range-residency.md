@@ -50,7 +50,6 @@ complex than the storage risk warranted.
 - `doc/systems/bounded-resource-dataflow/design.md`
 - `doc/systems/beryl-home-storage/design.md`
 - `crates/beryl-home-store/doc/design.md`
-- `doc/rework/beryl-home/REWORK.md`
 - `doc/plan.md`
 - the owned Fjall and `lsm-tree` design and plan documents
 

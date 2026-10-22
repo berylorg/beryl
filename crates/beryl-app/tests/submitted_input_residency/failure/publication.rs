@@ -53,6 +53,7 @@ fn run_terminal_publication_fault(
 ) {
     let faults = FaultController::new();
     let mut fixture = Fixture::with_faults(seed, faults.clone());
+    let generation = fixture.store.home_generation();
     let thread = fixture.thread;
     let seeded = seed_submitted_input(&mut fixture, thread, LogicalInput::marker_free(4_096), None);
     let server = RawCasServer::spawn_scenario(
@@ -88,14 +89,22 @@ fn run_terminal_publication_fault(
     let (CompletedExecution { result, session }, directory) =
         prepared.execute_with_failed_service_disposal(fixture, &request, release_fault);
     assert!(
-        matches!(
-            result,
+        match &result {
             Err(OrdinaryTurnExecutionFailure::AfterActivation {
-                source: OrdinaryTurnExecutionError::Coordinator(
-                    ProjectionCoordinatorError::ProjectionWorkerStopped
-                ),
-            })
-        ),
+                source:
+                    OrdinaryTurnExecutionError::Coordinator(
+                        ProjectionCoordinatorError::ProjectionWorkerStopped,
+                    ),
+            }) => true,
+            Err(OrdinaryTurnExecutionFailure::AfterActivation {
+                source:
+                    OrdinaryTurnExecutionError::HomeRead(beryl_home_store::ReadError::HealthGate(gate)),
+            }) => {
+                gate.state() == beryl_home_store::HomeHealthState::Failed
+                    && gate.generation() == generation
+            }
+            _ => false,
+        },
         "failed-service execution returned an unexpected result: {result:?}"
     );
     close_execution(session, server);

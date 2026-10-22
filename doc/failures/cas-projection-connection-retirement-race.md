@@ -49,7 +49,6 @@ The reservation never covers projection establishment or a CAS request.
 ## Affected Authority
 
 - `doc/plan.md`, Phases 10 and 62.
-- `doc/rework/beryl-home/REWORK.md`, Checkpoint 3 loaded-projection correction.
 - `doc/systems/cas-live-syndic-transcript/design.md`,
   `crates/beryl-app/doc/design.md`, connection authority, accepted-input scheduling, and focused
   projection tests.

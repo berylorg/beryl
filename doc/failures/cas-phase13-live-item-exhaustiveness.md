@@ -57,7 +57,7 @@ replaced by a completion snapshot.
 
 # Affected Authority
 
-`doc/plan.md` Phase 13, `doc/rework/beryl-home/REWORK.md`,
+`doc/plan.md` Phase 13,
 `doc/systems/cas-live-syndic-transcript/design.md`,
 `doc/systems/syndic-conversation-history/design.md`, `doc/systems/backend-runtime/design.md`,
 `doc/systems/image-assets/design.md`,

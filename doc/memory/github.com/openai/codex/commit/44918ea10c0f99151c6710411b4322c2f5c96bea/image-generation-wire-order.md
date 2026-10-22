@@ -52,7 +52,5 @@ Beryl should prefer that path-only contract and remove this transport exclusion 
   `codex-rs/app-server-transport/src/outgoing_message.rs`
 - Outgoing `serde_json::Value` serialization:
   `codex-rs/app-server-transport/src/transport/mod.rs`
-- Installed-runtime proof script:
-  `doc/rework/beryl-home/probes/cas-phase13-image-generation-live.ps1`
 - Installed-runtime proof rerun: 2026-07-16, isolated temporary `CODEX_HOME`, loopback provider,
   no OpenAI request.

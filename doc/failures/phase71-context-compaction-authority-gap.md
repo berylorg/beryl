@@ -96,5 +96,4 @@ authority correction.
 - `crates/syndic-storage/doc/design.md`
 - `crates/beryl-app/doc/design.md`
 - `crates/beryl-state/doc/design.md`
-- `doc/rework/beryl-home/REWORK.md`
 - `doc/plan.md`

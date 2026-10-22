@@ -64,7 +64,6 @@ or allocator uncertainty.
 - `doc/systems/beryl-home-storage/design.md`
 - CAS-live, Syndic-history, transcript-presentation, image-asset, feature, and package boundaries
   that previously consumed the universal resource runtime
-- `doc/rework/beryl-home/REWORK.md`
 - `doc/plan.md`
 
 ## Remaining Risks

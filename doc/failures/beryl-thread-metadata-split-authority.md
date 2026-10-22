@@ -35,4 +35,4 @@ relationship record, dual read, decoder, or migration adapter is retained.
 - `doc/design.md` and the conversation-thread and status-line feature contracts.
 - Beryl-home, Syndic-history, and CAS-live system contracts.
 - `beryl-state`, `syndic-storage`, `beryl-model`, `beryl-backend`, and `beryl-app` package contracts.
-- `doc/plan.md` and `doc/rework/beryl-home/REWORK.md`.
+- `doc/plan.md`.

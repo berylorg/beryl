@@ -16,7 +16,7 @@ The accepted course correction makes exact CAS-native continuation, resume, fork
 
 Exact 0.144.1 source establishes that the replacement method has no idempotency key, deduplication, or public readback; active-thread injection queues rather than appends immediately; compaction does not preserve every injected item verbatim; and lower rollout-append failures are not fully propagated. Therefore Beryl may inject only into a fresh loaded idle thread, must scope the recovered binding to that exact managed-CAS session, and must abandon any ambiguous or lost projection rather than retrying in place or trusting resume readback.
 
-The replacement proof is now complete in `doc/memory/topic/codex-app-server/native-lineage-0.144.1.md`, `thread-inject-items-0.144.1.md`, and `doc/rework/beryl-home/probes/cas-phase8-live.ps1`. It establishes exact native-lineage precedence, canonical one-time recovery messages through the 262,144-byte ceiling, and one provenance-faithful assistant/output-text branch item carrying the exact 65,536-byte selected passage. No smaller product limit, newer CAS target, CAS modification, developer-instructions transport, or other workaround was introduced.
+The replacement proof is now complete in `doc/memory/topic/codex-app-server/native-lineage-0.144.1.md` and `thread-inject-items-0.144.1.md`. It establishes exact native-lineage precedence, canonical one-time recovery messages through the 262,144-byte ceiling, and one provenance-faithful assistant/output-text branch item carrying the exact 65,536-byte selected passage. No smaller product limit, newer CAS target, CAS modification, developer-instructions transport, or other workaround was introduced.
 
 Detailed schema, live-probe, rollout, source, test, and reproduction evidence is preserved in `doc/memory/topic/codex-app-server/additional-context-runtime-0.144.1.md`.
 
@@ -27,4 +27,3 @@ Affected authority and tracking:
 - `doc/systems/cas-live-syndic-transcript/design.md`
 - `doc/features/branch-discussions/design.md`
 - `doc/plan.md`, Phase 8
-- `doc/rework/beryl-home/REWORK.md`, Checkpoint 0

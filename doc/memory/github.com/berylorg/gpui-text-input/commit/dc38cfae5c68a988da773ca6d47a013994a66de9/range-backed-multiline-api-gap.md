@@ -33,7 +33,7 @@ motion request and does not fetch text.
 Therefore dependency implementation work must precede Beryl's large-draft editor mounting. Beryl
 must not bridge this gap with a whole-draft `String`, whole-value compatibility buffer, mirrored
 complete value, or flattening adapter: that would violate the authoritative bounded draft contract
-and hide the missing dependency boundary. `doc/rework/beryl-home/REWORK.md` makes the order explicit:
+and hide the missing dependency boundary. The required implementation order was explicit:
 implement the external range-backed multiline text-input without whole-value compatibility buffers,
 then mount bounded draft editing.
 
@@ -53,8 +53,7 @@ then mount bounded draft editing.
   `src/lib.rs`, `src/widget/mod.rs`, `src/widget/events.rs`, `src/widget/layout.rs`,
   `src/widget/layout/shape.rs`, and `src/widget/render.rs`.
 - Beryl integration authority consulted: `doc/features/composer/design.md`,
-  `doc/features/composer/gui.md`, `doc/gui/widgets/conversation-composer/spec.md`, and
-  `doc/rework/beryl-home/REWORK.md`.
+  `doc/features/composer/gui.md` and `doc/gui/widgets/conversation-composer/spec.md`.
 - Beryl dependency identity: root `Cargo.toml` pins `gpui-text-input` to the same full commit SHA.
 
 # Commands

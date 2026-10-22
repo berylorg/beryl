@@ -266,8 +266,8 @@ CAS integration plan remains blocked pending the Operator's architecture decisio
   [backend runtime](../../../systems/backend-runtime/design.md),
   [CAS-live](../../../systems/cas-live-syndic-transcript/design.md),
   [bounded resources](../../../systems/bounded-resource-dataflow/design.md),
-  [backend package](../../../../crates/beryl-backend/doc/design.md), root `doc/plan.md` and
-  `doc/rework/beryl-home/REWORK.md`; `Ingester::seal`, `ManagedBackendSession`,
+  [backend package](../../../../crates/beryl-backend/doc/design.md), root `doc/plan.md`;
+  `Ingester::seal`, `ManagedBackendSession`,
   `ManagedBackendReleaseAdmission`, `ThreadInjectionPreflight`, and
   `UnavailableBranchResolution` inspected by root or the read-only architecture reviewer.
 - Installed executable was identified as 0.154.0 in the preceding investigation; Beryl's current

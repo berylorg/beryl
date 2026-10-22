@@ -49,7 +49,7 @@ Stable `thread/inject_items` is a technically viable one-time fallback on a fres
 ## Live Target Proof
 
 - The exact installed `codex-cli 0.144.1` executable had SHA-256 `D3D92E9C10A6F3371A425214C3DF67EB97EC5C2FF1B88876410FE0E61D4791DA`.
-- The repository-owned probe is `doc/rework/beryl-home/probes/cas-phase8-live.ps1`. It uses an isolated Codex home and deterministic local Responses-compatible provider, captures every upstream request, and never modifies CAS.
+- The installed-runtime probe used an isolated Codex home and deterministic local Responses-compatible provider, captured every upstream request, and never modified CAS.
 - One ordered user/assistant recovery prefix appeared before the first real user input with exact roles and text. It remained exactly once after process restart/resume and after a native full fork.
 - The exact probe was rerun on 2026-07-17 after the Phase 13 narrative-mismatch design exposed a
   recovered-lineage reacquisition question. All 59 checks passed. The post-restart
@@ -78,9 +78,9 @@ Stable `thread/inject_items` is a technically viable one-time fallback on a fres
 - Resume, fork, compaction, and public-read reconstruction: `codex-rs/core/src/rollout_reconstruction.rs`, `codex-rs/core/src/thread_manager.rs`, `codex-rs/core/src/compact.rs`, and `codex-rs/app-server-protocol/src/protocol/thread_history.rs`.
 - Exact loaded-thread rejoin and subscription anchoring: `codex-rs/app-server/src/request_processors/thread_processor.rs` (`thread_resume_inner`, `resume_running_thread`), `thread_lifecycle.rs` (`handle_pending_thread_resume_request`, idle unload), and `codex-rs/core/src/thread_manager.rs` (`get_thread`).
 - Exact upstream integration tests: `codex-rs/app-server/tests/suite/v2/thread_inject_items.rs`, especially `thread_inject_items_adds_raw_response_items_to_thread_history` and `thread_inject_items_adds_raw_response_items_after_a_turn`.
-- Installed target probe: `doc/rework/beryl-home/probes/cas-phase8-live.ps1`, executed 2026-07-12 against the exact binary above with stable schema SHA-256 `C2A14A9D3D66E54E1672B440824676A8292200A39EA765615CBFA98B07862FB0`.
-- Installed target probe rerun on 2026-07-17 through a process-scoped PowerShell invocation of
-  `doc/rework/beryl-home/probes/cas-phase8-live.ps1` with `-KeepArtifacts`; 59 checks passed and no
+- Installed target probe executed 2026-07-12 against the exact binary above with stable schema SHA-256 `C2A14A9D3D66E54E1672B440824676A8292200A39EA765615CBFA98B07862FB0`.
+- Installed target probe rerun on 2026-07-17 through a process-scoped PowerShell invocation;
+  59 checks passed and no
   tracked file was mutated. The temporary report and provider captures were inspected for the
   same-thread identity, exact item order, roles, content types, occurrence counts, and request hash.
 - Beryl production-transport proof: `crates/beryl-backend/tests/launch_and_protocol.rs`, test `websocket_outbound_frames_preserve_rework_context_transport_bounds`, run with `cargo nextest` on 2026-07-12.

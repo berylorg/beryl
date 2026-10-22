@@ -1,4 +1,5 @@
 #![cfg(feature = "test-faults")]
+#![recursion_limit = "256"]
 
 #[path = "projection/syndic.rs"]
 mod syndic;

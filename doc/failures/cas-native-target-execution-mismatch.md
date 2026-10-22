@@ -33,7 +33,6 @@ target retirement is a tool-profile mismatch.
 ## Affected Authority
 
 - `doc/plan.md`, Phase 10.
-- `doc/rework/beryl-home/REWORK.md`, Checkpoint 3 projection completion.
 - `crates/syndic-storage/src/native_projection/classify.rs`.
 - `crates/beryl-app/src/cas_projection/execute.rs`.
 - Focused native-planning and coordinator verification.

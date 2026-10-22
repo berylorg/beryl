@@ -45,4 +45,4 @@ Codex App Server 0.144.1 preserved exact native lineage through same-thread cont
 - Rollback boundaries and effective-history reconstruction: `codex-rs/core/src/context_manager/history.rs`, `codex-rs/core/src/session/handlers.rs`, and `codex-rs/core/src/session/rollout_reconstruction.rs`.
 - Fork snapshot behavior: `codex-rs/core/src/thread_manager.rs`.
 - Exact upstream tests: `codex-rs/app-server/tests/suite/v2/thread_fork.rs`, `thread_resume.rs`, `thread_rollback.rs`, `codex-rs/core/src/thread_rollout_truncation_tests.rs`, and `codex-rs/core/src/thread_manager_tests.rs`.
-- Repository-owned reproduction: `doc/rework/beryl-home/probes/cas-phase8-live.ps1`, executed 2026-07-12.
+- Installed-runtime probe executed 2026-07-12.

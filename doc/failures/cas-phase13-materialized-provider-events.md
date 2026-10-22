@@ -51,7 +51,6 @@ operational/activity variants and seven applicable deltas.
 # Affected Authority
 
 - `doc/plan.md`, Phase 13.
-- `doc/rework/beryl-home/REWORK.md`, Checkpoint 3.
 - `doc/systems/cas-live-syndic-transcript/design.md`.
 - `doc/systems/bounded-resource-dataflow/design.md`.
 - `crates/beryl-backend/doc/design.md`, `crates/beryl-app/doc/design.md`, and

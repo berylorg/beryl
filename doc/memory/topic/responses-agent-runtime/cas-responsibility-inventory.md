@@ -168,7 +168,7 @@ coverage; each subsystem still requires deeper evidence before architecture sele
 
 - Beryl local baseline `bea3f35b7f49645f98541e3f5faafa28a1e4c781`, inspected 2026-09-17:
   `doc/design.md`, all 16 feature and 10 system entries identified above,
-  `doc/rework/beryl-home/REWORK.md`, and selected source anchors listed above.
+  and selected source anchors listed above.
 - `crates/beryl-backend/doc/design.md` and its linked boundary documentation for delegated
   protocol duties; root/system authority governs cross-package conclusions.
 - [Initial assessment](beryl-feasibility.md) used as a starting inventory, not proof of current

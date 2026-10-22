@@ -61,7 +61,6 @@ unrelated dynamic-tool server-request case remains a valid compact-envelope cons
 # Affected Authority
 
 - `doc/plan.md`, Phase 13 sequence items 5 through 8.
-- `doc/rework/beryl-home/REWORK.md`, Checkpoint 3 provider-ingress and trailing-route cutover.
 - `doc/systems/bounded-resource-dataflow/design.md`.
 - `doc/systems/cas-live-syndic-transcript/design.md`.
 - `crates/beryl-backend/doc/design.md`, `crates/beryl-app/doc/design.md`, and

@@ -124,7 +124,8 @@ fn native_discussion_tool_uncertainty_retains_original_admission_until_graph_rec
                 })
                 .unwrap();
                 let mut recovered = None;
-                for _ in 0..750 {
+                let recovery_deadline = std::time::Instant::now() + Duration::from_secs(30);
+                while std::time::Instant::now() < recovery_deadline {
                     for window in &original_windows {
                         with_native(*window, cx, |native, app| {
                             native.draw_and_present_for_test(app)

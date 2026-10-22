@@ -93,7 +93,6 @@ This is not repaired by lifecycle exhaustive validation: corruption may become v
 ## Affected Authority
 
 - `doc/plan.md` Phases 10 through 16 own sequencing and verification.
-- `doc/rework/beryl-home/REWORK.md` keeps Checkpoint 2 incomplete until every finding is independently reverified.
 - `doc/systems/beryl-home-storage/design.md`, `crates/beryl-home-store/doc/design.md`, and `crates/beryl-state/doc/design.md` must be reconciled as each corrected boundary is implemented.
 - Fjall issue #304 remains a separate Operator-accepted dependency defect and does not excuse any of these Beryl-controlled gaps.
 

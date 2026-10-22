@@ -33,6 +33,5 @@ authority.
 ## Affected Authority
 
 - `doc/plan.md`, Phase 10.
-- `doc/rework/beryl-home/REWORK.md`, Checkpoint 3 projection completion.
 - `crates/beryl-app/src/cas_projection/execute/recovery.rs` and support/error boundaries.
 - Recovered-lineage proof verification.

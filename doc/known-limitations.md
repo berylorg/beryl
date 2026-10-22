@@ -24,3 +24,14 @@ generation and its additional preparation/service wiring are deferred. The prior
 an active implementation or approval request. Revisit available upstream capabilities and the
 desired feature scope after the rework is otherwise complete; no extension, pin change or unsafe
 ordinary-session fallback is authorized.
+
+## Historical Terminal-Turn Repair
+
+The supported CAS history source does not establish complete exact terminal-turn content for the
+current thread population. Recovery records explicit incomplete history and releases successor
+gates only after bounded finalization and coherent publication. It does not infer missing content
+from a partial full-view response. The
+[historical repair contract](systems/cas-live-syndic-transcript/design.md#exact-terminal-turn-historical-repair)
+owns eligibility and any future separately authorized repair. The
+[source-completeness evidence](failures/cas-terminal-repair-full-view-is-not-completeness.md)
+records the accepted limitation. Revisit source capabilities after the remaining rework closes.

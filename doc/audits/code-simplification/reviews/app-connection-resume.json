@@ -545,7 +545,6 @@
     "CAS-live system target reviewed; large initial display truncated in repair section; main connection/capture/stop/compaction/recovery contracts and later selected repair lines read",
     "doc/systems/backend-runtime/design.md lines 136-195 (recovery and rigor)",
     "crates/beryl-app/doc/design-shell-lifecycle.md lines 90-109 (same-home replacement)",
-    "doc/rework/beryl-home/REWORK.md lines 296-320 (unfinished recovery target)",
     "doc/plan.md scope/paused work reviewed; initial complete-output display truncated so do not claim exhaustive plan read"
   ],
   "supporting_evidence": [

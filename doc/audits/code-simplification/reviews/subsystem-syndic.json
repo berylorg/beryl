@@ -175,8 +175,12 @@
       "rigor": "production-application/v2 + external-side-effects/v2."
     },
     {
-      "path": "doc/rework/beryl-home/REWORK.md",
-      "scope": "Current implemented-family cutover exception and already scheduled bootstrap marker-service ownership/tree-balancing cleanup. Target authority is not dead-code evidence."
+      "path": "crates/syndic-storage/doc/design-schema-v7.md",
+      "scope": "Implemented-family registry and canonical record contracts. Target authority is not dead-code evidence."
+    },
+    {
+      "path": "crates/beryl-app/doc/design-shell-lifecycle.md",
+      "scope": "Home-generation marker-service ownership, complete graph publication and retirement. Target authority is not dead-code evidence."
     }
   ],
   "architecture_conclusion": {

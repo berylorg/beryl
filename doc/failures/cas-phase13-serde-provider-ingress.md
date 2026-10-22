@@ -49,6 +49,5 @@ observation fallback.
 # Affected Authority
 
 - `doc/plan.md`, Phase 13 sequence item 5.
-- `doc/rework/beryl-home/REWORK.md`, bounded operational-provider ingress cutover.
 - `doc/systems/bounded-resource-dataflow/design.md`.
 - `crates/beryl-backend/doc/design.md`.

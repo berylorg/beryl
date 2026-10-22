@@ -69,5 +69,4 @@ remain required because each protects a distinct supported-envelope consequence.
 - `crates/syndic-storage/doc/design.md`
 - `crates/beryl-state/doc/design.md`
 - `crates/beryl-app/doc/design.md`
-- `doc/rework/beryl-home/REWORK.md`
 - Root `doc/plan.md` Phases 196 through 202

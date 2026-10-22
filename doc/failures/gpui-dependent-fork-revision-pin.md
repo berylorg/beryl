@@ -536,4 +536,3 @@ fast-forward from `efa1e33` to exact accepted commit `d8d04dd` before remote-ref
   Phase 252's completed no-publish qualification, and Phases 253 through 279's focused partition,
   correction, remaining diagnosis, publication, propagation, and canonical-pin gates through Phase
   280's clean-clone publication correction.
-- `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.

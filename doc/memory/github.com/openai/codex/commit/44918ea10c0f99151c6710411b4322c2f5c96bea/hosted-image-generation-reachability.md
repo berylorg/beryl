@@ -25,8 +25,7 @@ supported producer contract and must not be described as an admitted image-gener
 
 ## Installed-Runtime Proof
 
-The deterministic probe at
-`doc/rework/beryl-home/probes/cas-phase13-image-generation-live.ps1` launched installed
+The deterministic probe launched installed
 `codex-cli 0.144.1` with an isolated Codex home and a loopback-only conforming Responses provider.
 The provider advertised `imageGeneration = true`; selected model `gpt-5.4` advertised `text` and
 `image` input modalities. No real credentials, remote provider, or billable generation was used.
@@ -64,8 +63,6 @@ Final evidence digests:
 - OpenAI, [Image generation](https://developers.openai.com/api/docs/guides/image-generation),
   accessed 2026-07-16. The hosted Responses path requires a native
   `tools: [{"type":"image_generation"}]` declaration.
-- Local installed-runtime command:
-  `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "doc/rework/beryl-home/probes/cas-phase13-image-generation-live.ps1" -KeepArtifacts`.
 - Retained compact final report:
   `hosted-image-generation-reachability-report.json`, generated from the final run at
   2026-07-16 `06:13:16Z`. It preserves the proof boundary, all 21 check names, semantic result, and

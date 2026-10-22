@@ -23,8 +23,7 @@ thread reads do not expose injected raw messages for readback. Cold resume there
 non-authorizing for recovered lineage even though the healthy path works.
 
 The controlling evidence is
-`doc/memory/topic/codex-app-server/thread-inject-items-0.144.1.md` and
-`doc/rework/beryl-home/probes/cas-phase8-live.ps1`.
+`doc/memory/topic/codex-app-server/thread-inject-items-0.144.1.md`.
 
 # Why It Failed
 
